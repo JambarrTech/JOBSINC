@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/api_client.dart';
+import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../providers/messages_provider.dart';
@@ -25,21 +27,93 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   final _focusNode = FocusNode();
   String? _lastSeenBottomMessageId;
   Timer? _pollTimer;
+  StreamSubscription<String>? _socketSub;
+
+  // --- « En train d'écrire… » ---
+  StreamSubscription<TypingEvent>? _typingSub;
+  bool _peerTyping = false;
+  Timer? _peerTypingReset;
+  bool _typingActiveSent = false;
+  DateTime _lastTypingSentAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
+    _inputController.addListener(_onInputChanged);
     Future.microtask(() => ref.read(chatProvider(widget.conversation).notifier).load());
+    _connectSocket();
     _startPolling();
+  }
+
+  // ------------------------------------------------------------
+  // TEMPS RÉEL (Socket.IO) : rejoint la room de la conversation et
+  // resynchronise dès qu'un message y arrive. Le polling reste en
+  // filet de sécurité si le socket est indisponible.
+  // ------------------------------------------------------------
+  void _connectSocket() {
+    final token = ref.read(authProvider).user?.token;
+    if (token != null && token.isNotEmpty) {
+      ChatSocketService.instance.viewingConversationId = widget.conversation.id;
+      ChatSocketService.instance.connect(token);
+      _socketSub = ChatSocketService.instance.messageEvents.listen((conversationId) {
+        if (mounted && conversationId == widget.conversation.id) _sync();
+      });
+      _typingSub = ChatSocketService.instance.typingEvents.listen(_onPeerTyping);
+    }
+    ChatSocketService.instance.joinConversation(widget.conversation.id);
+  }
+
+  void _onPeerTyping(TypingEvent event) {
+    if (!mounted || event.conversationId != widget.conversation.id) return;
+    setState(() => _peerTyping = event.typing);
+    _peerTypingReset?.cancel();
+    if (event.typing) {
+      // Sécurité : l'état retombe si aucun nouveau signal n'arrive.
+      _peerTypingReset = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _peerTyping = false);
+      });
+    }
+  }
+
+  // ------------------------------------------------------------
+  // SIGNALE NOTRE SAISIE : au plus une émission toutes les 2 s tant
+  // que du texte est présent, puis un « false » à l'effacement/envoi.
+  // ------------------------------------------------------------
+  void _onInputChanged() {
+    final active = _inputController.text.trim().isNotEmpty;
+    if (!active) {
+      if (_typingActiveSent) {
+        _typingActiveSent = false;
+        ChatSocketService.instance.sendTyping(widget.conversation.id, typing: false);
+      }
+      return;
+    }
+    final now = DateTime.now();
+    if (!_typingActiveSent || now.difference(_lastTypingSentAt).inMilliseconds >= 2000) {
+      _typingActiveSent = true;
+      _lastTypingSentAt = now;
+      ChatSocketService.instance.sendTyping(widget.conversation.id, typing: true);
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
+    _socketSub?.cancel();
+    _typingSub?.cancel();
+    _peerTypingReset?.cancel();
+    if (_typingActiveSent) {
+      ChatSocketService.instance.sendTyping(widget.conversation.id, typing: false);
+    }
+    if (ChatSocketService.instance.viewingConversationId == widget.conversation.id) {
+      ChatSocketService.instance.viewingConversationId = null;
+    }
+    ChatSocketService.instance.leaveConversation(widget.conversation.id);
     _scrollController.removeListener(_onScroll);
+    _inputController.removeListener(_onInputChanged);
     _scrollController.dispose();
     _inputController.dispose();
     _focusNode.dispose();
@@ -47,12 +121,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   }
 
   // ------------------------------------------------------------
-  // TEMPS RÉEL (polling incrémental) : actif uniquement lorsque
+  // FILET DE SÉCURITÉ (polling lent) : actif uniquement lorsque
   // l'écran est visible et l'application en premier plan.
   // ------------------------------------------------------------
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (mounted) _sync();
     });
   }
@@ -119,6 +193,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     if (content.isEmpty) return;
     _inputController.clear();
     _focusNode.unfocus();
+    if (_typingActiveSent) {
+      _typingActiveSent = false;
+      ChatSocketService.instance.sendTyping(widget.conversation.id, typing: false);
+    }
 
     final sent = await ref.read(chatProvider(widget.conversation).notifier).send(content);
     if (!mounted) return;
@@ -181,12 +259,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                     ),
                   ),
                   Text(
-                    _headerSubtitle(chat.conversation ?? widget.conversation),
+                    _peerTyping
+                        ? "En train d'écrire…"
+                        : _headerSubtitle(chat.conversation ?? widget.conversation),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: AppColors.secondaryText,
+                      fontWeight: _peerTyping ? FontWeight.w600 : FontWeight.w400,
+                      color:
+                          _peerTyping ? AppColors.primary : AppColors.secondaryText,
                     ),
                   ),
                 ],

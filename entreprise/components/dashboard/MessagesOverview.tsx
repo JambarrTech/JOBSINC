@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/ui/Icon';
+import { getMessagesSocket } from '@/lib/socket';
 import { CompanyMessage, ChatMessage, ChatConversation, getCompanyMessages, getConversationPage, sendMessage, markConversationRead, getCompanyApplications } from '@/lib/api';
 
 // Statuts autorisant la messagerie (même règle côté backend).
@@ -66,15 +67,25 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
   const chatEndRef = useRef<HTMLDivElement>(null);
   const skipScrollRef = useRef(false);
   const chatMessagesRef = useRef<ChatMessage[]>([]);
+  // --- « En train d'écrire… » ---
+  const [peerTyping, setPeerTyping] = useState(false);
+  const peerTypingResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingActiveRef = useRef(false);
+  const lastTypingSentRef = useRef(0);
 
   useEffect(() => {
     chatMessagesRef.current = chatMessages;
   }, [chatMessages]);
 
-  const loadConversations = useCallback(() => {
-    setLoading(true);
-    setError(false);
-    getCompanyMessages().then((response) => setConversations(response || [])).catch(() => setError(true)).finally(() => setLoading(false));
+  const loadConversations = useCallback((opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true);
+      setError(false);
+    }
+    getCompanyMessages()
+      .then((response) => setConversations(response || []))
+      .catch(() => { if (!opts?.silent) setError(true); })
+      .finally(() => { if (!opts?.silent) setLoading(false); });
   }, []);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
@@ -122,32 +133,121 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
   }, [chatMessages]);
 
   // ------------------------------------------------------------
-  // TEMPS RÉEL (polling incrémental de la conversation active).
-  // Aucun WebSocket côté backend : on interroge uniquement les
-  // messages postérieurs au dernier connu (paramètre after).
+  // TEMPS RÉEL (Socket.IO) : le backend émet `message:new` dès qu'un
+  // message est persisté. On recharge alors les messages postérieurs
+  // au dernier connu (paramètre after) via l'API REST.
+  // Un polling lent reste en filet de sécurité si le socket est down.
   // ------------------------------------------------------------
+  const syncActiveChat = useCallback(async (conversationId: string | number) => {
+    const anchor = [...chatMessagesRef.current].reverse().find((message) => !message.id.startsWith('temp-'));
+    if (!anchor) return;
+    try {
+      const response = await getConversationPage(conversationId, { after: anchor.id });
+      const fresh = response.messages || [];
+      if (fresh.length === 0) return;
+      skipScrollRef.current = false;
+      setChatMessages((prev) => mergeById(prev, fresh));
+      const last = fresh[fresh.length - 1];
+      setConversations((prev) => prev.map((c) => String(c.id) === String(conversationId)
+        ? { ...c, preview: last.content.substring(0, 120), date: last.createdAt }
+        : c));
+      markConversationRead(conversationId).catch(() => {});
+    } catch {
+      // Silencieux : un cycle suivant resynchronisera.
+    }
+  }, []);
+
   useEffect(() => {
     if (!activeConvId || showNewConversation) return;
     const timer = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      const anchor = [...chatMessagesRef.current].reverse().find((message) => !message.id.startsWith('temp-'));
-      if (!anchor) return;
-      getConversationPage(activeConvId, { after: anchor.id })
-        .then((response) => {
-          const fresh = response.messages || [];
-          if (fresh.length === 0) return;
-          skipScrollRef.current = false;
-          setChatMessages((prev) => mergeById(prev, fresh));
-          const last = fresh[fresh.length - 1];
-          setConversations((prev) => prev.map((c) => String(c.id) === String(activeConvId)
-            ? { ...c, preview: last.content.substring(0, 120), date: last.createdAt }
-            : c));
-          markConversationRead(activeConvId).catch(() => {});
-        })
-        .catch(() => {});
-    }, 5000);
+      syncActiveChat(activeConvId);
+    }, 10000);
     return () => clearInterval(timer);
+  }, [activeConvId, showNewConversation, syncActiveChat]);
+
+  useEffect(() => {
+    const sock = getMessagesSocket();
+    if (!sock) return;
+    const onNewMessage = (payload: { conversationId?: string }) => {
+      const conversationId = payload?.conversationId;
+      if (!conversationId) return;
+      if (activeConvId && String(conversationId) === String(activeConvId)) {
+        syncActiveChat(conversationId);
+      } else if (!showNewConversation) {
+        // Message dans une autre conversation : rafraîchit la liste
+        // (aperçu + badge non lu) sans faire scintiller l'interface.
+        loadConversations({ silent: true });
+      }
+    };
+    sock.on('message:new', onNewMessage);
+    return () => { sock.off('message:new', onNewMessage); };
+  }, [activeConvId, showNewConversation, syncActiveChat, loadConversations]);
+
+  // Rejoint la room de la conversation ouverte : nécessaire pour
+  // recevoir/émettre « en train d'écrire » avec l'application mobile.
+  useEffect(() => {
+    const sock = getMessagesSocket();
+    if (!sock || !activeConvId || showNewConversation) return;
+    sock.emit('conversation:join', String(activeConvId));
+    return () => { sock.emit('conversation:leave', String(activeConvId)); };
   }, [activeConvId, showNewConversation]);
+
+  // Indicateur « en train d'écrire… » du correspondant.
+  useEffect(() => {
+    const sock = getMessagesSocket();
+    if (!sock || !activeConvId) return;
+    setPeerTyping(false);
+    const onTyping = (payload: { conversationId?: string; typing?: boolean }) => {
+      if (!payload?.conversationId || String(payload.conversationId) !== String(activeConvId)) return;
+      if (peerTypingResetRef.current) {
+        clearTimeout(peerTypingResetRef.current);
+        peerTypingResetRef.current = null;
+      }
+      setPeerTyping(Boolean(payload.typing));
+      if (payload.typing) {
+        peerTypingResetRef.current = setTimeout(() => setPeerTyping(false), 4000);
+      }
+    };
+    sock.on('typing', onTyping);
+    return () => {
+      sock.off('typing', onTyping);
+      if (peerTypingResetRef.current) {
+        clearTimeout(peerTypingResetRef.current);
+        peerTypingResetRef.current = null;
+      }
+    };
+  }, [activeConvId]);
+
+  // Saisie côté entreprise : émet l'état typing (throttle 2 s).
+  const handleReplyChange = (value: string) => {
+    setNewMessage(value);
+    const sock = getMessagesSocket();
+    const convId = selected?.id != null ? String(selected.id) : null;
+    if (!sock || !convId) return;
+    if (!value.trim()) {
+      if (typingActiveRef.current) {
+        typingActiveRef.current = false;
+        sock.emit('conversation:typing', { conversationId: convId, typing: false });
+      }
+      return;
+    }
+    const now = Date.now();
+    if (!typingActiveRef.current || now - lastTypingSentRef.current >= 2000) {
+      typingActiveRef.current = true;
+      lastTypingSentRef.current = now;
+      sock.emit('conversation:typing', { conversationId: convId, typing: true });
+    }
+  };
+
+  const stopTypingSignal = () => {
+    const sock = getMessagesSocket();
+    const convId = selected?.id != null ? String(selected.id) : null;
+    typingActiveRef.current = false;
+    if (sock && convId) {
+      sock.emit('conversation:typing', { conversationId: convId, typing: false });
+    }
+  };
 
   const loadOlder = async () => {
     if (!activeConvId || !hasMore || loadingOlder || chatMessages.length === 0) return;
@@ -175,6 +275,7 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
     setSending(true);
     try {
       if (selected && selected.candidateUserId) {
+        stopTypingSignal();
         const result = await sendMessage(selected.candidateUserId, content);
         setChatMessages((prev) => [...prev, {
           id: result.id || String(Date.now()),
@@ -232,18 +333,25 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
         // Règle métier : seuls les candidats en entretien ou recrutés
         // peuvent être contactés par messagerie.
         if (!MESSAGING_STATUSES.includes((app as any).status)) continue;
-        const id = (app as any).candidateProfileId || (app as any).candidate?.id;
-        if (id && !seen.has(id)) {
-          seen.add(id);
-          unique.push({
-            id,
-            userId: (app as any).candidate?.userId || id,
-            name: (app as any).candidateName || (app as any).candidate?.firstName ? `${(app as any).candidate?.firstName || ''} ${(app as any).candidate?.lastName || ''}`.trim() : 'Candidat',
-            avatar: (app as any).candidateAvatar || (app as any).candidate?.avatarUrl || null,
-            jobTitle: (app as any).jobTitle || (app as any).job?.title || '',
-            status: (app as any).status || '',
-          });
-        }
+        // Formes acceptées : candidateProfileId, candidate.id ou
+        // candidateUserId selon l'endpoint qui alimente la liste.
+        const profileId = (app as any).candidateProfileId
+          || (app as any).candidate?.id
+          || (app as any).candidateUserId;
+        if (!profileId) continue;
+        const userId = (app as any).candidate?.userId || (app as any).candidateUserId || profileId;
+        if (seen.has(String(userId))) continue;
+        seen.add(String(userId));
+        unique.push({
+          id: profileId,
+          userId,
+          name: (app as any).candidateName
+            || `${(app as any).candidate?.firstName || ''} ${(app as any).candidate?.lastName || ''}`.trim()
+            || 'Candidat',
+          avatar: (app as any).candidateAvatar || (app as any).candidate?.avatarUrl || null,
+          jobTitle: (app as any).jobTitle || (app as any).job?.title || '',
+          status: (app as any).status || '',
+        });
       }
       setCandidates(unique);
     } catch {
@@ -273,7 +381,7 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
       {error ? (
         <div className="dashboard-state dashboard-error">
           <strong>Impossible de charger les messages.</strong>
-          <button type="button" className="button button-outline button-small" onClick={loadConversations}>Réessayer</button>
+          <button type="button" className="button button-outline button-small" onClick={() => loadConversations()}>Réessayer</button>
         </div>
       ) : (
         <div className="messages-workspace">
@@ -388,7 +496,11 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
                   <div>
                     <span className="dashboard-eyebrow">Conversation</span>
                     <h2>{chatConv?.participantName || participant(selected)}</h2>
-                    <p>{chatConv?.jobTitle || chatConv?.subject || selected.subject || 'Échange de recrutement'}</p>
+                    <p style={peerTyping ? { color: '#0a64e8', fontWeight: 600 } : undefined}>
+                      {peerTyping
+                        ? "En train d'écrire…"
+                        : (chatConv?.jobTitle || chatConv?.subject || selected.subject || 'Échange de recrutement')}
+                    </p>
                   </div>
                 </div>
                 <div className="message-detail-body">
@@ -427,7 +539,7 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
                   <div ref={chatEndRef} />
                 </div>
                 <div className="message-compose">
-                  <textarea rows={2} value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={handleKeyDown} placeholder="Écrire un message…" aria-label="Réponse au message" />
+                  <textarea rows={2} value={newMessage} onChange={(e) => handleReplyChange(e.target.value)} onKeyDown={handleKeyDown} placeholder="Écrire un message…" aria-label="Réponse au message" />
                   <button type="button" className="button button-primary" onClick={handleSend} disabled={!newMessage.trim() || sending}>
                     {sending ? 'Envoi…' : 'Envoyer'}
                   </button>

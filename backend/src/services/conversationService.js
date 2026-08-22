@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { notifyNewMessage } = require('./socketService');
 
 // ============================================================
 // CONVERSATION SERVICE
@@ -321,6 +322,10 @@ exports.sendMessage = async function sendMessage(user, conversationId, rawConten
     });
     return created;
   });
+
+  // Temps réel : prévient les clients connectés (room conversation +
+  // room du destinataire) après la persistance.
+  notifyNewMessage(conversation.id, receiverId);
 
   return { message: serializeMessage(message, user.userId), receiverId };
 };

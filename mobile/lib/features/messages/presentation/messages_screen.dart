@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/api_client.dart';
+import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../models/conversation.dart';
 import '../providers/messages_provider.dart';
 
@@ -24,14 +26,33 @@ class MessagesScreen extends ConsumerStatefulWidget {
 class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   String _query = '';
   Timer? _refreshTimer;
+  StreamSubscription<String>? _socketSub;
 
   @override
   void initState() {
     super.initState();
     Future.microtask(() => ref.read(messagesProvider.notifier).load());
-    // Rafraîchissement léger des badges de non-lus pendant que
-    // l'écran reste visible (aucun système temps réel côté serveur).
+    _connectSocket();
+    // Filet de sécurité : rafraîchissement léger des badges si le
+    // socket est indisponible.
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      ref.read(messagesProvider.notifier).refreshQuietly();
+    });
+  }
+
+  // ------------------------------------------------------------
+  // TEMPS RÉEL (Socket.IO) : chaque `message:new` (room user:<id>,
+  // rejointe automatiquement côté serveur) déclenche un rafraîchissement
+  // silencieux des aperçus et badges de non-lus.
+  // ------------------------------------------------------------
+  void _connectSocket() {
+    final token = ref.read(authProvider).user?.token;
+    if (token == null || token.isEmpty) return;
+    ChatSocketService.instance.connect(token);
+    _socketSub =
+        ChatSocketService.instance.messageEvents.listen((conversationId) {
+      // Message d'une conversation ouverte ailleurs (autre écran) :
+      // la liste se rafraîchit quand même, sans doublon visible.
       ref.read(messagesProvider.notifier).refreshQuietly();
     });
   }
@@ -39,6 +60,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _socketSub?.cancel();
     super.dispose();
   }
 

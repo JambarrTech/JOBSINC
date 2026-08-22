@@ -183,6 +183,9 @@ class ChatController extends FamilyNotifier<ChatState, Conversation> {
         conversation: conversation ?? arg,
         messages: messages,
         hasMore: hasMore,
+        // Le constructeur met isLoading à true par défaut : sans ce
+        // paramètre, l'écran resterait bloqué sur le spinner.
+        isLoading: false,
       );
       await _repo.markAsRead(token, arg.id);
       ref.read(messagesProvider.notifier).clearUnread(arg.id);

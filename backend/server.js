@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const http = require('http');
 require('dotenv').config();
 
 const path = require('path');
@@ -76,6 +77,12 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Serveur démarré sur http://0.0.0.0:${PORT}`);
+
+// Socket.IO partage le même serveur HTTP qu'Express.
+const server = http.createServer(app);
+const socketService = require('./src/services/socketService');
+socketService.init(server, corsOrigins);
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Serveur démarré sur http://0.0.0.0:${PORT} (Socket.IO actif)`);
 });
