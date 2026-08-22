@@ -7,6 +7,7 @@ import '../../../core/widgets/app_section_screen.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/hero_banner.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../messages/presentation/messages_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../employment/employment_overview_screen.dart';
 
@@ -31,7 +32,7 @@ class _EmployeeDashboardScreenState extends ConsumerState<EmployeeDashboardScree
   Widget _buildBody(String displayName) {
     if (tab == 1) return const EmploymentOverviewScreen();
     if (tab == 2) return const AppSectionScreen(title: 'Documents professionnels', description: 'Retrouvez vos contrats et vos documents de travail.', icon: Icons.folder_outlined);
-    if (tab == 3) return const AppSectionScreen(title: 'Messages', description: 'Échangez avec votre entreprise et vos interlocuteurs.', icon: Icons.chat_bubble_outline);
+    if (tab == 3) return const MessagesScreen(isCompanySide: false);
     if (tab == 4) return const ProfileScreen(employee: true);
 
     return ListView(

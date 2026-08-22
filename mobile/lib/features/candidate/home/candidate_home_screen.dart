@@ -1,13 +1,11 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/widgets/app_section_screen.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../applications/presentation/applications_screen.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -15,6 +13,7 @@ import '../../jobs/models/job_offer.dart';
 import '../../jobs/presentation/job_detail_screen.dart';
 import '../../jobs/presentation/offers_screen.dart';
 import '../../jobs/widgets/job_feed_card.dart';
+import '../../messages/presentation/messages_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import 'data/home_repository.dart';
 import 'providers/home_provider.dart';
@@ -69,11 +68,7 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
     }
 
     if (_tab == 2) {
-      return const AppSectionScreen(
-        title: 'Messages',
-        description: 'Échangez avec les entreprises et les recruteurs.',
-        icon: Icons.chat_bubble_outline_rounded,
-      );
+      return const MessagesScreen(isCompanySide: false);
     }
 
     if (_tab == 3) {
@@ -172,25 +167,6 @@ class _HomeContent extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ...data.jobs.take(2).map(
-                (offer) => Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: JobFeedCard(
-                    offer: offer,
-                    onTap: () => _openJobDetail(context, offer),
-                  ),
-                ),
-              ),
-        ],
-
-        if (data.savedJobs.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _SectionHeader(
-            title: 'Offres sauvegardées',
-            actionLabel: 'Voir tout',
-            onAction: onSearchSubmit,
-          ),
-          const SizedBox(height: 12),
-          ...data.savedJobs.map(
                 (offer) => Padding(
                   padding: const EdgeInsets.only(bottom: 14),
                   child: JobFeedCard(
@@ -638,9 +614,11 @@ class CompanyFeedCard extends StatelessWidget {
   const CompanyFeedCard({
     super.key,
     required this.company,
+    required this.onViewOffers,
   });
 
   final HomeCompany company;
+  final VoidCallback onViewOffers;
 
   @override
   Widget build(BuildContext context) {
@@ -707,10 +685,21 @@ class CompanyFeedCard extends StatelessWidget {
                       ],
                     ),
                   ],
+                  if (company.openOffersCount > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${company.openOffersCount} offre${company.openOffersCount > 1 ? 's' : ''} ouverte${company.openOffersCount > 1 ? 's' : ''}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   _PressableButton(
                     child: OutlinedButton(
-                      onPressed: () {},
+                      onPressed: onViewOffers,
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(34),
                         shape: RoundedRectangleBorder(
@@ -718,7 +707,7 @@ class CompanyFeedCard extends StatelessWidget {
                         ),
                         side: const BorderSide(color: AppColors.primary),
                       ),
-                      child: const Text('Voir le profil'),
+                      child: const Text('Voir les offres'),
                     ),
                   ),
                 ],
@@ -767,164 +756,6 @@ class _CompanyAvatar extends StatelessWidget {
         color: AppColors.primary,
         size: size * 0.45,
       ),
-    );
-  }
-}
-
-// ============================================================
-// INTERVIEW CARD
-// ============================================================
-
-class _InterviewCard extends StatelessWidget {
-  const _InterviewCard({required this.application});
-
-  final HomeApplication application;
-
-  @override
-  Widget build(BuildContext context) {
-    final interview = application.interview!;
-    final isOnline = interview.isOnline;
-    final primaryColor = isOnline ? const Color(0xFF8B5CF6) : const Color(0xFFF59E0B);
-    final bgColor = isOnline ? const Color(0xFFF5F3FF) : const Color(0xFFFFFBEB);
-    final borderColor = isOnline ? const Color(0xFFDDD6FE) : const Color(0xFFFDE68A);
-
-    String? dateStr;
-    String? timeStr;
-    if (interview.scheduledAt != null) {
-      final dt = interview.scheduledAt!;
-      dateStr = '${_weekday(dt.weekday)} ${dt.day} ${_month(dt.month)} ${dt.year}';
-      timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isOnline ? Icons.videocam_rounded : Icons.apartment_rounded,
-                color: primaryColor,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Entretien ${isOnline ? "en ligne" : "presentiel"}',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: primaryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (application.jobTitle != null)
-            Text(
-              application.jobTitle!,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.text,
-              ),
-            ),
-          if (application.companyName != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              application.companyName!,
-              style: const TextStyle(
-                fontSize: 12.5,
-                color: AppColors.secondaryText,
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 14,
-            runSpacing: 8,
-            children: [
-              if (dateStr != null)
-                _InfoChip(icon: Icons.calendar_today_rounded, text: dateStr),
-              if (timeStr != null)
-                _InfoChip(icon: Icons.schedule_rounded, text: timeStr),
-              if (interview.duration != null)
-                _InfoChip(icon: Icons.timer_outlined, text: '${interview.duration} min'),
-              if (isOnline && interview.streamingUrl != null && interview.streamingUrl!.isNotEmpty)
-                GestureDetector(
-                  onTap: () async {
-                    final uri = Uri.tryParse(interview.streamingUrl!);
-                    if (uri != null && await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                  child: _InfoChip(icon: Icons.link_rounded, text: 'Rejoindre', color: primaryColor),
-                ),
-              if (!isOnline && interview.location != null)
-                _InfoChip(icon: Icons.location_on_outlined, text: interview.location!),
-            ],
-          ),
-          if (interview.notes != null && interview.notes!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              interview.notes!,
-              style: const TextStyle(
-                fontSize: 12.5,
-                color: AppColors.secondaryText,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  static String _weekday(int day) {
-    const days = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-    return day >= 1 && day <= 7 ? days[day] : '';
-  }
-
-  static String _month(int month) {
-    const months = ['', 'janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
-    return month >= 1 && month <= 12 ? months[month] : '';
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.text, this.color});
-
-  final IconData icon;
-  final String text;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final chipColor = color ?? AppColors.secondaryText;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: chipColor),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: chipColor,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
     );
   }
 }

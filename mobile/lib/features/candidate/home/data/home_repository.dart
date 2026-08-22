@@ -5,24 +5,41 @@ class HomeDashboardData {
   const HomeDashboardData({
     required this.jobs,
     required this.companies,
-    required this.applications,
-    this.savedJobs = const [],
   });
 
   final List<JobOffer> jobs;
   final List<HomeCompany> companies;
-  final List<HomeApplication> applications;
-  final List<JobOffer> savedJobs;
 }
 
 class HomeCompany {
-  const HomeCompany({required this.id, required this.name, this.location, this.sector, this.logoUrl});
+  const HomeCompany({
+    required this.id,
+    required this.name,
+    this.location,
+    this.sector,
+    this.logoUrl,
+    this.openOffersCount = 0,
+  });
 
   final String id;
   final String name;
   final String? location;
   final String? sector;
   final String? logoUrl;
+
+  /// Nombre réel d'offres ouvertes (calculé côté client depuis /jobs).
+  final int openOffersCount;
+
+  HomeCompany copyWith({int? openOffersCount}) {
+    return HomeCompany(
+      id: id,
+      name: name,
+      location: location,
+      sector: sector,
+      logoUrl: logoUrl,
+      openOffersCount: openOffersCount ?? this.openOffersCount,
+    );
+  }
 
   factory HomeCompany.fromJson(Map<String, dynamic> json) {
     final images = (json['images'] as List<dynamic>? ?? const [])
@@ -107,7 +124,6 @@ class HomeRepository {
     final results = await Future.wait([
       _api.get('/jobs'),
       _api.get('/companies'),
-      _api.get('/applications/me', token: token),
     ]);
     final jobs = (results[0]['data'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
@@ -118,15 +134,23 @@ class HomeRepository {
         .map(HomeCompany.fromJson)
         .where((company) => company.id.isNotEmpty && company.name.isNotEmpty)
         .toList(growable: false);
-    final applications = (results[2]['data'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(HomeApplication.fromJson)
-        .toList(growable: false);
+
+    // Compte réel des offres ouvertes par entreprise, dérivé de /jobs
+    // (chaque offre expose company.id côté backend).
+    final offersCount = <String, int>{};
+    for (final job in jobs) {
+      final companyId = job.companyId;
+      if (companyId != null && companyId.isNotEmpty) {
+        offersCount[companyId] = (offersCount[companyId] ?? 0) + 1;
+      }
+    }
+
     return HomeDashboardData(
-      jobs: jobs, 
-      companies: companies, 
-      applications: applications,
-      savedJobs: jobs.isNotEmpty && jobs.length > 1 ? [jobs[1]] : [],
+      jobs: jobs,
+      companies: companies
+          .map((company) =>
+              company.copyWith(openOffersCount: offersCount[company.id] ?? 0))
+          .toList(growable: false),
     );
   }
 }

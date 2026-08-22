@@ -8,6 +8,9 @@ import '../features/auth/presentation/auth_screens.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/candidate/home/candidate_home_screen.dart';
 import '../features/employee/dashboard/employee_dashboard_screen.dart';
+import '../features/messages/models/conversation.dart';
+import '../features/messages/presentation/chat_screen.dart';
+import '../features/messages/presentation/messages_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/recruiter/dashboard/recruiter_dashboard_screen.dart';
 
@@ -225,6 +228,36 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/recruiter/dashboard',
         builder: (_, __) => const RecruiterDashboardScreen(),
+      ),
+
+      GoRoute(
+        path: '/recruiter/messages',
+        builder: (_, __) => const MessagesScreen(),
+      ),
+
+      GoRoute(
+        path: '/recruiter/chat',
+        builder: (_, state) {
+          final conversation = state.extra;
+          if (conversation is Conversation) {
+            return ChatScreen(conversation: conversation);
+          }
+          return const MessagesScreen();
+        },
+      ),
+
+      // ---------------------------------------------------------
+      // MESSAGERIE CANDIDAT / EMPLOYÉ
+      // ---------------------------------------------------------
+      GoRoute(
+        path: '/chat',
+        builder: (_, state) {
+          final conversation = state.extra;
+          if (conversation is Conversation) {
+            return ChatScreen(conversation: conversation);
+          }
+          return const MessagesScreen(isCompanySide: false);
+        },
       ),
 
       // ---------------------------------------------------------

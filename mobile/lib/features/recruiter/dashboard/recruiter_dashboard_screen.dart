@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../messages/presentation/messages_screen.dart';
 import '../applications/recruiter_applications_screen.dart';
 import '../data/recruiter_provider.dart';
 import '../../profile/presentation/profile_screen.dart';
@@ -33,7 +34,8 @@ class _RecruiterDashboardScreenState extends ConsumerState<RecruiterDashboardScr
 
   Widget _buildBody(String displayName) {
     if (_tab == 1) return const RecruiterApplicationsScreen();
-    if (_tab == 2) return const ProfileScreen(employee: true);
+    if (_tab == 3) return const MessagesScreen();
+    if (_tab == 2 || _tab == 4) return const ProfileScreen(employee: true);
 
     final dashboard = ref.watch(recruiterDashboardProvider);
 

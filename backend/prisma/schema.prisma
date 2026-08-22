@@ -134,6 +134,7 @@ model Application {
   status             ApplicationStatus @default(RECEIVED)
   interview          Interview?
   employment         Employment?
+  conversation       Conversation?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -210,6 +211,8 @@ enum JobType {
 model Conversation {
   id             String    @id @default(uuid())
   subject        String?
+  application    Application? @relation(fields: [applicationId], references: [id])
+  applicationId  String?   @unique
   companyUser    User      @relation("Creator", fields: [companyUserId], references: [id])
   companyUserId  String
   candidateUser  User      @relation("Candidate", fields: [candidateUserId], references: [id])

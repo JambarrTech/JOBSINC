@@ -12,6 +12,7 @@ const candidateRoutes = require('./src/routes/candidateRoutes');
 const notificationRoutes = require('./src/routes/notificationRoutes');
 const statsRoutes = require('./src/routes/statsRoutes');
 const messageRoutes = require('./src/routes/messageRoutes');
+const conversationRoutes = require('./src/routes/conversationRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const path = require('path');
 
@@ -39,6 +40,7 @@ app.use('/api/candidate', candidateRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/company/messages', messageRoutes);
+app.use('/api/conversations', conversationRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use((error, req, res, next) => {

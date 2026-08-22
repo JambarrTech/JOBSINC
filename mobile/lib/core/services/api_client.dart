@@ -22,10 +22,12 @@ class ApiClient {
   Uri _uri(String path) => Uri.parse('$_baseUrl${path.startsWith('/') ? path : '/$path'}');
 
   Future<dynamic> getRaw(String path, {String? token}) async {
-    final response = await _client.get(
-      _uri(path),
-      headers: {if (token != null) 'Authorization': 'Bearer $token'},
-    );
+    final response = await _client
+        .get(
+          _uri(path),
+          headers: {if (token != null) 'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 30));
     if (response.body.isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -39,10 +41,12 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> get(String path, {String? token}) async {
-    final response = await _client.get(
-      _uri(path),
-      headers: {if (token != null) 'Authorization': 'Bearer $token'},
-    );
+    final response = await _client
+        .get(
+          _uri(path),
+          headers: {if (token != null) 'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 30));
     final body = response.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(response.body) as Map<String, dynamic>;

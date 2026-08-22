@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { apiRequest, DashboardData } from '@/lib/api';
+import { apiRequest, ensureConversation, DashboardData } from '@/lib/api';
 import { useDashboard } from '@/components/dashboard/DashboardContext';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -22,6 +22,8 @@ const TRANSITIONS: Record<string, string[]> = {
 const TRANSITION_ICONS: Record<string, string> = {
   UNDER_REVIEW: '🔍', INTERVIEW: '📹', ACCEPTED: '✅', REJECTED: '❌',
 };
+// Statuts ouvrant la messagerie (même règle côté backend).
+const MESSAGING_STATUSES = ['INTERVIEW', 'ACCEPTED'];
 
 function statusBadge(status?: string) {
   const label = STATUS_LABELS[status || ''] || status || 'Non renseigné';
@@ -191,6 +193,8 @@ export default function ApplicationDetailsPage() {
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState('');
   const [showInterviewForm, setShowInterviewForm] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     if (contextApplication || !id) return;
@@ -226,6 +230,23 @@ export default function ApplicationDetailsPage() {
     setShowInterviewForm(false);
     reload();
   }, [reload]);
+
+  // Ouvre (ou récupère) la conversation liée à cette candidature puis
+  // redirige vers la messagerie avec la conversation présélectionnée.
+  const openMessaging = async () => {
+    if (!application?.id) return;
+    setOpeningChat(true);
+    setError('');
+    try {
+      const result = await ensureConversation(application.id);
+      const conversationId = result?.conversation?.id;
+      router.push(conversationId ? `/dashboard/messages?conversation=${conversationId}` : '/dashboard/messages');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Impossible d'ouvrir la messagerie pour cette candidature.");
+    } finally {
+      setOpeningChat(false);
+    }
+  };
 
   if (loading || (!application && !fetchFailed)) {
     return <section className="application-detail-page"><div className="dashboard-panel job-detail-skeleton" /></section>;
@@ -303,6 +324,22 @@ export default function ApplicationDetailsPage() {
 
         <div className="dashboard-panel">
           <h2>Actions</h2>
+          {MESSAGING_STATUSES.includes(currentStatus) && (
+            <button
+              type="button"
+              onClick={openMessaging}
+              disabled={openingChat}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+                padding: '10px 14px', borderRadius: '9px', border: 'none',
+                background: openingChat ? '#a5b4fc' : '#0a64e8', color: '#fff',
+                cursor: openingChat ? 'not-allowed' : 'pointer',
+                fontSize: '13px', fontWeight: 700, marginTop: '8px',
+              }}
+            >
+              💬 {openingChat ? 'Ouverture…' : 'Contacter le candidat'}
+            </button>
+          )}
           {allowedTransitions.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
               {allowedTransitions.map((target) => (

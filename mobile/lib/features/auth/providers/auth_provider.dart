@@ -58,10 +58,17 @@ class AuthController extends Notifier<AuthState> {
 
     final token = _storage!.authToken;
 
+    // Aucune session locale : l'utilisateur n'a jamais de compte
+    // sur cet appareil (première installation ou réinstallation).
     if (token == null || token.isEmpty) {
       state = const AuthState.unauthenticated();
       return;
     }
+
+    // Session sauvegardée localement : on la restaure d'office
+    // pour que l'utilisateur reste connecté même si le serveur
+    // est momentanément injoignable.
+    final localUser = _localUserFromStorage(token);
 
     try {
       final response = await _api.get(
@@ -74,6 +81,7 @@ class AuthController extends Notifier<AuthState> {
       if (rawUser == null) {
         throw const ApiException(
           'Session invalide.',
+          401,
         );
       }
 
@@ -85,11 +93,55 @@ class AuthController extends Notifier<AuthState> {
       await _saveSession(user);
 
       state = AuthState.authenticated(user);
-    } catch (_) {
-      await _storage!.clearSession();
+    } on ApiException catch (error) {
+      // Le serveur a répondu : seule une session explicitement
+      // rejetée (token expiré/révoqué) déconnecte l'utilisateur.
+      if (_isUnauthorized(error.statusCode)) {
+        await _storage!.clearSession();
 
-      state = const AuthState.unauthenticated();
+        state = const AuthState.unauthenticated();
+        return;
+      }
+
+      // Autre erreur serveur passagère : on conserve la session.
+      state = localUser != null
+          ? AuthState.authenticated(localUser)
+          : const AuthState.unauthenticated();
+    } catch (_) {
+      // Erreur réseau ou timeout : on NE déconnecte PAS.
+      // On restaure la session sauvegardée sur l'appareil.
+      state = localUser != null
+          ? AuthState.authenticated(localUser)
+          : const AuthState.unauthenticated();
     }
+  }
+
+  bool _isUnauthorized(int? statusCode) =>
+      statusCode == HttpStatus.unauthorized ||
+      statusCode == HttpStatus.forbidden;
+
+  AuthUser? _localUserFromStorage(String token) {
+    final id = _storage?.userId;
+    final status = accountStatusFromStorage(_storage?.accountStatus);
+
+    if (id == null || id.isEmpty || status == null) {
+      return null;
+    }
+
+    return AuthUser(
+      id: id,
+      firstName: _storage!.firstName ?? '',
+      lastName: _storage!.lastName ?? '',
+      email: _storage!.email ?? '',
+      status: status,
+      phone: _storage!.phone,
+      birthDate: _storage!.birthDate,
+      country: _storage!.country,
+      city: _storage!.city,
+      token: token,
+      photoUrl: _storage!.photoUrl,
+      cvUrl: _storage!.cvUrl,
+    );
   }
 
   Future<bool> signIn({

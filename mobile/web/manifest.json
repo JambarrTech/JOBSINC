@@ -1,6 +1,6 @@
-{
-    "name": "mobile",
-    "short_name": "mobile",
+﻿{
+    "name": "JOBSINC",
+    "short_name": "JOBSINC",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

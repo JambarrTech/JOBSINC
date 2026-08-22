@@ -22,20 +22,11 @@ class SplashScreen extends ConsumerStatefulWidget {
   ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends ConsumerState<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController controller;
-
+class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
 
-    controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-
-    controller.forward();
     _bootstrap();
   }
 
@@ -44,19 +35,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     await ref.read(authProvider.notifier).initialize();
 
-    await Future<void>.delayed(
-      const Duration(milliseconds: 1200),
-    );
-
     if (!mounted) return;
 
     final auth = ref.read(authProvider);
 
     if (auth.status == AuthStatus.authenticated && auth.user != null) {
-      if (auth.user!.status == AccountStatus.candidate) {
-        context.go('/candidate/home');
-      } else {
+      final status = auth.user!.status;
+
+      if (status == AccountStatus.recruiter) {
+        context.go('/recruiter/dashboard');
+      } else if (status == AccountStatus.employee) {
         context.go('/employee/dashboard');
+      } else {
+        context.go('/candidate/home');
       }
     } else {
       if (storage.onboardingCompleted) {
@@ -68,38 +59,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
+    return const Scaffold(
+      backgroundColor: AppColors.background,
       body: Center(
-        child: FadeTransition(
-          opacity: controller,
-          child: ScaleTransition(
-            scale: Tween<double>(
-              begin: 0.9,
-              end: 1.0,
-            ).animate(
-              CurvedAnimation(
-                parent: controller,
-                curve: Curves.easeOut,
-              ),
-            ),
-            child: Semantics(
-              label: 'Logo JOBSINC',
-              image: true,
-              child: Image.asset(
-                AppAssets.launchLogo,
-                width: 280,
-                height: 280,
-                fit: BoxFit.contain,
-              ),
-            ),
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            color: AppColors.primary,
           ),
         ),
       ),

@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const conversationService = require('../services/conversationService');
 
 const labels = { RECEIVED: 'Reçue', UNDER_REVIEW: 'En cours d\'examen', INTERVIEW: 'Entretien', ACCEPTED: 'Acceptée', REJECTED: 'Refusée' };
 const transitions = {
@@ -120,6 +121,13 @@ exports.updateStatus = async (req, res) => {
         await tx.user.update({ where: { id: application.candidate.userId }, data: { role: 'EMPLOYEE' } });
       }
 
+      // Messagerie : la sélection (entretien) ou l'acceptation ouvre
+      // l'échange candidat ↔ entreprise. Création silencieuse : ne doit
+      // jamais bloquer le changement de statut.
+      if (conversationService.AUTHORIZED_APPLICATION_STATUSES.includes(status)) {
+        await conversationService.ensureWithinTransaction(tx, updated);
+      }
+
       if (application.candidate?.userId) {
         const notifType = status === 'INTERVIEW' ? 'INTERVIEW' : 'APPLICATION';
         const recruiterName = company?.name || 'L\'entreprise';
@@ -139,6 +147,23 @@ exports.updateStatus = async (req, res) => {
 
     res.json(dto(result));
   } catch (_) { res.status(500).json({ error: 'Impossible de mettre à jour la candidature.' }); }
+};
+
+// Ouvre (ou récupère) la conversation autorisée associée à une candidature.
+// Réservé au recruteur propriétaire ; candidature INTERVIEW ou ACCEPTED requise.
+exports.ensureConversation = async (req, res) => {
+  try {
+    if (req.user.role !== 'RECRUITER') return res.status(403).json({ error: 'Cet espace est réservé aux recruteurs.' });
+    const result = await conversationService.ensureForApplication(req.user, req.params.id);
+    if (result.error) return res.status(result.error.status || 500).json({ error: result.error.error, currentStatus: result.error.currentStatus });
+    res.status(result.created ? 201 : 200).json({
+      conversation: conversationService.serializeDetail(result.conversation, req.user.userId),
+      created: Boolean(result.created),
+    });
+  } catch (error) {
+    console.error('Erreur ensureConversation:', error);
+    res.status(500).json({ error: "Impossible d'ouvrir la conversation." });
+  }
 };
 
 exports.labels = labels;

@@ -2,7 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/ui/Icon';
-import { CompanyMessage, ChatMessage, ChatConversation, getCompanyMessages, getConversationMessages, sendMessage, markConversationRead, getCompanyApplications } from '@/lib/api';
+import { CompanyMessage, ChatMessage, ChatConversation, getCompanyMessages, getConversationPage, sendMessage, markConversationRead, getCompanyApplications } from '@/lib/api';
+
+// Statuts autorisant la messagerie (même règle côté backend).
+const MESSAGING_STATUSES = ['INTERVIEW', 'ACCEPTED'];
+const APPLICATION_STATUS_LABELS: Record<string, string> = { INTERVIEW: 'Entretien', ACCEPTED: 'Acceptée' };
+const CHAT_PAGE_SIZE = 50;
+
+function mergeById(previous: ChatMessage[], incoming: ChatMessage[]) {
+  const known = new Set(previous.map((message) => message.id));
+  const merged = [...previous];
+  for (const message of incoming) {
+    if (!known.has(message.id)) {
+      merged.push(message);
+      known.add(message.id);
+    }
+  }
+  return merged;
+}
 
 function participant(message: CompanyMessage) { return message.participantName || message.senderName || message.name || 'Contact'; }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'C'; }
@@ -28,7 +45,7 @@ function formatSidebarDate(iso: string) {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
-export default function MessagesOverview() {
+export default function MessagesOverview({ initialConversationId }: { initialConversationId?: string }) {
   const [conversations, setConversations] = useState<CompanyMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -37,6 +54,8 @@ export default function MessagesOverview() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatConv, setChatConv] = useState<ChatConversation | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showNewConversation, setShowNewConversation] = useState(false);
@@ -45,6 +64,12 @@ export default function MessagesOverview() {
   const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
   const [newSubject, setNewSubject] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const skipScrollRef = useRef(false);
+  const chatMessagesRef = useRef<ChatMessage[]>([]);
+
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages;
+  }, [chatMessages]);
 
   const loadConversations = useCallback(() => {
     setLoading(true);
@@ -54,33 +79,94 @@ export default function MessagesOverview() {
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
+  // Conversation à ouvrir automatiquement depuis l'URL (?conversation=…)
+  // : valeur DÉRIVÉE (aucun effet ni setState supplémentaire).
+  const autoOpenId = useMemo(() => {
+    if (!initialConversationId || loading || selectedConvId || showNewConversation) return null;
+    return conversations.find((c) => String(c.id) === String(initialConversationId))?.id ?? null;
+  }, [conversations, loading, initialConversationId, selectedConvId, showNewConversation]);
+  const activeConvId = selectedConvId ?? autoOpenId;
+
   const filtered = useMemo(() => conversations.filter((c) => `${participant(c)} ${c.subject || ''} ${c.preview || ''}`.toLowerCase().includes(query.toLowerCase())), [conversations, query]);
-  const selected = conversations.find((c) => String(c.id) === String(selectedConvId)) || null;
+  const selected = activeConvId ? (conversations.find((c) => String(c.id) === String(activeConvId)) || null) : null;
   const unreadCount = conversations.filter((c) => c.unread || c.read === false).length;
 
   const loadChat = useCallback(async (conversationId: string | number) => {
     setLoadingChat(true);
     try {
-      const response = await getConversationMessages(conversationId);
+      const response = await getConversationPage(conversationId, { limit: CHAT_PAGE_SIZE });
       setChatMessages(response.messages || []);
       setChatConv(response.conversation || null);
+      setHasMore(Boolean(response.hasMore));
       markConversationRead(conversationId).catch(() => {});
       setConversations((prev) => prev.map((c) => c.id === conversationId ? { ...c, unread: false, read: true, unreadCount: 0 } : c));
     } catch {
       setChatMessages([]);
       setChatConv(null);
+      setHasMore(false);
     } finally {
       setLoadingChat(false);
     }
   }, []);
 
   useEffect(() => {
-    if (selectedConvId) loadChat(selectedConvId);
-  }, [selectedConvId, loadChat]);
+    if (activeConvId) loadChat(activeConvId);
+  }, [activeConvId, loadChat]);
 
   useEffect(() => {
+    if (skipScrollRef.current) {
+      skipScrollRef.current = false;
+      return;
+    }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // ------------------------------------------------------------
+  // TEMPS RÉEL (polling incrémental de la conversation active).
+  // Aucun WebSocket côté backend : on interroge uniquement les
+  // messages postérieurs au dernier connu (paramètre after).
+  // ------------------------------------------------------------
+  useEffect(() => {
+    if (!activeConvId || showNewConversation) return;
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const anchor = [...chatMessagesRef.current].reverse().find((message) => !message.id.startsWith('temp-'));
+      if (!anchor) return;
+      getConversationPage(activeConvId, { after: anchor.id })
+        .then((response) => {
+          const fresh = response.messages || [];
+          if (fresh.length === 0) return;
+          skipScrollRef.current = false;
+          setChatMessages((prev) => mergeById(prev, fresh));
+          const last = fresh[fresh.length - 1];
+          setConversations((prev) => prev.map((c) => String(c.id) === String(activeConvId)
+            ? { ...c, preview: last.content.substring(0, 120), date: last.createdAt }
+            : c));
+          markConversationRead(activeConvId).catch(() => {});
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [activeConvId, showNewConversation]);
+
+  const loadOlder = async () => {
+    if (!activeConvId || !hasMore || loadingOlder || chatMessages.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const response = await getConversationPage(activeConvId, { limit: CHAT_PAGE_SIZE, before: chatMessages[0].id });
+      const older = response.messages || [];
+      setHasMore(Boolean(response.hasMore));
+      skipScrollRef.current = true;
+      setChatMessages((prev) => {
+        const known = new Set(prev.map((message) => message.id));
+        return [...older.filter((message) => !known.has(message.id)), ...prev];
+      });
+    } catch {
+      // Silencieux : l'historique déjà affiché reste utilisable.
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
@@ -143,6 +229,9 @@ export default function MessagesOverview() {
       const seen = new Set<string>();
       const unique: any[] = [];
       for (const app of (apps || [])) {
+        // Règle métier : seuls les candidats en entretien ou recrutés
+        // peuvent être contactés par messagerie.
+        if (!MESSAGING_STATUSES.includes((app as any).status)) continue;
         const id = (app as any).candidateProfileId || (app as any).candidate?.id;
         if (id && !seen.has(id)) {
           seen.add(id);
@@ -152,6 +241,7 @@ export default function MessagesOverview() {
             name: (app as any).candidateName || (app as any).candidate?.firstName ? `${(app as any).candidate?.firstName || ''} ${(app as any).candidate?.lastName || ''}`.trim() : 'Candidat',
             avatar: (app as any).candidateAvatar || (app as any).candidate?.avatarUrl || null,
             jobTitle: (app as any).jobTitle || (app as any).job?.title || '',
+            status: (app as any).status || '',
           });
         }
       }
@@ -218,7 +308,7 @@ export default function MessagesOverview() {
                       <div className="candidate-avatar">{initials(name)}</div>
                       <div className="message-row-copy">
                         <strong>{name}</strong>
-                        <span>{message.subject || message.preview || 'Conversation'}</span>
+                        <span>{message.jobTitle || message.subject || message.preview || 'Conversation'}</span>
                         <small>{message.preview || message.content || 'Aucun message'}</small>
                       </div>
                       <div className="message-row-meta">
@@ -242,7 +332,7 @@ export default function MessagesOverview() {
                   <div>
                     <span className="dashboard-eyebrow">Nouvelle conversation</span>
                     <h2>Nouveau message</h2>
-                    <p>Sélectionnez un candidat pour démarrer</p>
+                    <p>Candidats en entretien ou recrutés uniquement</p>
                   </div>
                 </div>
                 <div className="message-candidate-picker">
@@ -254,8 +344,8 @@ export default function MessagesOverview() {
                     {candidates.filter((c) => `${c.name} ${c.jobTitle}`.toLowerCase().includes(searchCandidate.toLowerCase())).length === 0 ? (
                       <div className="messages-list-empty">
                         <Icon name="users" size={23} />
-                        <strong>Aucun candidat disponible</strong>
-                        <p>Les candidats qui ont postulé à vos offres apparaîtront ici.</p>
+                        <strong>Aucun candidat contactable</strong>
+                        <p>Seuls les candidats en entretien ou recrutés peuvent être contactés.</p>
                       </div>
                     ) : (
                       candidates.filter((c) => `${c.name} ${c.jobTitle}`.toLowerCase().includes(searchCandidate.toLowerCase())).map((c) => (
@@ -263,7 +353,7 @@ export default function MessagesOverview() {
                           <div className="candidate-avatar">{initials(c.name)}</div>
                           <div className="message-row-copy">
                             <strong>{c.name}</strong>
-                            <span>{c.jobTitle || 'Candidat'}</span>
+                            <span>{[c.jobTitle, APPLICATION_STATUS_LABELS[c.status]].filter(Boolean).join(' · ') || 'Candidat'}</span>
                           </div>
                         </button>
                       ))
@@ -298,7 +388,7 @@ export default function MessagesOverview() {
                   <div>
                     <span className="dashboard-eyebrow">Conversation</span>
                     <h2>{chatConv?.participantName || participant(selected)}</h2>
-                    <p>{chatConv?.subject || selected.subject || 'Échange de recrutement'}</p>
+                    <p>{chatConv?.jobTitle || chatConv?.subject || selected.subject || 'Échange de recrutement'}</p>
                   </div>
                 </div>
                 <div className="message-detail-body">
@@ -313,13 +403,26 @@ export default function MessagesOverview() {
                       <p>Commencez la conversation en envoyant un message.</p>
                     </div>
                   ) : (
-                    chatMessages.map((msg) => (
-                      <div key={msg.id} className={`message-bubble ${msg.isMine ? 'message-bubble-outgoing' : 'message-bubble-incoming'}`}>
-                        <span>{msg.isMine ? 'Vous' : (chatConv?.participantName || participant(selected))}</span>
-                        <p>{msg.content}</p>
-                        <time>{formatTime(msg.createdAt)}</time>
-                      </div>
-                    ))
+                    <>
+                      {hasMore && (
+                        <button
+                          type="button"
+                          className="button button-outline button-small"
+                          onClick={loadOlder}
+                          disabled={loadingOlder}
+                          style={{ display: 'block', margin: '0 auto 12px' }}
+                        >
+                          {loadingOlder ? 'Chargement…' : 'Charger les messages précédents'}
+                        </button>
+                      )}
+                      {chatMessages.map((msg) => (
+                        <div key={msg.id} className={`message-bubble ${msg.isMine ? 'message-bubble-outgoing' : 'message-bubble-incoming'}`}>
+                          <span>{msg.isMine ? 'Vous' : (chatConv?.participantName || participant(selected))}</span>
+                          <p>{msg.content}</p>
+                          <time>{formatTime(msg.createdAt)}</time>
+                        </div>
+                      ))}
+                    </>
                   )}
                   <div ref={chatEndRef} />
                 </div>
