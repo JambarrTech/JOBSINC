@@ -890,13 +890,13 @@ class ApplicationSuccessScreen extends StatelessWidget {
                     child: const Icon(Icons.mark_email_read_outlined, color: AppColors.primary),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('La prochaine étape ?', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text)),
-                        const SizedBox(height: 6),
-                        const Text(
+                        Text('La prochaine étape ?', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text)),
+                        SizedBox(height: 6),
+                        Text(
                           'Vous recevrez une notification dès que l\'entreprise aura consulté votre candidature.',
                           style: TextStyle(color: AppColors.secondaryText, height: 1.4),
                         ),
@@ -970,13 +970,13 @@ class RecruitmentConfirmedScreen extends StatelessWidget {
                     child: const Icon(Icons.verified_outlined, color: AppColors.primary),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Recrutement confirmé', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text)),
-                        const SizedBox(height: 6),
-                        const Text(
+                        Text('Recrutement confirmé', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text)),
+                        SizedBox(height: 6),
+                        Text(
                           'Votre statut est mis à jour par le système après confirmation de l\'entreprise. Vous conservez votre compte et l\'historique de vos candidatures.',
                           style: TextStyle(color: AppColors.secondaryText, height: 1.4),
                         ),

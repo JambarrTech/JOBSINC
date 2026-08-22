@@ -368,7 +368,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               else
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.upload_file_outlined,
+                  leading: const Icon(Icons.upload_file_outlined,
                       color: AppColors.primary),
                   title: const Text(
                     'Aucun CV ajouté',

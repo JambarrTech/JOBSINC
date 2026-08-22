@@ -44,10 +44,10 @@ class _EmployeeDashboardScreenState extends ConsumerState<EmployeeDashboardScree
         const SizedBox(height: 18),
         HeroBanner(assetPath: AppAssets.heroRecruitment, title: 'Félicitations pour cette nouvelle étape', subtitle: 'Votre compte conserve votre parcours et s’adapte à votre expérience professionnelle.', buttonLabel: 'Voir mon emploi', onPressed: () => setState(() => tab = 1), height: 250, semanticLabel: 'Poignée de main lors d’un recrutement'),
         const SizedBox(height: 18),
-        Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Emploi actuel', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text)),
-          const SizedBox(height: 14),
-          const Text('Aucun emploi actif pour le moment.', style: TextStyle(color: AppColors.secondaryText)),
+        const Card(child: Padding(padding: EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Emploi actuel', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text)),
+          SizedBox(height: 14),
+          Text('Aucun emploi actif pour le moment.', style: TextStyle(color: AppColors.secondaryText)),
         ]))),
       ],
     );

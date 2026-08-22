@@ -1,7 +1,9 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 require('dotenv').config();
 
+const path = require('path');
 const authRoutes = require('./src/routes/authRoutes');
 const companyRoutes = require('./src/routes/companyRoutes');
 const publicCompanyRoutes = require('./src/routes/publicCompanyRoutes');
@@ -14,13 +16,33 @@ const statsRoutes = require('./src/routes/statsRoutes');
 const messageRoutes = require('./src/routes/messageRoutes');
 const conversationRoutes = require('./src/routes/conversationRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
-const path = require('path');
+const { authLimiter } = require('./src/middlewares/rateLimit');
 
 const app = express();
 
-// Autoriser le frontend Next.js (port 3000)
+// Derrière un reverse-proxy (nginx, etc.), définir TRUST_PROXY=1 pour que
+// express-rate-limit et Express identifient la vraie adresse IP client.
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+}
+
+// Origines autorisées : liste séparée par des virgules dans CORS_ORIGINS.
+// En développement, on retombe sur les origines locales du frontend Next.js.
+const corsOrigins = (process.env.CORS_ORIGINS ||
+  'http://localhost:3000,http://127.0.0.1:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+// Headers de sécurité.
+// crossOriginResourcePolicy 'cross-origin' : indispensable pour que les
+// images /uploads restent chargeables par le web (localhost:3000) et le mobile.
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -30,7 +52,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes API
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/companies', publicCompanyRoutes);
 app.use('/api/jobs', jobRoutes);
