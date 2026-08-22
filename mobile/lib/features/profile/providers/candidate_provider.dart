@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -117,18 +118,30 @@ class CandidateProfileController
 
     try {
       final api = ApiClient();
-      final multipartFile =
-          await http.MultipartFile.fromPath('cv', file.path);
-      await api.postMultipart(
+      final bytes = await file.readAsBytes();
+      final fileName = file.path.split(RegExp(r'[/\\]')).last;
+      final ext = fileName.split('.').last.toLowerCase();
+      final mediaType = switch (ext) {
+        'pdf' => MediaType('application', 'pdf'),
+        'doc' => MediaType('application', 'msword'),
+        'docx' => MediaType('application', 'vnd.openxmlformats-officedocument.wordprocessingml.document'),
+        _ => MediaType('application', 'octet-stream'),
+      };
+      final multipartFile = http.MultipartFile.fromBytes('cv', bytes,
+          filename: fileName,
+          contentType: mediaType);
+      final response = await api.postMultipart(
         '/candidate/cv',
         {},
         token: token,
         file: multipartFile,
       );
       ref.invalidate(candidateProfileProvider);
-      return null;
+      return response['cvUrl']?.toString();
     } on ApiException catch (e) {
       return e.message;
+    } on TimeoutException catch (_) {
+      return 'Le serveur met trop de temps à répondre. Vérifiez votre connexion Internet.';
     } catch (e) {
       return 'Erreur : $e';
     }

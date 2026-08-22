@@ -236,7 +236,7 @@ class AuthController extends Notifier<AuthState> {
       country: profile?['country']?.toString(),
       city: profile?['city']?.toString(),
       status:
-          role == 'EMPLOYEE' ? AccountStatus.employee : AccountStatus.candidate,
+          role == 'EMPLOYEE' ? AccountStatus.employee : role == 'RECRUITER' ? AccountStatus.recruiter : AccountStatus.candidate,
       token: token,
       photoUrl: profile?['photoUrl']?.toString() ?? profile?['avatar']?.toString() ?? profile?['avatarUrl']?.toString(),
       cvUrl: profile?['cvUrl']?.toString(),

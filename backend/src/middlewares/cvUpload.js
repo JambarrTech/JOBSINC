@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const ACCEPTED_TYPES = new Map([
   ['application/pdf', '.pdf'],
   ['application/msword', '.doc'],
@@ -91,7 +91,7 @@ module.exports = async (req, res, next) => {
     for await (const chunk of req) {
       size += chunk.length;
       if (size > MAX_FILE_SIZE + 1024 * 1024) {
-        throw badRequest('Le fichier ne doit pas dépasser 10 Mo.');
+        throw badRequest('Le fichier ne doit pas dépasser 15 Mo.');
       }
       chunks.push(chunk);
     }
@@ -106,8 +106,9 @@ module.exports = async (req, res, next) => {
 
     if (cvFiles.length === 1) {
       const file = cvFiles[0];
+      console.log(`[CV Upload] mimetype: ${file.mimetype}, size: ${file.buffer.length}, accepted: ${ACCEPTED_TYPES.has(file.mimetype)}`);
       if (!ACCEPTED_TYPES.has(file.mimetype) || file.buffer.length > MAX_FILE_SIZE) {
-        throw badRequest('Utilisez des fichiers PDF, DOC ou DOCX de 10 Mo maximum.');
+        throw badRequest('Utilisez des fichiers PDF, DOC ou DOCX de 15 Mo maximum.');
       }
 
       await fs.mkdir(uploadDirectory, { recursive: true });

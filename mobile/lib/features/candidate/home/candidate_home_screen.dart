@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
@@ -13,7 +14,6 @@ import '../../auth/providers/auth_provider.dart';
 import '../../jobs/models/job_offer.dart';
 import '../../jobs/presentation/job_detail_screen.dart';
 import '../../jobs/presentation/offers_screen.dart';
-import '../../jobs/widgets/date_helpers.dart';
 import '../../jobs/widgets/job_feed_card.dart';
 import '../../profile/presentation/profile_screen.dart';
 import 'data/home_repository.dart';
@@ -137,13 +137,6 @@ class _HomeContent extends StatelessWidget {
   final VoidCallback onSearchSubmit;
   final VoidCallback onOpenProfile;
 
-  bool get _hasUrgentInterview {
-    final interview = data.upcomingInterview;
-    if (interview == null) return false;
-    final diff = interview.date.difference(DateTime.now());
-    return diff.isNegative == false && diff.inHours <= 48;
-  }
-
   void _openJobDetail(BuildContext context, JobOffer offer) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => JobDetailScreen(offer: offer)),
@@ -166,11 +159,6 @@ class _HomeContent extends StatelessWidget {
             context.push('/candidate/notifications');
           },
         ),
-
-        if (_hasUrgentInterview) ...[
-          const SizedBox(height: 20),
-          _UpcomingInterviewBanner(interview: data.upcomingInterview!),
-        ],
 
         const SizedBox(height: 20),
 
@@ -225,15 +213,6 @@ class _HomeContent extends StatelessWidget {
           ),
 
         const SizedBox(height: 18),
-
-        if (data.careerTips.isNotEmpty) ...[
-          const SizedBox(height: 28),
-          const _SectionHeader(
-            title: 'Conseils Carrière',
-          ),
-          const SizedBox(height: 12),
-          _CareerTipsHorizontalList(tips: data.careerTips),
-        ],
       ],
     );
   }
@@ -619,147 +598,6 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ============================================================
-// UPCOMING INTERVIEW BANNER
-// ============================================================
-
-class _UpcomingInterviewBanner extends StatelessWidget {
-  const _UpcomingInterviewBanner({required this.interview});
-
-  final HomeInterview interview;
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final diff = interview.date.difference(now);
-    final hours = diff.inHours;
-    final minutes = diff.inMinutes.remainder(60);
-    final timeLabel =
-        hours > 24 ? 'Dans ${diff.inDays}j' : 'Dans ${hours}h${minutes > 0 ? ' ${minutes}min' : ''}';
-
-    return Semantics(
-      label: 'Entretien à venir : ${interview.jobTitle} chez ${interview.companyName}, $timeLabel',
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppColors.primary.withValues(alpha: .12),
-              AppColors.navy.withValues(alpha: .08),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: AppColors.primary.withValues(alpha: .35),
-            width: 1.5,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.videocam_rounded,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Entretien $timeLabel',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          color: AppColors.text,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${interview.jobTitle} — ${interview.companyName}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: AppColors.secondaryText,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        formatTime(interview.date),
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _PressableButton(
-                    child: FilledButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.info_outline_rounded, size: 18),
-                      label: const Text('Voir les détails'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(40),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _PressableButton(
-                    child: OutlinedButton(
-                      onPressed: () {},
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(40),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        side: BorderSide(
-                          color: AppColors.primary.withValues(alpha: .4),
-                        ),
-                        foregroundColor: AppColors.primary,
-                      ),
-                      child: const Text(
-                        'Ajouter au calendrier',
-                        style: TextStyle(fontSize: 12.5),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
 // PRESSABLE BUTTON
 // ============================================================
 
@@ -934,83 +772,159 @@ class _CompanyAvatar extends StatelessWidget {
 }
 
 // ============================================================
-// CAREER TIPS HORIZONTAL LIST
+// INTERVIEW CARD
 // ============================================================
 
-class _CareerTipsHorizontalList extends StatelessWidget {
-  const _CareerTipsHorizontalList({required this.tips});
+class _InterviewCard extends StatelessWidget {
+  const _InterviewCard({required this.application});
 
-  final List<HomeCareerTip> tips;
+  final HomeApplication application;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 160,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: tips.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final tip = tips[index];
-          return Semantics(
-            label: 'Conseil carrière : ${tip.title}',
-            button: true,
-            child: Container(
-              width: 220,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.background),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: .03),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+    final interview = application.interview!;
+    final isOnline = interview.isOnline;
+    final primaryColor = isOnline ? const Color(0xFF8B5CF6) : const Color(0xFFF59E0B);
+    final bgColor = isOnline ? const Color(0xFFF5F3FF) : const Color(0xFFFFFBEB);
+    final borderColor = isOnline ? const Color(0xFFDDD6FE) : const Color(0xFFFDE68A);
+
+    String? dateStr;
+    String? timeStr;
+    if (interview.scheduledAt != null) {
+      final dt = interview.scheduledAt!;
+      dateStr = '${_weekday(dt.weekday)} ${dt.day} ${_month(dt.month)} ${dt.year}';
+      timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isOnline ? Icons.videocam_rounded : Icons.apartment_rounded,
+                color: primaryColor,
+                size: 22,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        ApiClient.resolveUrl(tip.imageUrl),
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: AppColors.background,
-                          child: const Icon(Icons.article_outlined, color: AppColors.secondaryText),
-                        ),
-                      ),
-                    ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Entretien ${isOnline ? "en ligne" : "presentiel"}',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: primaryColor,
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    tip.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      color: AppColors.text,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    tip.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11.5, color: AppColors.secondaryText),
-                  ),
-                ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (application.jobTitle != null)
+            Text(
+              application.jobTitle!,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.text,
               ),
             ),
-          );
-        },
+          if (application.companyName != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              application.companyName!,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppColors.secondaryText,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 14,
+            runSpacing: 8,
+            children: [
+              if (dateStr != null)
+                _InfoChip(icon: Icons.calendar_today_rounded, text: dateStr),
+              if (timeStr != null)
+                _InfoChip(icon: Icons.schedule_rounded, text: timeStr),
+              if (interview.duration != null)
+                _InfoChip(icon: Icons.timer_outlined, text: '${interview.duration} min'),
+              if (isOnline && interview.streamingUrl != null && interview.streamingUrl!.isNotEmpty)
+                GestureDetector(
+                  onTap: () async {
+                    final uri = Uri.tryParse(interview.streamingUrl!);
+                    if (uri != null && await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  child: _InfoChip(icon: Icons.link_rounded, text: 'Rejoindre', color: primaryColor),
+                ),
+              if (!isOnline && interview.location != null)
+                _InfoChip(icon: Icons.location_on_outlined, text: interview.location!),
+            ],
+          ),
+          if (interview.notes != null && interview.notes!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              interview.notes!,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppColors.secondaryText,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
       ),
+    );
+  }
+
+  static String _weekday(int day) {
+    const days = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+    return day >= 1 && day <= 7 ? days[day] : '';
+  }
+
+  static String _month(int month) {
+    const months = ['', 'janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
+    return month >= 1 && month <= 12 ? months[month] : '';
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.icon, required this.text, this.color});
+
+  final IconData icon;
+  final String text;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final chipColor = color ?? AppColors.secondaryText;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: chipColor),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: chipColor,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }

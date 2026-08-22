@@ -138,6 +138,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             .toList()
         : <String>[];
 
+    final fields = [
+      (user?.firstName ?? '').isNotEmpty,
+      (user?.lastName ?? '').isNotEmpty,
+      (user?.email ?? '').isNotEmpty,
+      (user?.phone ?? '').isNotEmpty,
+      (user?.country ?? '').isNotEmpty,
+      (user?.city ?? '').isNotEmpty,
+      user?.photoUrl?.isNotEmpty == true,
+      cvUrl?.isNotEmpty == true,
+      skills.isNotEmpty,
+    ];
+    final completedFields = fields.where((f) => f).length;
+    final completion = (completedFields / fields.length * 100).round();
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
       children: [
@@ -253,15 +267,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Profil complété',
+                    const Text('Profil complété',
                         style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: AppColors.text)),
-                    Text('80 %',
-                        style: TextStyle(
+                    Text('$completion %',
+                        style: const TextStyle(
                             fontWeight: FontWeight.w800,
                             color: AppColors.primary)),
                   ],
@@ -269,8 +283,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(height: 12),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: const LinearProgressIndicator(
-                    value: .8,
+                  child: LinearProgressIndicator(
+                    value: completion / 100,
                     minHeight: 8,
                     backgroundColor: AppColors.border,
                     color: AppColors.primary,
@@ -370,29 +384,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     icon: const Icon(Icons.add_circle_outline),
                   ),
                 ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _ProfileSection(
-          title: 'Expériences et formations',
-          icon: Icons.work_history_outlined,
-          child: Column(
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Product Designer',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle:
-                    Text('Studio Nova · 2024–2026'),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Formation design numérique',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle:
-                    Text('École professionnelle · 2022–2024'),
-              ),
             ],
           ),
         ),

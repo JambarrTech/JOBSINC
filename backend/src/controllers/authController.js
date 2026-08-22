@@ -86,7 +86,32 @@ exports.registerCandidate = async (req, res) => {
       include: { candidate: true },
     });
 
-    return res.status(201).json({ message: 'Compte créé avec succès.', token: createToken(user), user: userDto(user) });
+    const token = createToken(user);
+
+    await prisma.notification.createMany({
+      data: [
+        {
+          userId: user.id,
+          title: 'Bienvenue sur JOBSINC !',
+          body: `Bienvenue ${firstName} ! Créez votre profil complet pour maximiser vos chances.`,
+          type: 'GENERAL',
+        },
+        {
+          userId: user.id,
+          title: 'Complétez votre profil',
+          body: 'Ajoutez votre CV et vos compétences pour attirer les recruteurs.',
+          type: 'GENERAL',
+        },
+        {
+          userId: user.id,
+          title: 'Explorez les offres',
+          body: 'Des milliers d\'offres d\'emploi vous attendent. Commencez votre recherche maintenant !',
+          type: 'APPLICATION',
+        },
+      ],
+    });
+
+    return res.status(201).json({ message: 'Compte créé avec succès.', token, user: userDto(user) });
   } catch (cause) {
     console.error('Erreur inscription:', cause);
     return error(res, 500, 'Impossible de créer le compte pour le moment.');

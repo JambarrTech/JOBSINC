@@ -43,15 +43,12 @@ class _EmployeeDashboardScreenState extends ConsumerState<EmployeeDashboardScree
         const SizedBox(height: 18),
         HeroBanner(assetPath: AppAssets.heroRecruitment, title: 'Félicitations pour cette nouvelle étape', subtitle: 'Votre compte conserve votre parcours et s’adapte à votre expérience professionnelle.', buttonLabel: 'Voir mon emploi', onPressed: () => setState(() => tab = 1), height: 250, semanticLabel: 'Poignée de main lors d’un recrutement'),
         const SizedBox(height: 18),
-        const Card(child: Padding(padding: EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Emploi actuel', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text)), _ActiveBadge()]), SizedBox(height: 14), Text('Product Designer', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.text)), SizedBox(height: 4), Text('Studio Nova · Paris · Hybride', style: TextStyle(color: AppColors.secondaryText)), SizedBox(height: 16), Text('Vos candidatures historiques restent accessibles dans votre compte JOBSINC.', style: TextStyle(color: AppColors.secondaryText, height: 1.4))]))),
+        Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Emploi actuel', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text)),
+          const SizedBox(height: 14),
+          const Text('Aucun emploi actif pour le moment.', style: TextStyle(color: AppColors.secondaryText)),
+        ]))),
       ],
     );
   }
-}
-
-class _ActiveBadge extends StatelessWidget {
-  const _ActiveBadge();
-
-  @override
-  Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: AppColors.green.withValues(alpha: .1), borderRadius: BorderRadius.circular(20)), child: const Text('ACTIF', style: TextStyle(color: AppColors.green, fontSize: 11, fontWeight: FontWeight.w800)));
 }

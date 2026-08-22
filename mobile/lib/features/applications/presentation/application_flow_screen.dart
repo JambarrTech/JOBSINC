@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -71,19 +72,23 @@ class _ApplicationFlowScreenState
     });
 
     try {
-      final error =
+      final cvUrl =
           await ref.read(candidateProfileControllerProvider.notifier).uploadCv(file);
-      if (error != null) {
+      if (cvUrl == null || cvUrl.startsWith('Erreur') || cvUrl.startsWith('Le serveur') || cvUrl.startsWith('Non connecté')) {
         setState(() {
-          _error = error;
+          _error = cvUrl ?? 'Erreur lors de l\'upload.';
           _isUploadingCv = false;
         });
         return;
       }
 
-      final profile = ref.read(candidateProfileProvider).valueOrNull;
       setState(() {
-        _cvUrl = profile?.cvUrl;
+        _cvUrl = cvUrl;
+        _isUploadingCv = false;
+      });
+    } on TimeoutException catch (_) {
+      setState(() {
+        _error = 'Le serveur met trop de temps à répondre. Vérifiez votre connexion Internet et réessayez.';
         _isUploadingCv = false;
       });
     } catch (e) {

@@ -1,7 +1,11 @@
-enum AccountStatus { candidate, employee }
+enum AccountStatus { candidate, employee, recruiter }
 
 extension AccountStatusValue on AccountStatus {
-  String get storageValue => this == AccountStatus.candidate ? 'candidate' : 'employee';
+  String get storageValue => switch (this) {
+    AccountStatus.candidate => 'candidate',
+    AccountStatus.employee => 'employee',
+    AccountStatus.recruiter => 'recruiter',
+  };
 }
 
 AccountStatus? accountStatusFromStorage(String? value) {
@@ -10,6 +14,8 @@ AccountStatus? accountStatusFromStorage(String? value) {
       return AccountStatus.candidate;
     case 'employee':
       return AccountStatus.employee;
+    case 'recruiter':
+      return AccountStatus.recruiter;
     default:
       return null;
   }

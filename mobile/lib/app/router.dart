@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/widgets/app_section_screen.dart';
 import '../features/applications/presentation/applications_screen.dart';
 import '../features/auth/models/auth_user.dart';
 import '../features/auth/presentation/auth_screens.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/candidate/home/candidate_home_screen.dart';
 import '../features/employee/dashboard/employee_dashboard_screen.dart';
+import '../features/notifications/presentation/notifications_screen.dart';
+import '../features/recruiter/dashboard/recruiter_dashboard_screen.dart';
 
 /// Permet à GoRouter de se rafraîchir lorsque l'état
 /// d'authentification change, sans recréer le GoRouter.
@@ -74,7 +75,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 1. AUTHENTIFICATION EN COURS
       // ---------------------------------------------------------
       if (auth.status == AuthStatus.loading) {
-        // Pendant l'initialisation ou la connexion, on reste sur la page publique actuelle (splash, login, etc.).
         if (isPublicRoute) {
           return null;
         }
@@ -118,6 +118,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           location == '/forgot-password';
 
       if (isAuthRoute) {
+        if (accountStatus == AccountStatus.recruiter) {
+          return '/recruiter/dashboard';
+        }
         if (accountStatus == AccountStatus.candidate) {
           return '/candidate/home';
         }
@@ -130,6 +133,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       if (location.startsWith('/candidate') &&
           accountStatus != AccountStatus.candidate) {
+        if (accountStatus == AccountStatus.recruiter) {
+          return '/recruiter/dashboard';
+        }
         return '/employee/dashboard';
       }
 
@@ -138,6 +144,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       if (location.startsWith('/employee') &&
           accountStatus != AccountStatus.employee) {
+        if (accountStatus == AccountStatus.recruiter) {
+          return '/recruiter/dashboard';
+        }
+        return '/candidate/home';
+      }
+
+      // ---------------------------------------------------------
+      // 6b. PROTECTION DE L'ESPACE RECRUTEUR
+      // ---------------------------------------------------------
+      if (location.startsWith('/recruiter') &&
+          accountStatus != AccountStatus.recruiter) {
         return '/candidate/home';
       }
 
@@ -156,9 +173,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         redirect: (_, __) => '/splash',
       ),
 
-      // ---------------------------------------------------------
-      // AUTHENTIFICATION
-      // ---------------------------------------------------------
       GoRoute(
         path: '/splash',
         builder: (_, __) => const SplashScreen(),
@@ -194,12 +208,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       GoRoute(
         path: '/candidate/notifications',
-        builder: (_, __) => const AppSectionScreen(
-          title: 'Notifications',
-          description:
-              'Vos notifications apparaîtront ici lorsqu’elles seront disponibles.',
-          icon: Icons.notifications_none_rounded,
-        ),
+        builder: (_, __) => const NotificationsScreen(),
       ),
 
       // ---------------------------------------------------------
@@ -208,6 +217,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/employee/dashboard',
         builder: (_, __) => const EmployeeDashboardScreen(),
+      ),
+
+      // ---------------------------------------------------------
+      // RECRUTEUR
+      // ---------------------------------------------------------
+      GoRoute(
+        path: '/recruiter/dashboard',
+        builder: (_, __) => const RecruiterDashboardScreen(),
       ),
 
       // ---------------------------------------------------------

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/api_client.dart';
@@ -62,6 +64,9 @@ class ApplyController extends AutoDisposeNotifier<ApplyState> {
       return true;
     } on ApiException catch (e) {
       state = ApplyState(error: e.message);
+      return false;
+    } on TimeoutException catch (_) {
+      state = const ApplyState(error: 'Le serveur met trop de temps à répondre. Vérifiez votre connexion et réessayez.');
       return false;
     } catch (e) {
       state = ApplyState(error: 'Erreur : ${e.toString()}');

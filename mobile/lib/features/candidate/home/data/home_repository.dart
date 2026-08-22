@@ -6,39 +6,13 @@ class HomeDashboardData {
     required this.jobs,
     required this.companies,
     required this.applications,
-    this.upcomingInterview,
-    this.profileCompletion = 0,
-    this.profileViews = 0,
-    this.unreadMessagesCount = 0,
     this.savedJobs = const [],
-    this.careerTips = const [],
   });
 
   final List<JobOffer> jobs;
   final List<HomeCompany> companies;
   final List<HomeApplication> applications;
-  
-  final HomeInterview? upcomingInterview;
-  final int profileCompletion;
-  final int profileViews;
-  final int unreadMessagesCount;
   final List<JobOffer> savedJobs;
-  final List<HomeCareerTip> careerTips;
-}
-
-class HomeInterview {
-  const HomeInterview({required this.companyName, required this.date, required this.jobTitle, this.meetLink});
-  final String companyName;
-  final DateTime date;
-  final String jobTitle;
-  final String? meetLink;
-}
-
-class HomeCareerTip {
-  const HomeCareerTip({required this.title, required this.description, required this.imageUrl});
-  final String title;
-  final String description;
-  final String imageUrl;
 }
 
 class HomeCompany {
@@ -68,26 +42,59 @@ class HomeCompany {
   }
 }
 
+class InterviewInfo {
+  const InterviewInfo({this.mode, this.scheduledAt, this.duration, this.streamingUrl, this.location, this.notes});
+
+  final String? mode;
+  final DateTime? scheduledAt;
+  final int? duration;
+  final String? streamingUrl;
+  final String? location;
+  final String? notes;
+
+  bool get isOnline => mode == 'ONLINE';
+
+  factory InterviewInfo.fromJson(Map<String, dynamic> json) {
+    return InterviewInfo(
+      mode: json['mode']?.toString(),
+      scheduledAt: DateTime.tryParse(json['scheduledAt']?.toString() ?? ''),
+      duration: json['duration'] as int?,
+      streamingUrl: json['streamingUrl']?.toString(),
+      location: json['location']?.toString(),
+      notes: json['notes']?.toString(),
+    );
+  }
+}
+
 class HomeApplication {
-  const HomeApplication({required this.id, required this.status, required this.statusLabel, required this.createdAt, this.jobTitle, this.companyName});
+  const HomeApplication({required this.id, required this.status, required this.statusLabel, required this.createdAt, this.jobId, this.jobTitle, this.jobLocation, this.companyName, this.coverLetter, this.interview});
 
   final String id;
   final String status;
   final String statusLabel;
   final DateTime? createdAt;
+  final String? jobId;
   final String? jobTitle;
+  final String? jobLocation;
   final String? companyName;
+  final String? coverLetter;
+  final InterviewInfo? interview;
 
   factory HomeApplication.fromJson(Map<String, dynamic> json) {
     final job = json['job'] as Map<String, dynamic>?;
     final company = job?['company'] as Map<String, dynamic>?;
+    final interviewData = json['interview'] as Map<String, dynamic>?;
     return HomeApplication(
       id: json['id']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
       statusLabel: json['statusLabel']?.toString() ?? json['status']?.toString() ?? '',
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      jobId: job?['id']?.toString(),
       jobTitle: job?['title']?.toString(),
+      jobLocation: job?['location']?.toString(),
       companyName: company?['name']?.toString(),
+      coverLetter: json['coverLetter']?.toString(),
+      interview: interviewData != null ? InterviewInfo.fromJson(interviewData) : null,
     );
   }
 }
@@ -119,27 +126,7 @@ class HomeRepository {
       jobs: jobs, 
       companies: companies, 
       applications: applications,
-      upcomingInterview: HomeInterview(
-        companyName: 'TechCorp Solutions',
-        jobTitle: 'Développeur Flutter Senior',
-        date: DateTime.now().add(const Duration(days: 1, hours: 2)),
-      ),
-      profileCompletion: 80,
-      profileViews: 14,
-      unreadMessagesCount: 3,
       savedJobs: jobs.isNotEmpty && jobs.length > 1 ? [jobs[1]] : [],
-      careerTips: const [
-        HomeCareerTip(
-          title: 'Réussir son entretien technique',
-          description: 'Les 5 questions les plus fréquentes en entretien Flutter.',
-          imageUrl: 'https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=600&q=80',
-        ),
-        HomeCareerTip(
-          title: 'Négocier son salaire',
-          description: 'Comment aborder la question de la rémunération.',
-          imageUrl: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=600&q=80',
-        ),
-      ],
     );
   }
 }
