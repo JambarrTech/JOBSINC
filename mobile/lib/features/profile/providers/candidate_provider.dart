@@ -19,6 +19,11 @@ class CandidateProfile {
     this.avatarUrl,
     this.cvUrl,
     this.skills,
+    this.experienceYears,
+    this.educationLevel,
+    this.educationField,
+    this.desiredContracts,
+    this.availableFrom,
   });
 
   final String? id;
@@ -30,6 +35,11 @@ class CandidateProfile {
   final String? avatarUrl;
   final String? cvUrl;
   final String? skills;
+  final int? experienceYears;
+  final String? educationLevel;
+  final String? educationField;
+  final String? desiredContracts;
+  final DateTime? availableFrom;
 
   factory CandidateProfile.fromJson(Map<String, dynamic> json) {
     return CandidateProfile(
@@ -42,6 +52,11 @@ class CandidateProfile {
       avatarUrl: json['avatarUrl']?.toString() ?? json['photoUrl']?.toString() ?? json['avatar']?.toString(),
       cvUrl: json['cvUrl']?.toString(),
       skills: json['skills']?.toString(),
+      experienceYears: json['experienceYears'] == null ? null : int.tryParse(json['experienceYears'].toString()),
+      educationLevel: json['educationLevel']?.toString(),
+      educationField: json['educationField']?.toString(),
+      desiredContracts: json['desiredContracts']?.toString(),
+      availableFrom: json['availableFrom'] == null ? null : DateTime.tryParse(json['availableFrom'].toString()),
     );
   }
 }
@@ -88,6 +103,11 @@ class CandidateProfileController
     String? country,
     String? city,
     String? skills,
+    int? experienceYears,
+    String? educationLevel,
+    String? educationField,
+    String? desiredContracts,
+    DateTime? availableFrom,
   }) async {
     final token = ref.read(authProvider).user?.token;
     if (token == null || token.isEmpty) return 'Non connecté.';
@@ -99,11 +119,33 @@ class CandidateProfileController
     if (country != null) fields['country'] = country;
     if (city != null) fields['city'] = city;
     if (skills != null) fields['skills'] = skills;
+    if (experienceYears != null) fields['experienceYears'] = experienceYears;
+    if (educationLevel != null) fields['educationLevel'] = educationLevel;
+    if (educationField != null) fields['educationField'] = educationField;
+    if (desiredContracts != null) fields['desiredContracts'] = desiredContracts;
+    if (availableFrom != null) {
+      fields['availableFrom'] = availableFrom.toIso8601String();
+    }
 
     try {
       final api = ApiClient();
-      await api.post('/candidate/profile', fields, token: token);
+      final updated = await api.put('/candidate/profile', fields, token: token);
       ref.invalidate(candidateProfileProvider);
+
+      // Synchronise l'état auth pour que l'en-tête reflète les changements.
+      final currentUser = ref.read(authProvider).user;
+      if (currentUser != null) {
+        ref.read(authProvider.notifier).state = AuthState.authenticated(
+          currentUser.copyWith(
+            firstName: updated['firstName']?.toString() ?? (fields['firstName'] as String?),
+            lastName: updated['lastName']?.toString() ?? (fields['lastName'] as String?),
+            phone: updated['phone']?.toString() ?? (fields['phone'] as String?),
+            country: updated['country']?.toString() ?? (fields['country'] as String?),
+            city: updated['city']?.toString() ?? (fields['city'] as String?),
+            skills: updated['skills']?.toString() ?? (fields['skills'] as String?),
+          ),
+        );
+      }
       return null;
     } on ApiException catch (e) {
       return e.message;

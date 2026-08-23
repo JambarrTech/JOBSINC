@@ -38,17 +38,17 @@ class AuthUser {
   final String? cvUrl;
   final String? skills;
 
-  AuthUser copyWith({String? photoUrl, String? cvUrl, String? skills}) {
+  AuthUser copyWith({String? firstName, String? lastName, String? phone, String? country, String? city, String? photoUrl, String? cvUrl, String? skills}) {
     return AuthUser(
       id: id,
-      firstName: firstName,
-      lastName: lastName,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
       email: email,
       status: status,
-      phone: phone,
+      phone: phone ?? this.phone,
       birthDate: birthDate,
-      country: country,
-      city: city,
+      country: country ?? this.country,
+      city: city ?? this.city,
       token: token,
       companyId: companyId,
       photoUrl: photoUrl ?? this.photoUrl,

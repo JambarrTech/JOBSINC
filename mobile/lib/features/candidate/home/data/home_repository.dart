@@ -49,18 +49,31 @@ class HomeCompany {
           (image) => image?['isPrimary'] == true,
           orElse: () => images.isEmpty ? null : images.first,
         );
+    final rawLogo = json['logo']?.toString();
     return HomeCompany(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       location: json['location']?.toString(),
       sector: json['sector']?.toString(),
-      logoUrl: primaryImage?['url']?.toString(),
+      logoUrl: (rawLogo != null && rawLogo.isNotEmpty)
+          ? rawLogo
+          : primaryImage?['url']?.toString(),
     );
   }
 }
 
 class InterviewInfo {
-  const InterviewInfo({this.mode, this.scheduledAt, this.duration, this.streamingUrl, this.location, this.notes});
+  const InterviewInfo({
+    this.mode,
+    this.scheduledAt,
+    this.duration,
+    this.streamingUrl,
+    this.location,
+    this.notes,
+    this.status = 'PLANIFIE',
+    this.startedAt,
+    this.finishedAt,
+  });
 
   final String? mode;
   final DateTime? scheduledAt;
@@ -69,16 +82,34 @@ class InterviewInfo {
   final String? location;
   final String? notes;
 
+  /// Statut backend réel : PLANIFIE / EN_COURS / TERMINE / ANNULE.
+  final String status;
+  final DateTime? startedAt;
+  final DateTime? finishedAt;
+
   bool get isOnline => mode == 'ONLINE';
+  bool get isLive => status == 'EN_COURS' && startedAt != null && finishedAt == null;
+  bool get isFinished => status == 'TERMINE';
+  bool get isCancelled => status == 'ANNULE';
+
+  /// Lien utilisable pour rejoindre (meetUrl côté API, fallback streamingUrl).
+  String? get joinUrl {
+    final url = streamingUrl ?? '';
+    return url.isEmpty ? null : url;
+  }
 
   factory InterviewInfo.fromJson(Map<String, dynamic> json) {
+    final rawDuration = json['duration'];
     return InterviewInfo(
       mode: json['mode']?.toString(),
       scheduledAt: DateTime.tryParse(json['scheduledAt']?.toString() ?? ''),
-      duration: json['duration'] as int?,
-      streamingUrl: json['streamingUrl']?.toString(),
+      duration: rawDuration is int ? rawDuration : int.tryParse(rawDuration?.toString() ?? ''),
+      streamingUrl: (json['meetUrl'] ?? json['streamingUrl'])?.toString(),
       location: json['location']?.toString(),
       notes: json['notes']?.toString(),
+      status: json['status']?.toString() ?? 'PLANIFIE',
+      startedAt: DateTime.tryParse(json['startedAt']?.toString() ?? ''),
+      finishedAt: DateTime.tryParse(json['finishedAt']?.toString() ?? ''),
     );
   }
 }

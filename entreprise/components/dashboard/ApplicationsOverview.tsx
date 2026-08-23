@@ -116,6 +116,11 @@ export default function ApplicationsOverview() {
                       <span>{application.title || application.jobTitle || 'Poste non renseigné'}</span>
                     </div>
                     <span className="application-date">{formatDate(application.date)}</span>
+                    {typeof application.matchScore === 'number' && (
+                      <span className="level-badge" title={application.matchLevelLabel || 'Score de correspondance'} style={{ background: '#e6f4f1', color: '#0c6e63' }}>
+                        {application.matchScore} %
+                      </span>
+                    )}
                     <StatusBadge status={application.status} />
                     <span className="application-arrow">→</span>
                   </Link>

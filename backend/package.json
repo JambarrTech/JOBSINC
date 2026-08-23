@@ -18,5 +18,9 @@
   },
   "prisma": {
     "seed": "node prisma/seed.js"
+  },
+  "scripts": {
+    "test": "node tests/matching.test.js",
+    "test:e2e": "node tests/api.e2e.test.js"
   }
 }

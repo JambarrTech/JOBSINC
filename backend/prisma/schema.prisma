@@ -72,6 +72,11 @@ model CandidateProfile {
   avatarUrl String?
   cvUrl     String?
   skills    String?       @db.LongText
+  experienceYears Int?
+  educationLevel String?
+  educationField String?
+  desiredContracts String?
+  availableFrom DateTime?
   applications Application[]
   employments  Employment[]
   createdAt DateTime      @default(now())
@@ -83,6 +88,7 @@ model Company {
   user        User          @relation(fields: [userId], references: [id])
   userId      String        @unique
   name        String
+  logo        String?
   description String?       @db.Text
   website     String?
   sector      String?
@@ -130,6 +136,9 @@ model Job {
   deadline         DateTime?
   responsibilities String?       @db.Text
   skills           String?       @db.Text
+  minExperienceYears Int?
+  maxExperienceYears Int?
+  educationLevel   String?
   isOpen           Boolean       @default(true)
   applications     Application[]
   employments      Employment[]
@@ -156,22 +165,32 @@ model Application {
 }
 
 model Interview {
-  id            String        @id @default(uuid())
-  application   Application   @relation(fields: [applicationId], references: [id])
-  applicationId String        @unique
+  id            String          @id @default(uuid())
+  application   Application     @relation(fields: [applicationId], references: [id])
+  applicationId String          @unique
   mode          InterviewMode
+  status        InterviewStatus @default(PLANIFIE)
   scheduledAt   DateTime?
   duration      Int?
-  streamingUrl  String?       @db.Text
+  streamingUrl  String?         @db.Text
   location      String?
-  notes         String?       @db.Text
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  notes         String?         @db.Text
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 }
 
 enum InterviewMode {
   ONLINE
   PRESENTIEL
+}
+
+enum InterviewStatus {
+  PLANIFIE
+  EN_COURS
+  TERMINE
+  ANNULE
 }
 
 model Employment {

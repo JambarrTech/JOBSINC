@@ -22,6 +22,11 @@ exports.getProfile = async (req, res) => {
       avatarUrl: candidate.avatarUrl,
       cvUrl: candidate.cvUrl,
       skills: candidate.skills,
+      experienceYears: candidate.experienceYears,
+      educationLevel: candidate.educationLevel,
+      educationField: candidate.educationField,
+      desiredContracts: candidate.desiredContracts,
+      availableFrom: candidate.availableFrom,
       email: candidate.user.email,
     });
   } catch (error) {
@@ -39,7 +44,14 @@ exports.updateProfile = async (req, res) => {
       return res.status(404).json({ error: 'Profil candidat introuvable.' });
     }
 
-    const { firstName, lastName, phone, country, city, skills } = req.body;
+    const { firstName, lastName, phone, country, city, skills, experienceYears, educationLevel, educationField, desiredContracts, availableFrom } = req.body;
+
+    // Champs alimentant le moteur de matching : numériques et dates
+    // normalisés, chaînes bornées pour éviter les valeurs absurdes.
+    const experience = experienceYears === undefined ? undefined
+      : experienceYears === null || experienceYears === '' ? null : Math.max(0, Math.min(45, Number(experienceYears)));
+    const availableAt = availableFrom === undefined ? undefined
+      : !availableFrom ? null : Number.isNaN(new Date(availableFrom).getTime()) ? undefined : new Date(availableFrom);
 
     const updated = await prisma.candidateProfile.update({
       where: { id: candidate.id },
@@ -50,6 +62,11 @@ exports.updateProfile = async (req, res) => {
         ...(country !== undefined && { country }),
         ...(city !== undefined && { city }),
         ...(skills !== undefined && { skills }),
+        ...(experience !== undefined && { experienceYears: experience }),
+        ...(educationLevel !== undefined && { educationLevel }),
+        ...(educationField !== undefined && { educationField }),
+        ...(desiredContracts !== undefined && { desiredContracts }),
+        ...(availableAt !== undefined && { availableFrom: availableAt }),
       },
       include: { user: true },
     });
@@ -65,6 +82,11 @@ exports.updateProfile = async (req, res) => {
       avatarUrl: updated.avatarUrl,
       cvUrl: updated.cvUrl,
       skills: updated.skills,
+      experienceYears: updated.experienceYears,
+      educationLevel: updated.educationLevel,
+      educationField: updated.educationField,
+      desiredContracts: updated.desiredContracts,
+      availableFrom: updated.availableFrom,
       email: updated.user.email,
     });
   } catch (error) {

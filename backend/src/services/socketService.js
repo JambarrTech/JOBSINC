@@ -131,4 +131,16 @@ function notifyNewMessage(conversationId, receiverUserId) {
   }
 }
 
-module.exports = { init, getIO, notifyNewMessage, isUserConnected };
+// Prévient les clients concernés qu'un entretien a changé d'état
+// (PLANIFIE / EN_COURS / TERMINE / ANNULE). Réutilise les rooms
+// user:<id> : aucun nouveau système temps réel.
+function notifyInterviewUpdate(userIds, payload) {
+  if (!io || !Array.isArray(userIds)) return;
+  for (const userId of userIds) {
+    if (userId && typeof userId === 'string') {
+      io.to(`user:${userId}`).emit('interview:update', payload || {});
+    }
+  }
+}
+
+module.exports = { init, getIO, notifyNewMessage, isUserConnected, notifyInterviewUpdate };

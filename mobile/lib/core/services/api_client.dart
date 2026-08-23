@@ -68,6 +68,15 @@ class ApiClient {
     return body;
   }
 
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> data, {String? token}) async {
+    final response = await _client
+        .put(_uri(path), headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'}, body: jsonEncode(data))
+        .timeout(const Duration(seconds: 30));
+    final body = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) throw ApiException((body['error'] ?? body['message'] ?? 'Erreur serveur.').toString(), response.statusCode);
+    return body;
+  }
+
   Future<Map<String, dynamic>> patch(String path, Map<String, dynamic> data, {String? token}) async {
     final response = await _client
         .patch(_uri(path), headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'}, body: jsonEncode(data))

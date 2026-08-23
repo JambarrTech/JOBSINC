@@ -1,19 +1,25 @@
-﻿import 'dart:io';
+﻿import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/api_client.dart';
+import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../applications/presentation/applications_screen.dart';
+import '../../applications/providers/applications_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../jobs/models/job_offer.dart';
 import '../../jobs/presentation/job_detail_screen.dart';
 import '../../jobs/presentation/offers_screen.dart';
 import '../../jobs/widgets/job_feed_card.dart';
 import '../../messages/presentation/messages_screen.dart';
+import '../../notifications/providers/notifications_provider.dart';
 import '../../profile/presentation/profile_screen.dart';
 import 'data/home_repository.dart';
 import 'providers/home_provider.dart';
@@ -31,9 +37,33 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
   final _locationController = TextEditingController();
 
   int _tab = 0;
+  StreamSubscription<Map<String, dynamic>>? _interviewSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final token = ref.read(authProvider).user?.token;
+      if (token != null && token.isNotEmpty) {
+        ref.read(notificationsProvider.notifier).load();
+        // Socket partagé : un entretien démarré/terminé/annulé rafraîchit
+        // l'accueil, la liste des candidatures et le tableau de bord.
+        ChatSocketService.instance.connect(token);
+        _interviewSub = ChatSocketService.instance.interviewEvents.listen((_) {
+          ref.invalidate(activeInterviewProvider);
+          ref.invalidate(applicationsProvider);
+          final current = ref.read(authProvider).user?.token;
+          if (current != null && current.isNotEmpty) {
+            ref.invalidate(homeDashboardProvider(current));
+          }
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _interviewSub?.cancel();
     _searchController.dispose();
     _locationController.dispose();
     super.dispose();
@@ -102,6 +132,7 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
           firstName: user?.firstName,
           photoUrl: user?.photoUrl,
           data: data,
+          unreadCount: ref.watch(notificationsProvider).unreadCount,
           searchController: _searchController,
           onSearchSubmit: _submitSearch,
           onOpenProfile: () => setState(() => _tab = 3),
@@ -115,11 +146,12 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
 // HOME CONTENT
 // ============================================================
 
-class _HomeContent extends StatelessWidget {
+class _HomeContent extends ConsumerWidget {
   const _HomeContent({
     this.firstName,
     this.photoUrl,
     required this.data,
+    this.unreadCount = 0,
     required this.searchController,
     required this.onSearchSubmit,
     required this.onOpenProfile,
@@ -128,6 +160,7 @@ class _HomeContent extends StatelessWidget {
   final String? firstName;
   final String? photoUrl;
   final HomeDashboardData data;
+  final int unreadCount;
   final TextEditingController searchController;
   final VoidCallback onSearchSubmit;
   final VoidCallback onOpenProfile;
@@ -139,7 +172,7 @@ class _HomeContent extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -148,6 +181,7 @@ class _HomeContent extends StatelessWidget {
           firstName: firstName,
           photoUrl: photoUrl,
           searchController: searchController,
+          unreadCount: unreadCount,
           onSearchSubmit: onSearchSubmit,
           onProfileTap: onOpenProfile,
           onNotificationsTap: () {
@@ -156,6 +190,9 @@ class _HomeContent extends StatelessWidget {
         ),
 
         const SizedBox(height: 20),
+
+        // 🔴 Bandeau entretien en cours (priorité absolue sur le reste).
+        const _LiveInterviewBanner(),
 
         if (data.jobs.isNotEmpty) ...[
           _SectionHeader(
@@ -195,6 +232,147 @@ class _HomeContent extends StatelessWidget {
 }
 
 // ============================================================
+// LIVE INTERVIEW BANNER
+// ============================================================
+
+class _LiveInterviewBanner extends ConsumerWidget {
+  const _LiveInterviewBanner();
+
+  Future<void> _join(BuildContext context, ActiveInterview interview) async {
+    final url = interview.meetUrl;
+    if (!interview.isOnline || url == null || url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      // launchUrl direct : canLaunchUrl renvoie false sur Android 11+
+      // sans déclaration <queries> dédiée pour https.
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible d\'ouvrir Google Meet.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final live = ref.watch(activeInterviewProvider).value;
+    if (live == null) return const SizedBox.shrink();
+
+    final actionState = ref.watch(interviewActionProvider);
+    final showJoin = live.isOnline && live.meetUrl != null && live.meetUrl!.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFF1F2), Color(0xFFFFE4E6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFB7185), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF43F5E).withValues(alpha: .15),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(color: Color(0xFFE11D48), shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'ENTRETIEN EN COURS',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: .6, color: Color(0xFFE11D48)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            live.jobTitle,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text),
+          ),
+          if (live.companyName.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text('avec ${live.companyName}', style: const TextStyle(fontSize: 13, color: AppColors.secondaryText)),
+          ],
+          if (live.startedAt != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'L\'entretien a commencé à ${DateFormat('HH:mm', 'fr').format(live.startedAt!)}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFBE123C)),
+            ),
+          ] else if (live.scheduledAt != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Prévu à ${DateFormat('HH:mm', 'fr').format(live.scheduledAt!)}',
+              style: const TextStyle(fontSize: 13, color: AppColors.secondaryText),
+            ),
+          ],
+          if (showJoin) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _join(context, live),
+                icon: const Icon(Icons.videocam_rounded, size: 18),
+                label: const Text('Rejoindre maintenant', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDC2626),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ],
+          SizedBox(height: showJoin ? 8 : 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: actionState.isLoading
+                  ? null
+                  : () async {
+                      final ok = await ref.read(interviewActionProvider.notifier).finish(live.applicationId);
+                      if (!ok && context.mounted) {
+                        final message = ref.read(interviewActionProvider).error ?? 'Erreur lors de la fin de l\'entretien.';
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                      }
+                    },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.secondaryText,
+                side: const BorderSide(color: Color(0xFFFDA4AF)),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text(
+                actionState.isLoading ? 'Enregistrement...' : 'Terminer l\'entretien',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
 // HEADER
 // ============================================================
 
@@ -204,6 +382,7 @@ class HomeHeader extends StatefulWidget {
     this.firstName,
     this.photoUrl,
     required this.searchController,
+    this.unreadCount = 0,
     this.onSearchSubmit,
     required this.onProfileTap,
     this.onNotificationsTap,
@@ -212,6 +391,7 @@ class HomeHeader extends StatefulWidget {
   final String? firstName;
   final String? photoUrl;
   final TextEditingController searchController;
+  final int unreadCount;
   final VoidCallback? onSearchSubmit;
   final VoidCallback onProfileTap;
   final VoidCallback? onNotificationsTap;
@@ -391,6 +571,7 @@ class _HomeHeaderState extends State<HomeHeader>
             _HeaderIconButton(
               icon: Icons.notifications_none_rounded,
               tooltip: 'Notifications',
+              badgeCount: widget.unreadCount,
               onPressed: widget.onNotificationsTap,
             ),
           ],
@@ -456,11 +637,13 @@ class _HeaderIconButton extends StatelessWidget {
   const _HeaderIconButton({
     required this.icon,
     required this.tooltip,
+    this.badgeCount = 0,
     this.onPressed,
   });
 
   final IconData icon;
   final String tooltip;
+  final int badgeCount;
   final VoidCallback? onPressed;
 
   @override
@@ -474,10 +657,39 @@ class _HeaderIconButton extends StatelessWidget {
       child: Semantics(
         label: tooltip,
         button: true,
-        child: IconButton(
-          tooltip: tooltip,
-          onPressed: onPressed,
-          icon: Icon(icon, color: AppColors.text),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              tooltip: tooltip,
+              onPressed: onPressed,
+              icon: Icon(icon, color: AppColors.text),
+            ),
+            if (badgeCount > 0)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  constraints: const BoxConstraints(minWidth: 17),
+                  decoration: BoxDecoration(
+                    color: AppColors.error,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: AppColors.white, width: 1.5),
+                  ),
+                  child: Text(
+                    badgeCount > 99 ? '99+' : '$badgeCount',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

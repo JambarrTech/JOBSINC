@@ -174,6 +174,7 @@ exports.registerCompany = async (req, res) => {
         company: {
           create: {
             name: companyName,
+            logo: req.companyLogo?.url || null,
             images: companyImagesData,
           }
         },
