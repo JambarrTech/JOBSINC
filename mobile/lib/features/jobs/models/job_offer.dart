@@ -42,6 +42,10 @@ class JobOffer {
           (image) => image?['isPrimary'] == true,
           orElse: () => images.isEmpty ? null : images.first,
         );
+    final rawLogo = company?['logo']?.toString();
+    final companyLogo = (rawLogo != null && rawLogo.isNotEmpty)
+        ? rawLogo
+        : primaryImage?['url']?.toString();
     final salaryMin = json['salaryMin'];
     final salaryMax = json['salaryMax'];
     final currency = json['currency']?.toString();
@@ -57,7 +61,7 @@ class JobOffer {
       title: json['title']?.toString() ?? '',
       company: company?['name']?.toString() ?? '',
       companyId: company?['id']?.toString(),
-      companyLogo: primaryImage?['url']?.toString(),
+      companyLogo: companyLogo,
       companySector: company?['sector']?.toString(),
       companyLocation: company?['location']?.toString(),
       companyDescription: company?['description']?.toString(),

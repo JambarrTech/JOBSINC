@@ -38,11 +38,19 @@ module.exports = async (req, res, next) => {
     if (!boundary) throw badRequest('Limite multipart manquante.');
     const chunks = []; let size = 0;
     for await (const chunk of req) { size += chunk.length; if (size > MAX_BODY_SIZE) throw badRequest('Les images ne doivent pas dépasser 5 Mo chacune (6 images maximum).'); chunks.push(chunk); }
-    const parsed = parseMultipart(Buffer.concat(chunks), boundary); const photos = parsed.files.filter((file) => file.fieldname === 'photos');
-    if (parsed.files.length !== photos.length || photos.length > MAX_FILES) throw badRequest('Vous pouvez envoyer jusqu’à 6 images de présentation.');
-    for (const file of photos) if (!ACCEPTED_TYPES.has(file.mimetype) || file.buffer.length > MAX_FILE_SIZE) throw badRequest('Utilisez des images JPG, PNG ou WEBP de 5 Mo maximum.');
+    const parsed = parseMultipart(Buffer.concat(chunks), boundary);
+    const photos = parsed.files.filter((file) => file.fieldname === 'photos');
+    const logos = parsed.files.filter((file) => file.fieldname === 'logo');
+    const known = photos.length + logos.length;
+    if (parsed.files.length !== known || photos.length > MAX_FILES || logos.length > 1) throw badRequest('Vous pouvez envoyer jusqu’à 6 images de présentation et un logo.');
+    for (const file of [...photos, ...logos]) if (!ACCEPTED_TYPES.has(file.mimetype) || file.buffer.length > MAX_FILE_SIZE) throw badRequest('Utilisez des images JPG, PNG ou WEBP de 5 Mo maximum.');
     await fs.mkdir(uploadDirectory, { recursive: true });
     req.companyImages = await Promise.all(photos.map(async (file, index) => { const filename = `${crypto.randomUUID()}${ACCEPTED_TYPES.get(file.mimetype)}`; await fs.writeFile(path.join(uploadDirectory, filename), file.buffer, { flag: 'wx' }); return { url: `/uploads/companies/${filename}`, isPrimary: index === 0, sortOrder: index }; }));
+    if (logos.length === 1) {
+      const filename = `${crypto.randomUUID()}${ACCEPTED_TYPES.get(logos[0].mimetype)}`;
+      await fs.writeFile(path.join(uploadDirectory, filename), logos[0].buffer, { flag: 'wx' });
+      req.companyLogo = { url: `/uploads/companies/${filename}` };
+    }
     req.body = { ...req.body, ...parsed.fields }; next();
   } catch (error) { next(error); }
 };

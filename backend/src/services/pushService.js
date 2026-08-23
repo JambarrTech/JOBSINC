@@ -42,40 +42,89 @@ function init() {
   }
 }
 
-function isInvalidTokenError(error) {
-  // 'invalid-argument' : token malformé rejeté par FCM.
-  // 'registration-token-not-registered' / 'unregistered' : token expiré.
-  return error &&
-    (error.code === 'messaging/invalid-registration-token' ||
-      error.code === 'messaging/registration-token-not-registered' ||
-      error.code === 'messaging/unregistered' ||
-      error.code === 'messaging/invalid-argument');
+// Erreurs DÉFINITIVES liées au token lui-même : le token ne doit plus
+// être réutilisé (expiré, désenregistré ou malformé).
+//
+// NB : pour un token malformé, FCM renvoie souvent 'messaging/invalid-
+// argument' avec le message « …not a valid FCM registration token ».
+// On distingue ce cas d'un 'invalid-argument' causé par le payload du
+// lot (qui, lui, ne doit PAS entraîner de suppression).
+function isDefinitiveTokenError(error) {
+  if (!error) return false;
+  if (
+    error.code === 'messaging/registration-token-not-registered' ||
+    error.code === 'messaging/invalid-registration-token' ||
+    error.code === 'messaging/unregistered'
+  ) {
+    return true;
+  }
+  return (
+    error.code === 'messaging/invalid-argument' &&
+    typeof error.message === 'string' &&
+    /registration token/i.test(error.message)
+  );
 }
 
 async function sendToUser(userId, notification, data = {}) {
   if (!messaging) return { sent: 0 };
-  const tokens = await prisma.deviceToken.findMany({
-    where: { userId },
-    select: { token: true },
-  });
-  if (tokens.length === 0) return { sent: 0 };
 
-  const response = await messaging.sendEachForMulticast({
-    tokens: tokens.map((t) => t.token),
-    notification,
-    data,
-    android: { priority: 'high' },
-  });
+  // `tokens` déclaré hors du try : nécessaire au nettoyage ci-dessous.
+  let tokens = [];
+  let response;
+  try {
+    tokens = await prisma.deviceToken.findMany({
+      where: { userId },
+      select: { token: true },
+    });
+    if (tokens.length === 0) return { sent: 0 };
 
-  // Supprime les tokens que FCM déclare morts.
+    response = await messaging.sendEachForMulticast({
+      tokens: tokens.map((t) => t.token),
+      notification,
+      data,
+      android: { priority: 'high' },
+    });
+  } catch (error) {
+    // Échec GLOBAL du lot (réseau, auth Firebase, quota…) : erreur
+    // temporaire, on ne supprime aucun token.
+    console.warn(`Push: envoi impossible (${error.code || 'sans code'}): ${error.message}`);
+    return { sent: 0 };
+  }
+
+  const failedCodes = [];
   const invalid = [];
   response.responses.forEach((result, index) => {
-    if (!result.success && isInvalidTokenError(result.error)) {
+    if (result.success || !result.error) return;
+
+    failedCodes.push(result.error.code || 'sans code');
+    if (isDefinitiveTokenError(result.error)) {
       invalid.push(tokens[index].token);
     }
   });
+
   if (invalid.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: invalid } } }).catch(() => {});
+    const deleted = await prisma.deviceToken
+      .deleteMany({ where: { token: { in: invalid } } })
+      .then((r) => r.count)
+      .catch((e) => {
+        console.warn(`Push: suppression des tokens invalides impossible: ${e.message}`);
+        return 0;
+      });
+    if (deleted > 0) {
+      console.log(
+        `Push: ${deleted} token(s) invalide(s) supprimé(s) de la base pour l'utilisateur ${userId}.`
+      );
+    }
+  }
+
+  // Échecs restants sans token supprimé : erreurs temporaires
+  // (unavailable, quota, third-party…) ou payload rejeté pour tout le
+  // lot. Tokens conservés, simple trace.
+  if (failedCodes.length > 0 && invalid.length === 0) {
+    console.warn(
+      `Push: ${failedCodes.length} envoi(s) échoué(s), tokens conservés ` +
+        `(codes: ${[...new Set(failedCodes)].join(', ')}).`
+    );
   }
 
   return { sent: response.successCount };

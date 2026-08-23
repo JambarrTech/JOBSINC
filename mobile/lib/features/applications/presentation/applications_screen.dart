@@ -408,12 +408,6 @@ class _ApplicationDetailScreen extends StatelessWidget {
     }
   }
 
-  bool _isInterviewFinished(InterviewInfo interview) {
-    if (interview.scheduledAt == null) return false;
-    final end = interview.scheduledAt!.add(Duration(minutes: interview.duration ?? 60));
-    return DateTime.now().isAfter(end);
-  }
-
   @override
   Widget build(BuildContext context) {
     final date = application.createdAt;
@@ -510,9 +504,9 @@ class _ApplicationDetailScreen extends StatelessWidget {
               ],
             ),
           ),
-          if (application.status == 'INTERVIEW' && application.interview != null && !_isInterviewFinished(application.interview!)) ...[
+          if (application.status == 'INTERVIEW' && application.interview != null && !application.interview!.isCancelled) ...[
             const SizedBox(height: 14),
-            _InterviewDetailCard(interview: application.interview!),
+            _InterviewDetailCard(interview: application.interview!, applicationId: application.id),
           ],
           if (application.coverLetter != null && application.coverLetter!.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -638,16 +632,63 @@ class _DetailTimeline extends StatelessWidget {
 // INTERVIEW DETAIL CARD
 // ============================================================
 
-class _InterviewDetailCard extends StatelessWidget {
-  const _InterviewDetailCard({required this.interview});
+class _InterviewDetailCard extends ConsumerWidget {
+  const _InterviewDetailCard({required this.interview, required this.applicationId});
   final InterviewInfo interview;
+  final String applicationId;
+
+  Future<void> _openMeet(BuildContext context) async {
+    final url = interview.joinUrl;
+    if (url == null || url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      // Pas de canLaunchUrl : sur Android 11+ il renvoie false sans
+      // déclaration <queries> dédiée ; launchUrl gère l'erreur directement.
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible d\'ouvrir Google Meet.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _finish(BuildContext context, WidgetRef ref) async {
+    final ok = await ref.read(interviewActionProvider.notifier).finish(applicationId);
+    if (!ok && context.mounted) {
+      final message = ref.read(interviewActionProvider).error ?? 'Erreur lors de la fin de l\'entretien.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isOnline = interview.isOnline;
-    final bgColor = isOnline ? const Color(0xFFF5F3FF) : const Color(0xFFFFFDF5);
-    final borderColor = isOnline ? const Color(0xFFDDD6FE) : const Color(0xFFFDE68A);
-    final accentColor = isOnline ? AppColors.turquoise : AppColors.warning;
+    final isLive = interview.isLive;
+    final isFinished = interview.isFinished;
+
+    final Color bgColor;
+    final Color borderColor;
+    final Color accentColor;
+    if (isLive) {
+      bgColor = const Color(0xFFFFF1F2);
+      borderColor = const Color(0xFFFDA4AF);
+      accentColor = const Color(0xFFE11D48);
+    } else if (isFinished) {
+      bgColor = const Color(0xFFF0FDF4);
+      borderColor = const Color(0xFFBBF7D0);
+      accentColor = const Color(0xFF059669);
+    } else if (!isOnline) {
+      bgColor = const Color(0xFFFFFDF5);
+      borderColor = const Color(0xFFFDE68A);
+      accentColor = AppColors.warning;
+    } else {
+      bgColor = const Color(0xFFF5F3FF);
+      borderColor = const Color(0xFFDDD6FE);
+      accentColor = AppColors.turquoise;
+    }
 
     return Container(
       width: double.infinity,
@@ -664,12 +705,47 @@ class _InterviewDetailCard extends StatelessWidget {
             children: [
               Icon(isOnline ? Icons.videocam_outlined : Icons.location_on_outlined, color: accentColor, size: 20),
               const SizedBox(width: 8),
-              Text(
-                isOnline ? 'Entretien en ligne' : 'Entretien présentiel',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: accentColor),
+              Expanded(
+                child: Text(
+                  isLive
+                      ? 'Entretien en cours'
+                      : isFinished
+                          ? 'Entretien terminé'
+                          : isOnline
+                              ? 'Entretien en ligne'
+                              : 'Entretien présentiel',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: accentColor),
+                ),
               ),
             ],
           ),
+          if (isLive) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                children: [
+                  Container(width: 9, height: 9, decoration: const BoxDecoration(color: Color(0xFFE11D48), shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'L\'entretien a commencé${interview.startedAt != null ? ' à ${DateFormat('HH:mm', 'fr').format(interview.startedAt!)}' : ''}',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFBE123C)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (isFinished && interview.finishedAt != null) ...[
+            const SizedBox(height: 10),
+            _InterviewInfoRow(
+              icon: Icons.check_circle_outline,
+              label: 'Terminé à ${DateFormat('HH:mm', 'fr').format(interview.finishedAt!)}',
+            ),
+          ],
           const SizedBox(height: 14),
           if (interview.scheduledAt != null) ...[
             _InterviewInfoRow(
@@ -682,7 +758,9 @@ class _InterviewDetailCard extends StatelessWidget {
               label: 'À ${DateFormat('HH:mm', 'fr').format(interview.scheduledAt!)}${interview.duration != null ? ' — ${interview.duration} min' : ''}',
             ),
           ],
-          if (isOnline && interview.streamingUrl != null && interview.streamingUrl!.isNotEmpty) ...[
+          // Lien Meet révélé uniquement quand l'entretien est EN_COURS
+          // (logique métier : pas d'accès anticipé au salon).
+          if (isLive && isOnline && interview.joinUrl != null && interview.joinUrl!.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
               width: double.infinity,
@@ -698,14 +776,9 @@ class _InterviewDetailCard extends StatelessWidget {
                   const Text('Lien de connexion', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.secondaryText)),
                   const SizedBox(height: 6),
                   GestureDetector(
-                    onTap: () async {
-                      final uri = Uri.tryParse(interview.streamingUrl!);
-                      if (uri != null && await canLaunchUrl(uri)) {
-                        await launchUrl(uri, mode: LaunchMode.externalApplication);
-                      }
-                    },
+                    onTap: () => _openMeet(context),
                     child: Text(
-                      interview.streamingUrl!,
+                      interview.joinUrl!,
                       style: TextStyle(fontSize: 13, color: accentColor, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
                     ),
                   ),
@@ -724,6 +797,44 @@ class _InterviewDetailCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
               child: Text(interview.notes!, style: const TextStyle(fontSize: 13, color: AppColors.secondaryText, height: 1.4)),
+            ),
+          ],
+          if (isLive) ...[
+            const SizedBox(height: 14),
+            if (isOnline && interview.joinUrl != null && interview.joinUrl!.isNotEmpty)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _openMeet(context),
+                  icon: const Icon(Icons.videocam_rounded, size: 18),
+                  label: const Text('Rejoindre maintenant', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => _finish(context, ref),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.secondaryText,
+                  side: BorderSide(color: borderColor),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(
+                  ref.watch(interviewActionProvider).isLoading
+                      ? 'Enregistrement...'
+                      : 'Terminer l\'entretien',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ),
             ),
           ],
         ],

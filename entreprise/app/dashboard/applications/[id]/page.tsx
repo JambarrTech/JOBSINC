@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { apiRequest, ensureConversation, DashboardData } from '@/lib/api';
+import { apiRequest, ensureConversation, DashboardData, startInterview, finishInterview, cancelInterview } from '@/lib/api';
 import { useDashboard } from '@/components/dashboard/DashboardContext';
+import { getMessagesSocket } from '@/lib/socket';
 
 const STATUS_LABELS: Record<string, string> = {
   RECEIVED: 'Reçue', UNDER_REVIEW: 'En cours d\'examen', INTERVIEW: 'Entretien', ACCEPTED: 'Acceptée', REJECTED: 'Refusée',
@@ -34,6 +35,254 @@ function statusBadge(status?: string) {
       background: `${color}15`, color, fontSize: '12px', fontWeight: 700,
       border: `1px solid ${color}30`,
     }}>{label}</span>
+  );
+}
+
+const INTERVIEW_START_WINDOW_MINUTES = 10;
+
+function formatInterviewDate(value?: string | null) {
+  if (!value) return null;
+  return new Date(value).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+function formatInterviewTime(value?: string | null) {
+  if (!value) return null;
+  return new Date(value).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Modal JOBSYNC : Google Meet interdit l'affichage en iframe, la salle
+// s'ouvre donc dans un nouvel onglet depuis cette modale d'information.
+function MeetingJoinModal({ interview, companyName, candidateName, onClose }: {
+  interview: NonNullable<any>;
+  companyName?: string | null;
+  candidateName?: string;
+  onClose: () => void;
+}) {
+  const meetUrl = interview.meetUrl || interview.streamingUrl || '';
+  return (
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: '100%', maxWidth: '440px', background: '#fff', borderRadius: '18px', padding: '24px', boxShadow: '0 24px 64px rgba(0,0,0,.25)' }}
+      >
+        <h2 style={{ margin: '0 0 4px', fontSize: '17px', fontWeight: 800, color: '#1a1a2e' }}>🎥 Entretien vidéo</h2>
+        <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#6b7280' }}>
+          {candidateName ? `Avec ${candidateName}` : ''}{companyName ? ` — ${companyName}` : ''}
+        </p>
+        <div style={{ display: 'grid', gap: '8px', padding: '14px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e5ebf0', fontSize: '13px', color: '#4a5568' }}>
+          <div><strong>{interview.jobTitle || 'Poste non renseigné'}</strong></div>
+          {interview.scheduledAt && (
+            <div>
+              📅 {formatInterviewDate(interview.scheduledAt)} à {formatInterviewTime(interview.scheduledAt)}
+              {interview.duration ? ` — ${interview.duration} min` : ''}
+            </div>
+          )}
+          <div style={{ wordBreak: 'break-all', color: '#8b5cf6' }}>{meetUrl}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => window.open(meetUrl, '_blank', 'noopener,noreferrer')}
+          disabled={!meetUrl}
+          style={{
+            width: '100%', marginTop: '18px', padding: '13px', borderRadius: '10px', border: 'none',
+            background: meetUrl ? '#8b5cf6' : '#c4b5fd', color: '#fff', fontSize: '14px',
+            fontWeight: 700, cursor: meetUrl ? 'pointer' : 'not-allowed',
+          }}
+        >Ouvrir Google Meet</button>
+        <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#9ca3af', textAlign: 'center' }}>
+          Le salon s&apos;ouvre dans un nouvel onglet (Google Meet ne permet pas l&apos;affichage intégré).
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            width: '100%', marginTop: '10px', padding: '11px', borderRadius: '10px',
+            border: '1px solid #e5ebf0', background: '#fff', cursor: 'pointer',
+            fontSize: '13px', fontWeight: 600, color: '#6b7280',
+          }}
+        >Fermer</button>
+      </div>
+    </div>
+  );
+}
+
+// Carte « Entretien » : UN SEUL bloc, dont le rendu dépend du statut
+// backend réel (aucune répétition d'informations).
+function InterviewVideoCard({ interview, jobTitle, online, meetUrl, canStart, opensAt, busy, onStart, onFinish, onCancel, onJoin }: {
+  interview: any;
+  jobTitle: string;
+  online: boolean;
+  meetUrl: string;
+  canStart: boolean;
+  opensAt: Date | null;
+  busy: boolean;
+  onStart: () => void;
+  onFinish: () => void;
+  onCancel: () => void;
+  onJoin: () => void;
+}) {
+  const status = String(interview.status || 'PLANIFIE');
+  const dateLine = interview.scheduledAt
+    ? `${formatInterviewDate(interview.scheduledAt)}${interview.startedAt ? '' : ` à ${formatInterviewTime(interview.scheduledAt)}`}`
+    : 'Date à définir';
+
+  // ── 🔴 EN COURS : carte plein cadre, prioritaire ──
+  if (status === 'EN_COURS') {
+    return (
+      <div style={{
+        marginTop: '1.5rem', padding: '28px 24px', borderRadius: '16px', textAlign: 'center',
+        background: 'linear-gradient(135deg, #fff1f2, #ffe4e6)', border: '2px solid #fb7185',
+        boxShadow: '0 12px 32px rgba(244,63,94,.15)',
+      }}>
+        <p style={{ margin: '0 0 10px', fontSize: '15px', fontWeight: 900, color: '#e11d48', letterSpacing: '.04em' }}>🔴 ENTRETIEN EN COURS</p>
+        <h2 style={{ margin: '0 0 2px', fontSize: '18px', fontWeight: 800, color: '#1a1a2e' }}>{jobTitle}</h2>
+        {online && meetUrl && (
+          <p style={{ margin: '6px auto 0', maxWidth: '420px', fontSize: '12px', color: '#be123c', wordBreak: 'break-all' }}>{meetUrl}</p>
+        )}
+        <p style={{ margin: '8px 0 16px', fontSize: '13px', color: '#be123c' }}>
+          ● L&apos;entretien a commencé{interview.startedAt ? ` à ${formatInterviewTime(interview.startedAt)}` : ''}
+          {!online && interview.location ? ` — ${interview.location}` : ''}
+        </p>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {online && meetUrl && (
+            <button
+              type="button"
+              onClick={onJoin}
+              style={{
+                padding: '14px 30px', borderRadius: '12px', border: 'none', background: '#dc2626', color: '#fff',
+                fontSize: '15px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(220,38,38,.3)',
+              }}
+            >🎥 Rejoindre l&apos;entretien</button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onFinish}
+            style={{
+              padding: '14px 24px', borderRadius: '12px', border: '1px solid #fda4af', background: '#fff',
+              color: '#4a5568', cursor: busy ? 'not-allowed' : 'pointer', fontSize: '14px', fontWeight: 700,
+            }}
+          >Terminer l&apos;entretien</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ✓ TERMINÉ ──
+  if (status === 'TERMINE') {
+    return (
+      <div className="dashboard-panel" style={{ marginTop: '1.5rem' }}>
+        <h2>✓ Entretien terminé</h2>
+        <p style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: 700, color: '#1a1a2e' }}>{jobTitle}</p>
+        <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>
+          {dateLine}{interview.finishedAt ? ` — terminé à ${formatInterviewTime(interview.finishedAt)}` : ''}
+        </p>
+        {online && meetUrl && (
+          <button
+            type="button"
+            onClick={onJoin}
+            style={{
+              marginTop: '12px', padding: '9px 16px', borderRadius: '9px',
+              border: '1px solid #dce6ed', background: '#fff', cursor: 'pointer',
+              fontSize: '12px', fontWeight: 600, color: '#4a5568',
+            }}
+          >Voir les détails</button>
+        )}
+      </div>
+    );
+  }
+
+  // ── ANNULÉ ──
+  if (status === 'ANNULE') {
+    return (
+      <div className="dashboard-panel" style={{ marginTop: '1.5rem', opacity: .75 }}>
+        <h2>Entretien annulé</h2>
+        <p style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: 700, color: '#1a1a2e' }}>{jobTitle}</p>
+        <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>{dateLine}</p>
+      </div>
+    );
+  }
+
+  // ── 🟡 PLANIFIÉ : tous les détails + actions recruteur, une seule fois ──
+  return (
+    <div style={{
+      marginTop: '1.5rem', padding: '20px', borderRadius: '14px',
+      background: online ? '#f5f3ff' : '#fffbeb',
+      border: `1px solid ${online ? '#ddd6fe' : '#fde68a'}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#1a1a2e' }}>
+          🎥 Entretien {online ? 'en ligne' : 'présentiel'}
+        </h2>
+        <span style={{
+          padding: '4px 10px', borderRadius: '8px', background: '#fef9c3', color: '#a16207',
+          fontSize: '11px', fontWeight: 700, border: '1px solid #fde68a',
+        }}>🟡 Planifié</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', fontSize: '13px', color: '#4a5568' }}>
+        {interview.scheduledAt && (
+          <div><strong>Date</strong><br />{new Date(interview.scheduledAt).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+        )}
+        {interview.scheduledAt && (
+          <div><strong>Heure</strong><br />{formatInterviewTime(interview.scheduledAt)}</div>
+        )}
+        {interview.duration && <div><strong>Durée</strong><br />{interview.duration} min</div>}
+        {online && meetUrl && (
+          <div>
+            <strong>Lien</strong><br />
+            {canStart ? (
+              <a href={meetUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#8b5cf6', wordBreak: 'break-all' }}>{meetUrl}</a>
+            ) : (
+              <span style={{ color: '#9ca3af' }}>
+                Disponible à partir de {opensAt ? formatInterviewTime(opensAt.toISOString()) : 'l\'ouverture'}
+              </span>
+            )}
+          </div>
+        )}
+        {!online && interview.location && (
+          <div><strong>Lieu</strong><br />{interview.location}</div>
+        )}
+      </div>
+      {interview.notes && (
+        <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: '#fff', fontSize: '13px', color: '#4a5568' }}>
+          <strong>Note :</strong> {interview.notes}
+        </div>
+      )}
+      <div style={{ marginTop: '16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <button
+          type="button"
+          disabled={busy || !canStart}
+          onClick={onStart}
+          title={canStart ? '' : 'Disponible jusqu\'à 10 minutes avant l\'heure prévue'}
+          style={{
+            padding: '11px 20px', borderRadius: '10px', border: 'none',
+            background: busy || !canStart ? '#c4b5fd' : '#dc2626', color: '#fff',
+            cursor: busy || !canStart ? 'not-allowed' : 'pointer',
+            fontSize: '13px', fontWeight: 800,
+          }}
+        >🎥 Démarrer l&apos;entretien</button>
+        {!canStart && opensAt && (
+          <span style={{ fontSize: '12px', color: '#8b5cf6' }}>
+            Ouverture possible à partir de {formatInterviewTime(opensAt.toISOString())}
+          </span>
+        )}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => { if (window.confirm('Annuler cet entretien ? Le candidat sera notifié.')) onCancel(); }}
+          style={{
+            padding: '11px 18px', borderRadius: '10px', border: '1px solid #fecaca',
+            background: '#fff', color: '#dc2626', cursor: busy ? 'not-allowed' : 'pointer',
+            fontSize: '13px', fontWeight: 600,
+          }}
+        >Annuler l&apos;entretien</button>
+      </div>
+    </div>
   );
 }
 
@@ -194,6 +443,8 @@ export default function ApplicationDetailsPage() {
   const [error, setError] = useState('');
   const [showInterviewForm, setShowInterviewForm] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [interviewBusy, setInterviewBusy] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -204,6 +455,40 @@ export default function ApplicationDetailsPage() {
       .catch(() => { if (active) setFetchFailed(true); });
     return () => { active = false; };
   }, [contextApplication, id]);
+
+  // Temps réel : l'événement interview:update (rooms Socket.IO existantes)
+  // rafraîchit la fiche et le contexte sans actualiser la page.
+  useEffect(() => {
+    const socket = getMessagesSocket();
+    if (!socket) return;
+    const handler = (payload: { applicationId?: string | number }) => {
+      if (!id || (payload?.applicationId && String(payload.applicationId) !== String(id))) return;
+      reload();
+      apiRequest<NonNullable<DashboardData['applications']>[number]>(`/company/applications/${id}`)
+        .then((result) => setFetchedApplication(result))
+        .catch(() => {});
+    };
+    socket.on('interview:update', handler);
+    return () => { socket.off('interview:update', handler); };
+  }, [id, reload]);
+
+  const runInterviewAction = useCallback(async (action: 'start' | 'finish' | 'cancel') => {
+    if (!application?.id) return;
+    setInterviewBusy(true);
+    setError('');
+    try {
+      if (action === 'start') await startInterview(application.id);
+      else if (action === 'finish') await finishInterview(application.id);
+      else await cancelInterview(application.id);
+      reload();
+      const refreshed = await apiRequest<NonNullable<DashboardData['applications']>[number]>(`/company/applications/${application.id}`);
+      setFetchedApplication(refreshed);
+    } catch (err: any) {
+      setError(err?.message || 'Erreur lors de l\'action sur l\'entretien.');
+    } finally {
+      setInterviewBusy(false);
+    }
+  }, [application?.id, reload]);
 
   const changeStatus = useCallback(async (newStatus: string) => {
     if (!application?.id) return;
@@ -371,56 +656,39 @@ export default function ApplicationDetailsPage() {
         </div>
       </div>
 
-      {currentStatus === 'INTERVIEW' && (
-        <div style={{
-          marginTop: '1.5rem', padding: '20px', borderRadius: '14px',
-          background: interview ? (interview.mode === 'ONLINE' ? '#f5f3ff' : '#fffbeb') : '#f5f3ff',
-          border: `1px solid ${interview ? (interview.mode === 'ONLINE' ? '#ddd6fe' : '#fde68a') : '#ddd6fe'}`,
-        }}>
-          {interview ? (
-            <>
-              <h2 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 800, color: '#1a1a2e' }}>
-                📅 Entretien planifié — {interview.mode === 'ONLINE' ? 'En ligne' : 'Présentiel'}
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', fontSize: '13px', color: '#4a5568' }}>
-                {interview.scheduledAt && (
-                  <div><strong>Date</strong><br />{new Date(interview.scheduledAt).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
-                )}
-                {interview.scheduledAt && (
-                  <div><strong>Heure</strong><br />{new Date(interview.scheduledAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
-                )}
-                {interview.duration && <div><strong>Durée</strong><br />{interview.duration} min</div>}
-                {interview.mode === 'ONLINE' && interview.streamingUrl && (
-                  <div><strong>Lien</strong><br /><a href={interview.streamingUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#8b5cf6', wordBreak: 'break-all' }}>{interview.streamingUrl}</a></div>
-                )}
-                {interview.mode === 'PRESENTIEL' && interview.location && (
-                  <div><strong>Lieu</strong><br />{interview.location}</div>
-                )}
-              </div>
-              {interview.notes && (
-                <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: '#fff', fontSize: '13px', color: '#4a5568' }}>
-                  <strong>Note :</strong> {interview.notes}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <h2 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 800, color: '#1a1a2e' }}>
-                📅 Entretien
-              </h2>
-              <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>Aucun entretien planifié pour le moment.</p>
-              <button
-                type="button"
-                onClick={() => setShowInterviewForm(true)}
-                style={{
-                  marginTop: '12px', padding: '10px 18px', borderRadius: '10px', border: 'none',
-                  background: '#8b5cf6', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-                }}
-              >Planifier l'entretien</button>
-            </>
-          )}
+      {currentStatus === 'INTERVIEW' && !interview && (
+        <div className="dashboard-panel" style={{ marginTop: '1.5rem' }}>
+          <h2>📅 Entretien</h2>
+          <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>Aucun entretien planifié pour le moment.</p>
+          <button
+            type="button"
+            onClick={() => setShowInterviewForm(true)}
+            style={{
+              marginTop: '12px', padding: '10px 18px', borderRadius: '10px', border: 'none',
+              background: '#8b5cf6', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+            }}
+          >Planifier l'entretien</button>
         </div>
       )}
+
+      {currentStatus === 'INTERVIEW' && interview && (() => {
+        const opensAt = interview.scheduledAt ? new Date(new Date(interview.scheduledAt).getTime() - INTERVIEW_START_WINDOW_MINUTES * 60000) : null;
+        return (
+          <InterviewVideoCard
+            interview={interview}
+            jobTitle={application.jobTitle || application.title || interview.jobTitle || 'Entretien'}
+            online={interview.mode === 'ONLINE'}
+            meetUrl={interview.meetUrl || interview.streamingUrl || ''}
+            canStart={!opensAt || Date.now() >= opensAt.getTime()}
+            opensAt={opensAt}
+            busy={interviewBusy}
+            onStart={() => runInterviewAction('start')}
+            onFinish={() => runInterviewAction('finish')}
+            onCancel={() => runInterviewAction('cancel')}
+            onJoin={() => setShowJoinModal(true)}
+          />
+        );
+      })()}
 
       {coverLetter && (
         <div className="dashboard-panel" style={{ marginTop: '1.5rem' }}>
@@ -443,6 +711,15 @@ export default function ApplicationDetailsPage() {
             Ouvrir le CV (PDF)
           </a>
         </div>
+      )}
+
+      {showJoinModal && interview && (
+        <MeetingJoinModal
+          interview={{ ...interview, jobTitle: application.jobTitle || application.title || interview.jobTitle }}
+          companyName={data?.company?.name}
+          candidateName={name}
+          onClose={() => setShowJoinModal(false)}
+        />
       )}
     </section>
   );

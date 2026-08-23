@@ -4,3 +4,7 @@ node_modules
 
 /generated/prisma
 serviceAccountKey.json
+
+# Données personnelles : jamais dans le dépôt
+uploads/
+backups/

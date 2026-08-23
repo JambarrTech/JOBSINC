@@ -41,12 +41,18 @@ class ChatSocketService {
       StreamController<String>.broadcast();
   final StreamController<TypingEvent> _typing =
       StreamController<TypingEvent>.broadcast();
+  final StreamController<Map<String, dynamic>> _interviews =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   /// Flux des conversationId ayant reçu un nouveau message.
   Stream<String> get messageEvents => _messages.stream;
 
   /// Flux des événements « en train d'écrire » des autres participants.
   Stream<TypingEvent> get typingEvents => _typing.stream;
+
+  /// Flux des mises à jour d'entretien (démarrage, fin, annulation...).
+  /// Payload : { interviewId, applicationId, status, ... }.
+  Stream<Map<String, dynamic>> get interviewEvents => _interviews.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -90,6 +96,14 @@ class ChatSocketService {
           conversationId: conversationId,
           typing: data['typing'] == true,
         ));
+      }
+    });
+
+    socket.on('interview:update', (data) {
+      if (data is Map<String, dynamic>) {
+        _interviews.add(data);
+      } else if (data is Map) {
+        _interviews.add(Map<String, dynamic>.from(data));
       }
     });
 

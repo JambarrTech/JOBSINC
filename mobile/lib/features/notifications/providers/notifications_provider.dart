@@ -50,13 +50,10 @@ class NotificationsController extends Notifier<NotificationsState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final results = await Future.wait([
-        _repo.fetchNotifications(token),
-        _repo.fetchUnreadCount(token),
-      ]);
+      final (notifications, unreadCount) = await _repo.fetchAll(token);
       state = NotificationsState(
-        notifications: results[0] as List<AppNotification>,
-        unreadCount: results[1] as int,
+        notifications: notifications,
+        unreadCount: unreadCount,
         isLoading: false,
       );
     } catch (e) {

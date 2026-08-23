@@ -1,7 +1,7 @@
 const prisma = require('../config/prisma');
 const fs = require('fs/promises');
 const path = require('path');
-const { getMatches } = require('../services/matchingService');
+const { getMatches, getCompanyMatches, getJobMatches, computeMatch } = require('../services/matchingService');
 
 const jobInclude = { _count: { select: { applications: true } } };
 const companyInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
@@ -36,6 +36,7 @@ function companyDto(company, req) {
     website: company.website, sector: company.sector, size: company.size,
     country: company.country, city: company.city, address: company.address,
     foundedYear: company.foundedYear,
+    logo: absoluteUrl(req, company.logo) || (primary ? primary.url : null),
     images,
     photos: images.map((image) => image.url),
     image: primary ? primary.url : null,
@@ -60,12 +61,18 @@ function jobDto(job) {
     workMode: job.workMode, experience: job.experience, salaryMin: job.salaryMin,
     salaryMax: job.salaryMax, currency: job.currency, deadline: job.deadline,
     responsibilities: job.responsibilities, skills: job.skills,
+    educationLevel: job.educationLevel, minExperienceYears: job.minExperienceYears, maxExperienceYears: job.maxExperienceYears,
     applicationsCount: job._count?.applications || 0,
   };
 }
 
-function applicationDto(application) {
+function applicationDto(application, company) {
   const candidate = application.candidate;
+  // Score de pertinence calculé côté serveur (aide à la décision,
+  // jamais utilisé pour trier automatiquement ou statuer).
+  const match = application.job && candidate
+    ? computeMatch(application.job, candidate, { applicationId: application.id, company })
+    : null;
   return {
     id: application.id,
     candidateName: candidate ? `${candidate.firstName} ${candidate.lastName}`.trim() : 'Candidat',
@@ -77,6 +84,9 @@ function applicationDto(application) {
     cvUrl: application.cvUrl || null,
     coverLetter: application.coverLetter || null,
     interview: application.interview || null,
+    matchScore: match ? match.score : null,
+    matchLevel: match ? match.level : null,
+    matchLevelLabel: match ? match.levelLabel : null,
   };
 }
 
@@ -85,8 +95,9 @@ exports.dashboard = async (req, res) => {
     if (!isRecruiter(req, res)) return;
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+    const days = Math.min(Math.max(Number.parseInt(req.query.days, 10) || 30, 7), 365);
 
-    const [user, jobs, applications, receivedActions, stats, activityRaw, notifications, matches] = await Promise.all([
+    const [user, jobs, applications, receivedActions, stats, activityRaw, notifications, matches, interviews] = await Promise.all([
       prisma.user.findUnique({ where: { id: req.user.userId }, select: { id: true, email: true, role: true } }),
       prisma.job.findMany({ where: { companyId: company.id }, include: jobInclude, orderBy: { createdAt: 'desc' } }),
       prisma.application.findMany({ where: { job: { companyId: company.id } }, include: { job: true, candidate: true, interview: true }, orderBy: { createdAt: 'desc' }, take: 10 }),
@@ -99,11 +110,17 @@ exports.dashboard = async (req, res) => {
         prisma.interview.count({ where: { application: { job: { companyId: company.id } } } }),
       ]),
       prisma.application.findMany({
-        where: { job: { companyId: company.id }, createdAt: { gte: new Date(Date.now() - 29 * 86400000) } },
+        where: { job: { companyId: company.id }, createdAt: { gte: new Date(Date.now() - (days - 1) * 86400000) } },
         select: { createdAt: true },
       }),
       prisma.notification.findMany({ where: { userId: req.user.userId }, orderBy: { createdAt: 'desc' }, take: 20 }),
       getMatches(company.id).catch(() => []),
+      prisma.interview.findMany({
+        where: { application: { job: { companyId: company.id } }, status: { in: ['PLANIFIE', 'EN_COURS'] } },
+        include: { application: { include: { candidate: true, job: true } } },
+        orderBy: [{ status: 'desc' }, { scheduledAt: 'asc' }],
+        take: 5,
+      }),
     ]);
 
     const [activeJobsCount, , totalApplications, statusGroups, interviewCount] = stats;
@@ -116,7 +133,7 @@ exports.dashboard = async (req, res) => {
       buckets.set(key, (buckets.get(key) || 0) + 1);
     }
     const activity = [];
-    for (let offset = 29; offset >= 0; offset -= 1) {
+    for (let offset = days - 1; offset >= 0; offset -= 1) {
       const day = new Date(Date.now() - offset * 86400000);
       const key = day.toISOString().slice(0, 10);
       activity.push({
@@ -153,8 +170,22 @@ exports.dashboard = async (req, res) => {
       })),
       activity,
       jobs: jobs.map(jobDto),
-      applications: applications.map(applicationDto),
+      applications: applications.map((application) => applicationDto(application, company)),
       matching: matches.slice(0, 6),
+      interviews: interviews.map((item) => ({
+        id: item.id,
+        applicationId: item.applicationId,
+        status: item.status,
+        mode: item.mode,
+        scheduledAt: item.scheduledAt,
+        duration: item.duration,
+        meetUrl: item.streamingUrl || null,
+        startedAt: item.startedAt,
+        jobTitle: item.application?.job?.title || null,
+        candidateName: item.application?.candidate
+          ? `${item.application.candidate.firstName || ''} ${item.application.candidate.lastName || ''}`.trim() || 'Candidat'
+          : 'Candidat',
+      })),
       notifications: notifications.map((n) => ({ id: n.id, label: n.title, body: n.body, type: n.type, link: n.link, read: n.isRead, date: n.createdAt })),
     });
   } catch (error) {
@@ -176,18 +207,18 @@ exports.jobs = async (req, res) => {
 exports.createJob = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
-    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, responsibilities, skills } = req.body;
+    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, responsibilities, skills, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
     if (!title?.trim() || !description?.trim() || !location?.trim() || !contractType || !skills?.trim()) return res.status(400).json({ error: 'Les champs obligatoires de l’offre sont manquants.' });
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
-    const job = await prisma.job.create({ data: { companyId: company.id, title: title.trim(), description: description.trim(), location: location.trim(), jobType: types[contractType] || 'FULL_TIME', contractType, department: department || null, workMode: workMode || null, experience: experience || null, salaryMin: salaryMin === null || salaryMin === '' ? null : Number(salaryMin), salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax), currency: currency || null, deadline: deadline ? new Date(deadline) : null, responsibilities: responsibilities || null, skills: skills.trim() }, include: jobInclude });
+    const job = await prisma.job.create({ data: { companyId: company.id, title: title.trim(), description: description.trim(), location: location.trim(), jobType: types[contractType] || 'FULL_TIME', contractType, department: department || null, workMode: workMode || null, experience: experience || null, salaryMin: salaryMin === null || salaryMin === '' ? null : Number(salaryMin), salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax), currency: currency || null, deadline: deadline ? new Date(deadline) : null, responsibilities: responsibilities || null, skills: skills.trim(), educationLevel: educationLevel || null, minExperienceYears: minExperienceYears == null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)), maxExperienceYears: maxExperienceYears == null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }, include: jobInclude });
     res.status(201).json(jobDto(job));
   } catch { res.status(500).json({ error: 'Impossible de créer l’offre.' }); }
 };
 
 exports.applications = async (req, res) => {
-  try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); const applications = await prisma.application.findMany({ where: { job: { companyId: company.id } }, include: { job: true, candidate: true, interview: true }, orderBy: { createdAt: 'desc' } }); res.json(applications.map(applicationDto)); }
+  try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); const applications = await prisma.application.findMany({ where: { job: { companyId: company.id } }, include: { job: true, candidate: true, interview: true }, orderBy: { createdAt: 'desc' } }); res.json(applications.map((application) => applicationDto(application, company))); }
   catch { res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
 };
 
@@ -201,7 +232,7 @@ exports.applicationDetail = async (req, res) => {
       include: { job: true, candidate: true, interview: true },
     });
     if (!application) return res.status(404).json({ error: 'Candidature introuvable.' });
-    res.json(applicationDto(application));
+    res.json(applicationDto(application, company));
   } catch (error) {
     console.error('Erreur applicationDetail:', error);
     res.status(500).json({ error: 'Impossible de charger la candidature.' });
@@ -258,6 +289,24 @@ exports.uploadImage = async (req, res) => {
   }
 };
 
+exports.uploadLogo = async (req, res) => {
+  try {
+    if (!isRecruiter(req, res)) return;
+    if (!req.companyLogo) return res.status(400).json({ error: 'Aucun logo fourni.' });
+    const company = await getCompany(req.user.userId);
+    if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+    if (company.logo) {
+      const oldPath = path.resolve(__dirname, '../..', company.logo);
+      await fs.unlink(oldPath).catch(() => {});
+    }
+    const updated = await prisma.company.update({ where: { id: company.id }, data: { logo: req.companyLogo.url }, include: companyInclude });
+    res.json(companyDto(updated, req));
+  } catch (error) {
+    console.error('Erreur uploadLogo:', error);
+    res.status(500).json({ error: "Impossible d'uploader le logo." });
+  }
+};
+
 exports.deleteImage = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
@@ -296,7 +345,7 @@ exports.updateJob = async (req, res) => {
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const job = await prisma.job.findFirst({ where: { id: req.params.id, companyId: company.id } });
     if (!job) return res.status(404).json({ error: 'Offre introuvable.' });
-    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, responsibilities, skills, isOpen } = req.body;
+    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
     const updated = await prisma.job.update({
       where: { id: job.id },
@@ -314,6 +363,9 @@ exports.updateJob = async (req, res) => {
         ...(deadline !== undefined && { deadline: deadline ? new Date(deadline) : null }),
         ...(responsibilities !== undefined && { responsibilities }),
         ...(skills !== undefined && { skills: skills.trim() }),
+        ...(educationLevel !== undefined && { educationLevel }),
+        ...(minExperienceYears !== undefined && { minExperienceYears: minExperienceYears === null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)) }),
+        ...(maxExperienceYears !== undefined && { maxExperienceYears: maxExperienceYears === null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }),
         ...(isOpen !== undefined && { isOpen: Boolean(isOpen) }),
       },
       include: jobInclude,
@@ -381,10 +433,27 @@ exports.matching = async (req, res) => {
     if (!isRecruiter(req, res)) return;
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
-    const matches = await getMatches(company.id);
+    const { minScore, jobId, skill, location, contractType } = req.query;
+    const matches = await getCompanyMatches(company.id, { minScore, jobId, skill, location, contractType }, company);
     res.json(matches);
   } catch (error) {
     console.error('Erreur matching:', error);
     res.status(500).json({ error: 'Impossible de charger les correspondances.' });
+  }
+};
+
+// Recommandations pour une offre précise : /api/company/jobs/:id/matches?minScore=70
+exports.jobMatches = async (req, res) => {
+  try {
+    if (!isRecruiter(req, res)) return;
+    const company = await getCompany(req.user.userId);
+    if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+    const { minScore, skill, location, contractType } = req.query;
+    const matches = await getJobMatches(company.id, req.params.id, { minScore, skill, location, contractType }, company);
+    if (!matches) return res.status(404).json({ error: 'Offre introuvable.' });
+    res.json(matches);
+  } catch (error) {
+    console.error('Erreur jobMatches:', error);
+    res.status(500).json({ error: 'Impossible de charger les recommandations de cette offre.' });
   }
 };

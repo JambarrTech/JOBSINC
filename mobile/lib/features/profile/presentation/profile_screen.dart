@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/validators.dart';
+import '../../../core/widgets/app_text_field.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/candidate_provider.dart';
 
@@ -110,16 +112,56 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  void _openEditSheet() {
+    final user = ref.read(authProvider).user;
+    final profile = ref.read(candidateProfileProvider).valueOrNull;
+
+    String pick(String? a, String? b) =>
+        (a?.trim().isNotEmpty == true ? a : b)?.trim() ?? '';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _ProfileEditSheet(
+        initialFirstName: pick(profile?.firstName, user?.firstName),
+        initialLastName: pick(profile?.lastName, user?.lastName),
+        initialPhone: pick(profile?.phone, user?.phone),
+        initialCountry: pick(profile?.country, user?.country),
+        initialCity: pick(profile?.city, user?.city),
+        initialSkills: pick(profile?.skills, user?.skills),
+        initialExperienceYears:
+            profile?.experienceYears?.toString() ?? '',
+        initialEducationLevel: profile?.educationLevel ?? '',
+        initialEducationField: profile?.educationField ?? '',
+        initialDesiredContracts: profile?.desiredContracts ?? '',
+        initialAvailableFrom: profile?.availableFrom == null
+            ? ''
+            : profile!.availableFrom!.toIso8601String().substring(0, 10),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
     final profileAsync = ref.watch(candidateProfileProvider);
     final profile = profileAsync.valueOrNull;
+    final isFetching = profileAsync.isLoading;
 
-    final name = [user?.firstName, user?.lastName]
-        .whereType<String>()
-        .where((value) => value.trim().isNotEmpty)
-        .join(' ');
+    String pick(String? a, String? b) =>
+        ((a?.trim().isNotEmpty == true ? a : b) ?? '').trim();
+
+    final firstName = pick(profile?.firstName, user?.firstName);
+    final lastName = pick(profile?.lastName, user?.lastName);
+    final phone = pick(profile?.phone, user?.phone);
+    final country = pick(profile?.country, user?.country);
+    final city = pick(profile?.city, user?.city);
+
+    final name = [firstName, lastName].where((value) => value.isNotEmpty).join(' ');
     final displayName = name.isEmpty ? 'Utilisateur JOBSINC' : name;
     final initials = displayName
         .split(' ')
@@ -135,22 +177,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             .split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
+            .toSet()
             .toList()
         : <String>[];
 
     final fields = [
-      (user?.firstName ?? '').isNotEmpty,
-      (user?.lastName ?? '').isNotEmpty,
+      firstName.isNotEmpty,
+      lastName.isNotEmpty,
       (user?.email ?? '').isNotEmpty,
-      (user?.phone ?? '').isNotEmpty,
-      (user?.country ?? '').isNotEmpty,
-      (user?.city ?? '').isNotEmpty,
+      phone.isNotEmpty,
+      country.isNotEmpty,
+      city.isNotEmpty,
       user?.photoUrl?.isNotEmpty == true,
       cvUrl?.isNotEmpty == true,
       skills.isNotEmpty,
     ];
     final completedFields = fields.where((f) => f).length;
     final completion = (completedFields / fields.length * 100).round();
+
+    final missingHints = <String>[
+      if (user?.photoUrl?.isNotEmpty != true) 'votre photo',
+      if (cvUrl?.isNotEmpty != true) 'votre CV',
+      if (!fields[3]) 'votre téléphone',
+      if (!fields[4]) 'votre pays',
+      if (!fields[5]) 'votre ville',
+      if (!fields[8]) 'vos compétences',
+    ];
+    final hint = missingHints.isEmpty
+        ? 'Profil complet : maximisez vos chances auprès des recruteurs !'
+        : 'Complétez ${missingHints.take(2).join(' et ')} pour améliorer votre visibilité.';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
@@ -161,6 +216,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 fontWeight: FontWeight.w800,
                 color: AppColors.text)),
         const SizedBox(height: 18),
+
+        // ── Carte identité ────────────────────────────────────────────
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -227,21 +284,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             fontWeight: FontWeight.w800,
                             color: AppColors.text),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.employee
-                            ? 'Collaborateur JOBSINC'
-                            : 'Candidat en recherche d\'opportunités',
-                        style: const TextStyle(
-                            color: AppColors.secondaryText),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: widget.employee
+                              ? AppColors.turquoise.withValues(alpha: .14)
+                              : AppColors.primary.withValues(alpha: .10),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          widget.employee
+                              ? 'Collaborateur JOBSINC'
+                              : 'Candidat',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: widget.employee
+                                ? AppColors.turquoise
+                                : AppColors.primary,
+                          ),
+                        ),
                       ),
                       if (user?.email.isNotEmpty == true) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          user!.email,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.secondaryText),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(Icons.alternate_email,
+                                size: 13, color: AppColors.secondaryText),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                user!.email,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.secondaryText),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ],
@@ -249,18 +331,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
                 IconButton(
                   tooltip: 'Modifier le profil',
-                  onPressed: () => ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(
-                    content: Text(
-                        'La modification sera reliée au backend.'),
-                  )),
-                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: _openEditSheet,
+                  icon: const Icon(Icons.edit_outlined,
+                      color: AppColors.primary),
                 ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 14),
+
+        // ── Complétion du profil ──────────────────────────────────────
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -287,13 +368,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     value: completion / 100,
                     minHeight: 8,
                     backgroundColor: AppColors.border,
-                    color: AppColors.primary,
+                    color: completion >= 80
+                        ? AppColors.success
+                        : AppColors.primary,
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Ajoutez vos expériences et votre CV pour améliorer votre visibilité.',
-                  style: TextStyle(
+                Text(
+                  hint,
+                  style: const TextStyle(
                       fontSize: 12, color: AppColors.secondaryText),
                 ),
               ],
@@ -301,9 +384,66 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 14),
+
+        // ── Informations personnelles ─────────────────────────────────
+        _ProfileSection(
+          title: 'Informations personnelles',
+          icon: Icons.person_outline,
+          action: IconButton(
+            tooltip: 'Modifier les informations',
+            onPressed: _openEditSheet,
+            icon: const Icon(Icons.edit_outlined,
+                size: 20, color: AppColors.primary),
+          ),
+          child: isFetching && profile == null
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              : Column(
+                  children: [
+                    _InfoRow(
+                        icon: Icons.badge_outlined,
+                        label: 'Prénom',
+                        value: firstName),
+                    _InfoRow(
+                        icon: Icons.badge_outlined,
+                        label: 'Nom',
+                        value: lastName),
+                    _InfoRow(
+                        icon: Icons.phone_outlined,
+                        label: 'Téléphone',
+                        value: phone,
+                        onTap: phone.isEmpty ? null : () {}),
+                    _InfoRow(
+                        icon: Icons.public_outlined,
+                        label: 'Pays',
+                        value: country),
+                    _InfoRow(
+                        icon: Icons.location_city_outlined,
+                        label: 'Ville',
+                        value: city),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 12),
+
+        // ── Compétences ───────────────────────────────────────────────
         _ProfileSection(
           title: 'Compétences',
           icon: Icons.auto_awesome_outlined,
+          action: IconButton(
+            tooltip: 'Modifier les compétences',
+            onPressed: _openEditSheet,
+            icon: const Icon(Icons.edit_outlined,
+                size: 20, color: AppColors.primary),
+          ),
           child: skills.isEmpty
               ? const Text(
                   'Aucune compétence renseignée.',
@@ -323,6 +463,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
         ),
         const SizedBox(height: 12),
+
+        // ── CV et documents ───────────────────────────────────────────
         _ProfileSection(
           title: 'CV et documents',
           icon: Icons.description_outlined,
@@ -392,24 +534,397 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 }
 
+// Ligne d'information : icône + libellé + valeur (ou mention vide).
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = value.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: .08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 17, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .3,
+                        color: AppColors.secondaryText)),
+                const SizedBox(height: 2),
+                Text(
+                  hasValue ? value : 'Non renseigné',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: hasValue
+                          ? AppColors.text
+                          : AppColors.secondaryText
+                              .withValues(alpha: .7)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProfileSection extends StatelessWidget {
-  const _ProfileSection({required this.title, required this.icon, required this.child});
+  const _ProfileSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+    this.action,
+  });
   final String title;
   final IconData icon;
   final Widget child;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+        padding: const EdgeInsets.fromLTRB(18, 16, 10, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [Icon(icon, color: AppColors.primary), const SizedBox(width: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text))]),
+            Row(children: [
+              Icon(icon, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text)),
+              ),
+              if (action != null) action!,
+            ]),
             const SizedBox(height: 12),
-            child,
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: child,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Formulaire d'édition affiché en bottom sheet.
+class _ProfileEditSheet extends ConsumerStatefulWidget {
+  const _ProfileEditSheet({
+    required this.initialFirstName,
+    required this.initialLastName,
+    required this.initialPhone,
+    required this.initialCountry,
+    required this.initialCity,
+    required this.initialSkills,
+    required this.initialExperienceYears,
+    required this.initialEducationLevel,
+    required this.initialEducationField,
+    required this.initialDesiredContracts,
+    required this.initialAvailableFrom,
+  });
+
+  final String initialFirstName;
+  final String initialLastName;
+  final String initialPhone;
+  final String initialCountry;
+  final String initialCity;
+  final String initialSkills;
+  final String initialExperienceYears;
+  final String initialEducationLevel;
+  final String initialEducationField;
+  final String initialDesiredContracts;
+  final String initialAvailableFrom;
+
+  @override
+  ConsumerState<_ProfileEditSheet> createState() => _ProfileEditSheetState();
+}
+
+class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstName =
+      TextEditingController(text: widget.initialFirstName);
+  late final TextEditingController _lastName =
+      TextEditingController(text: widget.initialLastName);
+  late final TextEditingController _phone =
+      TextEditingController(text: widget.initialPhone);
+  late final TextEditingController _country =
+      TextEditingController(text: widget.initialCountry);
+  late final TextEditingController _city =
+      TextEditingController(text: widget.initialCity);
+  late final TextEditingController _skills =
+      TextEditingController(text: widget.initialSkills);
+  late final TextEditingController _experienceYears =
+      TextEditingController(text: widget.initialExperienceYears);
+  late final TextEditingController _educationLevel =
+      TextEditingController(text: widget.initialEducationLevel);
+  late final TextEditingController _educationField =
+      TextEditingController(text: widget.initialEducationField);
+  late final TextEditingController _desiredContracts =
+      TextEditingController(text: widget.initialDesiredContracts);
+  late final TextEditingController _availableFrom =
+      TextEditingController(text: widget.initialAvailableFrom);
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _firstName.dispose();
+    _lastName.dispose();
+    _phone.dispose();
+    _country.dispose();
+    _city.dispose();
+    _skills.dispose();
+    _experienceYears.dispose();
+    _educationLevel.dispose();
+    _educationField.dispose();
+    _desiredContracts.dispose();
+    _availableFrom.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // Compétences : nettoyage (trim, dédoublonnage en conservant l'ordre).
+    final seen = <String>{};
+    final cleanedSkills = _skills.text
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty && seen.add(s.toLowerCase()))
+        .toList();
+
+    final experienceYears = int.tryParse(_experienceYears.text.trim());
+
+    setState(() => _saving = true);
+
+    final error = await ref
+        .read(candidateProfileControllerProvider.notifier)
+        .updateProfile(
+          firstName: _firstName.text.trim(),
+          lastName: _lastName.text.trim(),
+          phone: _phone.text.trim(),
+          country: _country.text.trim(),
+          city: _city.text.trim(),
+          skills: cleanedSkills.join(', '),
+          experienceYears: experienceYears,
+          educationLevel: _educationLevel.text.trim(),
+          educationField: _educationField.text.trim(),
+          desiredContracts: _desiredContracts.text.trim(),
+          availableFrom: DateTime.tryParse(_availableFrom.text.trim()),
+        );
+
+    if (!mounted) return;
+
+    setState(() => _saving = false);
+
+    Navigator.of(context).pop();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      error != null
+          ? SnackBar(
+              content: Text(error), backgroundColor: AppColors.error)
+          : const SnackBar(
+              content: Text('Profil mis à jour avec succès.'),
+              backgroundColor: AppColors.green,
+            ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 12,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Modifier mon profil',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.text),
+                ),
+                const SizedBox(height: 18),
+                AppTextField(
+                  label: 'Prénom',
+                  controller: _firstName,
+                  prefixIcon: Icons.badge_outlined,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  validator: (v) => Validators.name(v, label: 'Le prénom'),
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Nom',
+                  controller: _lastName,
+                  prefixIcon: Icons.badge_outlined,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  validator: (v) => Validators.name(v, label: 'Le nom'),
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Téléphone',
+                  controller: _phone,
+                  prefixIcon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  validator: Validators.phone,
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Pays',
+                  controller: _country,
+                  prefixIcon: Icons.public_outlined,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Ville',
+                  controller: _city,
+                  prefixIcon: Icons.location_city_outlined,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Compétences',
+                  controller: _skills,
+                  prefixIcon: Icons.auto_awesome_outlined,
+                  hintText: 'Ex : Flutter, React, Figma',
+                  textInputAction: TextInputAction.done,
+                ),
+                const SizedBox(height: 6),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Séparez vos compétences par des virgules.',
+                    style: TextStyle(
+                        fontSize: 11, color: AppColors.secondaryText),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Expérience (années)',
+                  controller: _experienceYears,
+                  prefixIcon: Icons.work_history_outlined,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  hintText: 'Ex : 3',
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Niveau de formation',
+                  controller: _educationLevel,
+                  prefixIcon: Icons.school_outlined,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  hintText: 'Ex : Bac+2, Licence, Master…',
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Domaine de formation',
+                  controller: _educationField,
+                  prefixIcon: Icons.menu_book_outlined,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  hintText: 'Ex : Informatique, Génie logiciel…',
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Contrats recherchés',
+                  controller: _desiredContracts,
+                  prefixIcon: Icons.handshake_outlined,
+                  textInputAction: TextInputAction.next,
+                  hintText: 'Ex : CDI, CDD, Stage',
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  label: 'Disponible à partir du',
+                  controller: _availableFrom,
+                  prefixIcon: Icons.event_outlined,
+                  keyboardType: TextInputType.datetime,
+                  textInputAction: TextInputAction.done,
+                  hintText: 'AAAA-MM-JJ (vide = non précisé)',
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _saving ? null : _save,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.check_rounded, size: 20),
+                    label: Text(_saving ? 'Enregistrement...' : 'Enregistrer'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -18,7 +18,7 @@ const messageRoutes = require('./src/routes/messageRoutes');
 const conversationRoutes = require('./src/routes/conversationRoutes');
 const deviceRoutes = require('./src/routes/deviceRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
-const { authLimiter } = require('./src/middlewares/rateLimit');
+const { globalLimiter, authLimiter } = require('./src/middlewares/rateLimit');
 
 const app = express();
 
@@ -51,6 +51,12 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '1mb' }));
+
+// Limiteur global appliqué à toute l'API (le limiter auth plus strict
+// reste en place sur /api/auth). Les fichiers statiques /uploads ne
+// passent pas par ce limiter pour ne pas pénaliser le chargement d'images.
+app.use('/api', globalLimiter);
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes API

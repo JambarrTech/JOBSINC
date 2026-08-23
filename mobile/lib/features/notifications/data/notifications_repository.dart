@@ -5,18 +5,14 @@ class NotificationsRepository {
   NotificationsRepository({ApiClient? api}) : _api = api ?? ApiClient();
   final ApiClient _api;
 
-  Future<List<AppNotification>> fetchNotifications(String token) async {
+  Future<(List<AppNotification>, int)> fetchAll(String token) async {
     final response = await _api.get('/notifications', token: token);
     final list = (response['data'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(AppNotification.fromJson)
         .toList(growable: false);
-    return list;
-  }
-
-  Future<int> fetchUnreadCount(String token) async {
-    final response = await _api.get('/notifications', token: token);
-    return (response['unreadCount'] as num?)?.toInt() ?? 0;
+    final unreadCount = (response['unreadCount'] as num?)?.toInt() ?? 0;
+    return (list, unreadCount);
   }
 
   Future<void> markAsRead(String token, String id) async {
