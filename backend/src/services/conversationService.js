@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
-const { notifyNewMessage } = require('./socketService');
+const { notifyNewMessage, isUserConnected } = require('./socketService');
+const pushService = require('./pushService');
 
 // ============================================================
 // CONVERSATION SERVICE
@@ -326,6 +327,20 @@ exports.sendMessage = async function sendMessage(user, conversationId, rawConten
   // Temps réel : prévient les clients connectés (room conversation +
   // room du destinataire) après la persistance.
   notifyNewMessage(conversation.id, receiverId);
+
+  // Push FCM uniquement si le destinataire n'est pas connecté en
+  // temps réel (sinon le socket suffit et éviterait les doublons).
+  if (!isUserConnected(receiverId)) {
+    const senderName =
+      user.userId === conversation.companyUserId ? companyNameOf(conversation) : participantNameOf(conversation);
+    pushService
+      .sendToUser(
+        receiverId,
+        { title: senderName, body: validation.content.substring(0, 120) },
+        { conversationId: conversation.id, type: 'MESSAGE' },
+      )
+      .catch(() => {});
+  }
 
   return { message: serializeMessage(message, user.userId), receiverId };
 };

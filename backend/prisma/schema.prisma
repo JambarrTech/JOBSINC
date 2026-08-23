@@ -34,8 +34,22 @@ model User {
   receivedMessages   Message[] @relation("Receiver")
   createdConversations Conversation[] @relation("Creator")
   candidateConversations Conversation[] @relation("Candidate")
+  deviceTokens       DeviceToken[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
+}
+
+// Tokens FCM des appareils, pour le push quand l'utilisateur est hors ligne.
+model DeviceToken {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  token     String   @unique
+  platform  String   @default("android")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 enum NotificationType {

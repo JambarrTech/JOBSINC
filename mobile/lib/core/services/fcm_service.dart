@@ -1,0 +1,93 @@
+import 'dart:io' show Platform;
+
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+import 'api_client.dart';
+import 'chat_socket_service.dart';
+import 'local_notification_service.dart';
+
+/// Push FCM : permission, token, enregistrement backend et affichage
+/// des messages reçus en avant-plan (arrière-plan/app tuée = tray
+/// système automatique grâce au payload `notification`).
+class FcmService {
+  FcmService._();
+
+  static String? _registeredApiToken;
+  static String? _lastToken;
+
+  /// À appeler à chaque session authentifiée (idempotent).
+  static Future<void> initAndRegister(String apiToken) async {
+    if (apiToken.isEmpty) return;
+    try {
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      // Canal partagé avec les notifications locales.
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      messaging.onTokenRefresh.listen((token) => _register(apiToken, token));
+
+      final token = await messaging.getToken();
+      if (token != null) {
+        _lastToken = token;
+        await _register(apiToken, token);
+        _registeredApiToken = apiToken;
+      }
+    } catch (_) {
+      // Firebase indisponible (émulateur sans services, clé absente…)
+      // : jamais bloquant pour l'application.
+    }
+  }
+
+  /// Désenregistre l'appareil à la déconnexion (best effort).
+  static Future<void> unregister() async {
+    final apiToken = _registeredApiToken;
+    final fcmToken = _lastToken;
+    if (apiToken == null || fcmToken == null) return;
+    try {
+      await ApiClient()
+          .post('/devices/unregister', {'token': fcmToken}, token: apiToken);
+    } catch (_) {}
+    _registeredApiToken = null;
+  }
+
+  static Future<void> _register(String apiToken, String fcmToken) async {
+    try {
+      final platform = Platform.isIOS ? 'ios' : 'android';
+      await ApiClient().post(
+        '/devices/register',
+        {'token': fcmToken, 'platform': platform},
+        token: apiToken,
+      );
+    } catch (_) {
+      // Retenté au prochain onTokenRefresh / login.
+    }
+  }
+
+  /// Message FCM reçu pendant que l'app est en PREMIER plan :
+  /// le socket gère déjà la synchro, on n'affiche une notification
+  /// locale QUE si l'utilisateur n'a pas la conversation ouverte.
+  static void handleForegroundMessage(RemoteMessage message) {
+    final conversationId = message.data['conversationId'];
+    if (conversationId is String &&
+        conversationId.isNotEmpty &&
+        ChatSocketService.instance.viewingConversationId == conversationId) {
+      return;
+    }
+    final notification = message.notification;
+    if (notification == null) return;
+    LocalNotificationService.instance.showMessage(
+      title: notification.title ?? 'Nouveau message',
+      body: notification.body ?? '',
+      payload: conversationId is String ? conversationId : null,
+    );
+  }
+}

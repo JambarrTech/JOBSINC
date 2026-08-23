@@ -16,6 +16,7 @@ const notificationRoutes = require('./src/routes/notificationRoutes');
 const statsRoutes = require('./src/routes/statsRoutes');
 const messageRoutes = require('./src/routes/messageRoutes');
 const conversationRoutes = require('./src/routes/conversationRoutes');
+const deviceRoutes = require('./src/routes/deviceRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const { authLimiter } = require('./src/middlewares/rateLimit');
 
@@ -64,6 +65,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/company/messages', messageRoutes);
 app.use('/api/conversations', conversationRoutes);
+app.use('/api/devices', deviceRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use((error, req, res, next) => {
@@ -82,6 +84,9 @@ const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 const socketService = require('./src/services/socketService');
 socketService.init(server, corsOrigins);
+
+// Push FCM (no-op si la clé de service est absente).
+require('./src/services/pushService').init();
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Serveur démarré sur http://0.0.0.0:${PORT} (Socket.IO actif)`);

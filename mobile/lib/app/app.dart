@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../core/services/chat_socket_service.dart';
+import '../core/services/fcm_service.dart';
 import '../core/services/local_notification_service.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/messages/providers/messages_provider.dart';
@@ -44,7 +45,10 @@ class _JobsincAppState extends ConsumerState<JobsincApp> {
       final token = next.user?.token;
       if (token != null && token.isNotEmpty) {
         ChatSocketService.instance.connect(token);
+        // Enregistre l'appareil pour le push FCM (idempotent).
+        FcmService.initAndRegister(token);
       } else if (next.user == null) {
+        FcmService.unregister();
         ChatSocketService.instance.disconnect();
       }
     }, fireImmediately: true);

@@ -111,6 +111,14 @@ function getIO() {
   return io;
 }
 
+// Un utilisateur est « en ligne » s'il a au moins un socket connecté.
+// Utilisé pour décider d'envoyer (ou non) une notification push FCM.
+function isUserConnected(userId) {
+  if (!io || !userId) return false;
+  const room = io.sockets.adapter.rooms.get(`user:${userId}`);
+  return Boolean(room && room.size > 0);
+}
+
 // Prévient les clients concernés qu'un nouveau message est arrivé.
 // Le destinataire reçoit l'événement même s'il n'a pas ouvert la
 // conversation (room user:<id>) afin de rafraîchir listes/badges.
@@ -123,4 +131,4 @@ function notifyNewMessage(conversationId, receiverUserId) {
   }
 }
 
-module.exports = { init, getIO, notifyNewMessage };
+module.exports = { init, getIO, notifyNewMessage, isUserConnected };
