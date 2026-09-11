@@ -27,15 +27,15 @@ class _RecruiterDashboardScreenState extends ConsumerState<RecruiterDashboardScr
     return AppShell(
       currentIndex: _tab,
       onDestinationSelected: (value) => setState(() => _tab = value),
-      employee: true,
+      recruiter: true,
       body: _buildBody(displayName),
     );
   }
 
   Widget _buildBody(String displayName) {
     if (_tab == 1) return const RecruiterApplicationsScreen();
-    if (_tab == 3) return const MessagesScreen();
-    if (_tab == 2 || _tab == 4) return const ProfileScreen(employee: true);
+    if (_tab == 2) return const MessagesScreen(isCompanySide: true);
+    if (_tab == 3) return const ProfileScreen();
 
     final dashboard = ref.watch(recruiterDashboardProvider);
 

@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
+
+import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../applications/presentation/application_flow_screen.dart';
 import '../../applications/providers/applications_provider.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../models/job_offer.dart';
+import '../providers/saved_jobs_provider.dart';
+import '../providers/similar_jobs_provider.dart';
+import '../widgets/job_feed_card.dart';
 
 class JobDetailScreen extends ConsumerStatefulWidget {
   const JobDetailScreen({super.key, required this.offer});
@@ -16,12 +23,40 @@ class JobDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
+  bool _isSaved = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(applyProvider.notifier).reset();
+      if (mounted) {
+        ref.read(applyProvider.notifier).reset();
+        _checkSaved();
+      }
     });
+  }
+
+  Future<void> _checkSaved() async {
+    final token = ref.read(authProvider).user?.token;
+    if (token == null || widget.offer.id == null) return;
+    try {
+      final response = await ApiClient().get(
+        '/saved-jobs/check?jobIds=${widget.offer.id}',
+        token: token,
+      );
+      final saved = response['saved'] as Map<String, dynamic>? ?? {};
+      if (mounted) setState(() => _isSaved = saved[widget.offer.id] == true);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleSave() async {
+    final token = ref.read(authProvider).user?.token;
+    if (token == null || widget.offer.id == null) return;
+    final result = await toggleSavedJob(ApiClient(), token, widget.offer.id!);
+    if (mounted) {
+      setState(() => _isSaved = result);
+      ref.invalidate(savedJobsProvider);
+    }
   }
 
   void _confirmApply() {
@@ -54,6 +89,15 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: _toggleSave,
+            icon: Icon(
+              _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+              color: _isSaved ? AppColors.primary : AppColors.secondaryText,
+            ),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
@@ -156,6 +200,15 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
 
           const SizedBox(height: 28),
 
+          // Offres similaires
+          if (widget.offer.id != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _SimilarJobsSection(jobId: widget.offer.id!),
+            ),
+
+          const SizedBox(height: 20),
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: SizedBox(
@@ -199,12 +252,14 @@ class _CompanyProfileHeader extends StatelessWidget {
           if (offer.companyLogo != null && offer.companyLogo!.isNotEmpty)
             ClipRRect(
               borderRadius: BorderRadius.circular(20),
-              child: Image.network(
-                offer.companyLogo!,
+              child: CachedNetworkImage(
+                imageUrl: ApiClient.resolveUrl(offer.companyLogo!),
                 width: 80,
                 height: 80,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _logoFallback(),
+                memCacheWidth: 80,
+                memCacheHeight: 80,
+                errorWidget: (_, __, ___) => _logoFallback(),
               ),
             )
           else
@@ -418,6 +473,78 @@ class _DetailChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ============================================================
+// SIMILAR JOBS SECTION
+// ============================================================
+
+class _SimilarJobsSection extends ConsumerWidget {
+  const _SimilarJobsSection({required this.jobId});
+  final String jobId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final similar = ref.watch(similarJobsProvider(jobId));
+    return similar.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (data) {
+        if (data.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.background),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Offres similaires',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.text,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${data.length} offre${data.length > 1 ? 's' : ''} correspondant à ton profil',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.secondaryText,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ...data.take(3).map(
+                    (offer) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: JobFeedCard(
+                        offer: offer,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => JobDetailScreen(offer: offer),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

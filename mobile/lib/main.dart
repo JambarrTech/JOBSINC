@@ -17,7 +17,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp();
-    // Messages reçus app ouverte en premier plan.
+    FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
     FirebaseMessaging.onMessage.listen(FcmService.handleForegroundMessage);
   } catch (_) {
     // Firebase indisponible : l'app fonctionne sans push.

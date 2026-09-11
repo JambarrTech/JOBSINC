@@ -201,9 +201,17 @@ class CandidateProfileController
     try {
       final api = ApiClient();
       final bytes = await file.readAsBytes();
+      final fileName = file.path.split(RegExp(r'[/\\]')).last;
+      final ext = fileName.split('.').last.toLowerCase();
+      final mediaType = switch (ext) {
+        'png' => MediaType('image', 'png'),
+        'gif' => MediaType('image', 'gif'),
+        'webp' => MediaType('image', 'webp'),
+        _ => MediaType('image', 'jpeg'),
+      };
       final multipartFile = http.MultipartFile.fromBytes('avatar', bytes,
-          filename: 'avatar.jpg',
-          contentType: MediaType('image', 'jpeg'));
+          filename: fileName,
+          contentType: mediaType);
       final response = await api.postMultipart(
         '/candidate/avatar',
         {},

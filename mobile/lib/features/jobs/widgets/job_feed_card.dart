@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
+
+import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/pressable_button.dart';
 import '../models/job_offer.dart';
 import 'date_helpers.dart';
 
@@ -124,7 +128,7 @@ class JobFeedCard extends StatelessWidget {
                     Semantics(
                       label: 'Sauvegarder cette offre',
                       button: true,
-                      child: _PressableButton(
+                      child: PressableButton(
                         child: IconButton(
                           onPressed: onSave,
                           icon: const Icon(
@@ -207,7 +211,7 @@ class JobFeedCard extends StatelessWidget {
               // Action button
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                child: _PressableButton(
+                child: PressableButton(
                   child: FilledButton.icon(
                     onPressed: onTap,
                     icon: const Icon(Icons.arrow_forward_rounded, size: 18),
@@ -229,35 +233,6 @@ class JobFeedCard extends StatelessWidget {
   }
 }
 
-class _PressableButton extends StatefulWidget {
-  const _PressableButton({required this.child});
-  final Widget child;
-
-  @override
-  State<_PressableButton> createState() => _PressableButtonState();
-}
-
-class _PressableButtonState extends State<_PressableButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Opacity(
-          opacity: _pressed ? 0.8 : 1.0,
-          child: widget.child,
-        ),
-      ),
-    );
-  }
-}
-
 class _CompanyAvatar extends StatelessWidget {
   const _CompanyAvatar({
     required this.logoUrl,
@@ -273,12 +248,14 @@ class _CompanyAvatar extends StatelessWidget {
     if (logoUrl != null && logoUrl!.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(size / 2),
-        child: Image.network(
-          logoUrl!,
+        child: CachedNetworkImage(
+          imageUrl: ApiClient.resolveUrl(logoUrl!),
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallbackAvatar(),
+          memCacheWidth: size.toInt(),
+          memCacheHeight: size.toInt(),
+          errorWidget: (_, __, ___) => _fallbackAvatar(),
         ),
       );
     }

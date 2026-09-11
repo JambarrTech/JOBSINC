@@ -289,7 +289,7 @@ class _CreateJobSheetState extends ConsumerState<_CreateJobSheet> {
               _Field(label: 'Département', controller: _departmentCtrl, hint: 'Technologie'),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                initialValue: _selectedContract,
+                value: _selectedContract,
                 decoration: _inputDecoration('Type de contrat *'),
                 items: _contractTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setState(() => _selectedContract = v),
@@ -297,7 +297,7 @@ class _CreateJobSheetState extends ConsumerState<_CreateJobSheet> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _selectedWorkMode,
+                value: _selectedWorkMode,
                 decoration: _inputDecoration('Mode de travail'),
                 items: _workModes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setState(() => _selectedWorkMode = v),

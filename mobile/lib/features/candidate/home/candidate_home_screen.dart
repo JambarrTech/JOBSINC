@@ -7,20 +7,26 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
+
 import '../../../core/services/api_client.dart';
 import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../../core/widgets/pressable_button.dart';
 import '../../applications/presentation/applications_screen.dart';
 import '../../applications/providers/applications_provider.dart';
+import '../../applications/providers/upcoming_interviews_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../jobs/models/job_offer.dart';
 import '../../jobs/presentation/job_detail_screen.dart';
 import '../../jobs/presentation/offers_screen.dart';
+import '../../jobs/providers/saved_jobs_provider.dart';
 import '../../jobs/widgets/job_feed_card.dart';
 import '../../messages/presentation/messages_screen.dart';
 import '../../notifications/providers/notifications_provider.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../profile/providers/candidate_stats_provider.dart';
 import 'data/home_repository.dart';
 import 'providers/home_provider.dart';
 
@@ -173,59 +179,104 @@ class _HomeContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+    return Column(
       children: [
-        HomeHeader(
-          firstName: firstName,
-          photoUrl: photoUrl,
-          searchController: searchController,
-          unreadCount: unreadCount,
-          onSearchSubmit: onSearchSubmit,
-          onProfileTap: onOpenProfile,
-          onNotificationsTap: () {
-            context.push('/candidate/notifications');
-          },
-        ),
-
-        const SizedBox(height: 20),
-
-        // 🔴 Bandeau entretien en cours (priorité absolue sur le reste).
-        const _LiveInterviewBanner(),
-
-        if (data.jobs.isNotEmpty) ...[
-          _SectionHeader(
-            title: 'Offres recommandées',
-            subtitle: 'Basé sur ton profil',
-            actionLabel: 'Voir tout',
-            filledAction: true,
-            onAction: onSearchSubmit,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: HomeHeader(
+            firstName: firstName,
+            photoUrl: photoUrl,
+            searchController: searchController,
+            unreadCount: unreadCount,
+            onSearchSubmit: onSearchSubmit,
+            onProfileTap: onOpenProfile,
+            onNotificationsTap: () {
+              context.push('/candidate/notifications');
+            },
           ),
-          const SizedBox(height: 12),
-          ...data.jobs.take(2).map(
-                (offer) => Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: JobFeedCard(
-                    offer: offer,
-                    onTap: () => _openJobDetail(context, offer),
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+            children: [
+              // 🔴 Bandeau entretien en cours (priorité absolue sur le reste).
+              const _LiveInterviewBanner(),
+
+              // 📅 Entretiens à venir
+              const _UpcomingInterviewsSection(),
+
+              // 🏢 Entreprises suggérées
+              if (data.companies.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const _SectionHeader(
+                  title: 'Entreprises à découvrir',
+                  subtitle: 'Explore les entreprises',
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 130,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: data.companies.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final company = data.companies[index];
+                      return _CompanyChip(company: company);
+                    },
                   ),
                 ),
-              ),
-        ],
+              ],
 
-        if (data.jobs.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 40),
-            child: EmptyState(
-              icon: Icons.work_outline_rounded,
-              message: 'Aucune offre pour le moment.',
-              actionLabel: 'Explorer les offres',
-              onAction: onSearchSubmit,
-            ),
+              if (data.jobs.isNotEmpty) ...[
+                _SectionHeader(
+                  title: 'Offres recommandées',
+                  subtitle: 'Basé sur ton profil',
+                  actionLabel: 'Voir tout',
+                  filledAction: true,
+                  onAction: onSearchSubmit,
+                ),
+                const SizedBox(height: 12),
+                ...data.jobs.take(3).map(
+                      (offer) => Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: JobFeedCard(
+                          offer: offer,
+                          onTap: () => _openJobDetail(context, offer),
+                          onSave: () async {
+                            final token = ref.read(authProvider).user?.token;
+                            if (token == null || offer.id == null) return;
+                            await toggleSavedJob(ApiClient(), token, offer.id!);
+                            ref.invalidate(savedJobsProvider);
+                          },
+                        ),
+                      ),
+                    ),
+              ],
+
+              if (data.jobs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 40),
+                  child: EmptyState(
+                    icon: Icons.work_outline_rounded,
+                    message: 'Aucune offre pour le moment.',
+                    actionLabel: 'Explorer les offres',
+                    onAction: onSearchSubmit,
+                  ),
+                ),
+
+              // 💾 Offres sauvegardées
+              const _SavedJobsSection(),
+
+              // 💡 Conseils & tips
+              const SizedBox(height: 10),
+              const _TipsSection(),
+
+              const SizedBox(height: 18),
+            ],
           ),
-
-        const SizedBox(height: 18),
+        ),
       ],
     );
   }
@@ -594,12 +645,14 @@ class _UserAvatar extends StatelessWidget {
         height: 50,
         decoration: const BoxDecoration(shape: BoxShape.circle),
         child: ClipOval(
-          child: Image.network(
-            ApiClient.resolveUrl(photoUrl!),
+          child: CachedNetworkImage(
+            imageUrl: ApiClient.resolveUrl(photoUrl!),
             width: 50,
             height: 50,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _initialsAvatar(),
+            memCacheWidth: 50,
+            memCacheHeight: 50,
+            errorWidget: (_, __, ___) => _initialsAvatar(),
           ),
         ),
       );
@@ -786,39 +839,6 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ============================================================
-// PRESSABLE BUTTON
-// ============================================================
-
-class _PressableButton extends StatefulWidget {
-  const _PressableButton({required this.child});
-  final Widget child;
-
-  @override
-  State<_PressableButton> createState() => _PressableButtonState();
-}
-
-class _PressableButtonState extends State<_PressableButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Opacity(
-          opacity: _pressed ? 0.8 : 1.0,
-          child: widget.child,
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
 // COMPANIES
 // ============================================================
 
@@ -909,7 +929,7 @@ class CompanyFeedCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  _PressableButton(
+                  PressableButton(
                     child: OutlinedButton(
                       onPressed: onViewOffers,
                       style: OutlinedButton.styleFrom(
@@ -943,12 +963,14 @@ class _CompanyAvatar extends StatelessWidget {
     if (logoUrl != null && logoUrl!.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(size / 2),
-        child: Image.network(
-          ApiClient.resolveUrl(logoUrl!),
+        child: CachedNetworkImage(
+          imageUrl: ApiClient.resolveUrl(logoUrl!),
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallback(),
+          memCacheWidth: size.toInt(),
+          memCacheHeight: size.toInt(),
+          errorWidget: (_, __, ___) => _fallback(),
         ),
       );
     }
@@ -1023,7 +1045,7 @@ class EmptyState extends StatelessWidget {
           if (actionLabel != null && onAction != null)
             Padding(
               padding: const EdgeInsets.only(top: 5),
-              child: _PressableButton(
+              child: PressableButton(
                 child: TextButton(
                   onPressed: onAction,
                   child: Text(actionLabel!),
@@ -1071,19 +1093,28 @@ class _HomeSkeletonState extends State<HomeSkeleton>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        return ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
+        return Column(
           children: [
-            _buildHeaderSkeleton(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: _buildHeaderSkeleton(),
+            ),
             const SizedBox(height: 20),
-            _buildBannerSkeleton(),
-            const SizedBox(height: 20),
-            _buildSectionSkeleton(),
-            const SizedBox(height: 14),
-            _buildCardSkeleton(),
-            const SizedBox(height: 14),
-            _buildCardSkeleton(),
+            Expanded(
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                children: [
+                  _buildBannerSkeleton(),
+                  const SizedBox(height: 20),
+                  _buildSectionSkeleton(),
+                  const SizedBox(height: 14),
+                  _buildCardSkeleton(),
+                  const SizedBox(height: 14),
+                  _buildCardSkeleton(),
+                ],
+              ),
+            ),
           ],
         );
       },
@@ -1194,6 +1225,531 @@ class _HomeLoadError extends StatelessWidget {
           onAction: onRetry,
         ),
       ],
+    );
+  }
+}
+
+// ============================================================
+// PROFILE STATS SECTION
+// ============================================================
+
+class ProfileStatsSection extends ConsumerWidget {
+  const ProfileStatsSection({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stats = ref.watch(candidateStatsProvider);
+    return stats.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (data) {
+        if (data.totalApplications == 0 && data.profileCompletion == 0) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.background),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ton espace candidat',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.text,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    StatItem(
+                      icon: Icons.send_outlined,
+                      value: '${data.totalApplications}',
+                      label: 'Candidatures',
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    StatItem(
+                      icon: Icons.videocam_outlined,
+                      value: '${data.interviewCount}',
+                      label: 'Entretiens',
+                      color: const Color(0xFF8B5CF6),
+                    ),
+                    const SizedBox(width: 12),
+                    StatItem(
+                      icon: Icons.check_circle_outline,
+                      value: '${data.acceptedCount}',
+                      label: 'Acceptés',
+                      color: const Color(0xFF10B981),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    StatItem(
+                      icon: Icons.bookmark_outline,
+                      value: '${data.savedCount}',
+                      label: 'Sauvegardés',
+                      color: const Color(0xFFF59E0B),
+                    ),
+                    const SizedBox(width: 12),
+                    StatItem(
+                      icon: Icons.trending_up_rounded,
+                      value: '${data.interviewRate}%',
+                      label: 'Taux entretien',
+                      color: const Color(0xFF3B82F6),
+                    ),
+                    const SizedBox(width: 12),
+                    StatItem(
+                      icon: Icons.person_outline,
+                      value: '${data.profileCompletion}%',
+                      label: 'Profil',
+                      color: const Color(0xFFEC4899),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class StatItem extends StatelessWidget {
+  const StatItem({super.key,
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .06),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.secondaryText,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// UPCOMING INTERVIEWS SECTION
+// ============================================================
+
+class _UpcomingInterviewsSection extends ConsumerWidget {
+  const _UpcomingInterviewsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final interviews = ref.watch(upcomingInterviewsProvider);
+    return interviews.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (data) {
+        if (data.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SectionHeader(
+                title: 'Entretiens à venir',
+                subtitle: '${data.length} planifié${data.length > 1 ? 's' : ''}',
+              ),
+              const SizedBox(height: 12),
+              ...data.map(
+                (app) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _UpcomingInterviewCard(application: app),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _UpcomingInterviewCard extends StatelessWidget {
+  const _UpcomingInterviewCard({required this.application});
+  final HomeApplication application;
+
+  @override
+  Widget build(BuildContext context) {
+    final interview = application.interview;
+    final scheduledAt = interview?.scheduledAt;
+    final dateStr = scheduledAt != null
+        ? DateFormat('EEEE d MMMM', 'fr').format(scheduledAt)
+        : '';
+    final timeStr = scheduledAt != null
+        ? DateFormat('HH:mm', 'fr').format(scheduledAt)
+        : '';
+    final isOnline = interview?.isOnline ?? true;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.background),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B5CF6).withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.videocam_outlined,
+              color: Color(0xFF8B5CF6),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  application.jobTitle ?? 'Entretien',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.text,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${application.companyName ?? ''} · ${isOnline ? 'En ligne' : 'Présentiel'}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.secondaryText,
+                  ),
+                ),
+                if (dateStr.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '$dateStr à $timeStr',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF8B5CF6),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: AppColors.secondaryText.withValues(alpha: .5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// SAVED JOBS SECTION
+// ============================================================
+
+class _SavedJobsSection extends ConsumerWidget {
+  const _SavedJobsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final saved = ref.watch(savedJobsProvider);
+    return saved.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (data) {
+        if (data.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SectionHeader(
+                title: 'Sauvegardées',
+                subtitle: '${data.length} offre${data.length > 1 ? 's' : ''}',
+              ),
+              const SizedBox(height: 12),
+              ...data.take(3).map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: JobFeedCard(
+                    offer: entry.job,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => JobDetailScreen(offer: entry.job),
+                        ),
+                      );
+                    },
+                    onSave: () async {
+                      final token = ref.read(authProvider).user?.token;
+                      if (token == null || entry.job.id == null) return;
+                      await toggleSavedJob(ApiClient(), token, entry.job.id!);
+                      ref.invalidate(savedJobsProvider);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ============================================================
+// COMPANY CHIP (horizontal scroll)
+// ============================================================
+
+class _CompanyChip extends StatelessWidget {
+  const _CompanyChip({required this.company});
+  final HomeCompany company;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 110,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.background),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (company.logoUrl != null && company.logoUrl!.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(
+                imageUrl: ApiClient.resolveUrl(company.logoUrl!),
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                memCacheWidth: 40,
+                memCacheHeight: 40,
+                errorWidget: (_, __, ___) => _companyFallback(),
+              ),
+            )
+          else
+            _companyFallback(),
+          const SizedBox(height: 8),
+          Text(
+            company.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.text,
+              height: 1.3,
+            ),
+          ),
+          if (company.sector != null && company.sector!.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              company.sector!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.secondaryText,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _companyFallback() {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(
+        Icons.business_outlined,
+        color: AppColors.primary,
+        size: 20,
+      ),
+    );
+  }
+}
+
+// ============================================================
+// TIPS SECTION (static)
+// ============================================================
+
+class _TipsSection extends StatelessWidget {
+  const _TipsSection();
+
+  static const _tips = [
+    _Tip(
+      icon: Icons.description_outlined,
+      title: 'Soigne ton CV',
+      subtitle: 'Un CV clair et structuré augmente tes chances de 40%.',
+      color: Color(0xFF3B82F6),
+    ),
+    _Tip(
+      icon: Icons.psychology_outlined,
+      title: 'Prépare tes entretiens',
+      subtitle: 'Renseigne-toi sur l\'entreprise et prépare tes réponses.',
+      color: Color(0xFF8B5CF6),
+    ),
+    _Tip(
+      icon: Icons.notifications_active_outlined,
+      title: 'Active les alertes',
+      subtitle: 'Ne rate aucune opportunité en configurant tes alertes.',
+      color: Color(0xFFF59E0B),
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(
+          title: 'Conseils',
+          subtitle: 'Pour booster ta recherche',
+        ),
+        const SizedBox(height: 12),
+        ..._tips.map(
+          (tip) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _TipCard(tip: tip),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Tip {
+  const _Tip({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+}
+
+class _TipCard extends StatelessWidget {
+  const _TipCard({required this.tip});
+  final _Tip tip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.background),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: tip.color.withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(tip.icon, color: tip.color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tip.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.text,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  tip.subtitle,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.secondaryText,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

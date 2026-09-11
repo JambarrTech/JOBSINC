@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
+
 import '../../../core/services/api_client.dart';
 import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -126,8 +128,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   // ------------------------------------------------------------
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (mounted) _sync();
+    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted && !ChatSocketService.instance.isConnected) _sync();
     });
   }
 
@@ -415,7 +417,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
   String _headerSubtitle(Conversation conversation) {
     final job = conversation.jobTitle?.trim() ?? '';
     if (job.isNotEmpty) return job;
-    return conversation.applicationStatus ?? 'Messagerie JOBSYNC';
+    return conversation.applicationStatus ?? 'Messagerie JOBSINC';
   }
 }
 
@@ -455,12 +457,13 @@ class _DateSeparator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final dateOnly = DateTime(date.year, date.month, date.day);
     String label;
-    if (_isToday(date, now)) {
+    if (dateOnly == today) {
       label = "Aujourd'hui";
-    } else if (date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day - 1) {
+    } else if (dateOnly == yesterday) {
       label = 'Hier';
     } else {
       label = DateFormat('dd MMMM yyyy', 'fr').format(date);
@@ -485,9 +488,6 @@ class _DateSeparator extends StatelessWidget {
       ),
     );
   }
-
-  bool _isToday(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -676,7 +676,7 @@ class _HeaderAvatar extends StatelessWidget {
       radius: 18,
       backgroundColor: AppColors.navy,
       backgroundImage:
-          hasPhoto ? NetworkImage(ApiClient.resolveUrl(conversation.avatarUrl!)) : null,
+          hasPhoto ? CachedNetworkImageProvider(ApiClient.resolveUrl(conversation.avatarUrl!)) : null,
       child: hasPhoto
           ? null
           : Text(

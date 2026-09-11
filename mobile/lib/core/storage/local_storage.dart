@@ -1,14 +1,23 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/storage_keys.dart';
 
 class LocalStorage {
-  LocalStorage(this._preferences);
+  LocalStorage(this._preferences, this._secureStorage);
   final SharedPreferences _preferences;
+  final FlutterSecureStorage _secureStorage;
 
-  static Future<LocalStorage> create() async => LocalStorage(await SharedPreferences.getInstance());
+  static const _secureStorageStatic = FlutterSecureStorage();
+
+  static Future<LocalStorage> create() async {
+    final prefs = await SharedPreferences.getInstance();
+    return LocalStorage(prefs, _secureStorageStatic);
+  }
+
   bool get onboardingCompleted => _preferences.getBool(StorageKeys.onboardingCompleted) ?? false;
   Future<void> setOnboardingCompleted(bool value) => _preferences.setBool(StorageKeys.onboardingCompleted, value);
-  String? get authToken => _preferences.getString(StorageKeys.authToken);
+
+  Future<String?> get authToken async => await _secureStorage.read(key: StorageKeys.authToken);
   String? get userId => _preferences.getString(StorageKeys.userId);
   String? get accountStatus => _preferences.getString(StorageKeys.accountStatus) ?? _preferences.getString(StorageKeys.userRole);
   String? get firstName => _preferences.getString(StorageKeys.firstName);
@@ -25,7 +34,7 @@ class LocalStorage {
   String? get cvUrl => _preferences.getString(StorageKeys.cvUrl);
 
   Future<void> saveSession({required String token, required String id, required String status, required String firstName, String? lastName, String? email, String? phone, DateTime? birthDate, String? country, String? city, String? photoUrl, String? cvUrl}) async {
-    await _preferences.setString(StorageKeys.authToken, token);
+    await _secureStorage.write(key: StorageKeys.authToken, value: token);
     await _preferences.setString(StorageKeys.userId, id);
     await _preferences.setString(StorageKeys.accountStatus, status);
     await _preferences.setString(StorageKeys.firstName, firstName);
@@ -40,7 +49,7 @@ class LocalStorage {
   }
 
   Future<void> clearSession() async {
-    await _preferences.remove(StorageKeys.authToken);
+    await _secureStorage.delete(key: StorageKeys.authToken);
     await _preferences.remove(StorageKeys.userId);
     await _preferences.remove(StorageKeys.accountStatus);
     await _preferences.remove(StorageKeys.userRole);

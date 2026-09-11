@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/services/api_client.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
@@ -23,10 +24,11 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
+  bool _navigated = false;
+
   @override
   void initState() {
     super.initState();
-
     _bootstrap();
   }
 
@@ -35,7 +37,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     await ref.read(authProvider.notifier).initialize();
 
-    if (!mounted) return;
+    if (!mounted || _navigated) return;
+    _navigated = true;
 
     final auth = ref.read(authProvider);
 
@@ -318,6 +321,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     if (user.status == AccountStatus.candidate) {
       context.go('/candidate/home');
+    } else if (user.status == AccountStatus.recruiter) {
+      context.go('/recruiter/dashboard');
     } else {
       context.go('/employee/dashboard');
     }
@@ -389,6 +394,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: const Text('Inscription'),
                 ),
               ],
+            ),
+            TextButton(
+              onPressed: () => context.go('/register/company'),
+              child: const Text(
+                'Inscription entreprise',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
             ),
           ],
         ),
@@ -765,7 +777,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          initialValue: country,
+          value: country,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Pays *',
@@ -1162,6 +1174,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final email = TextEditingController();
 
   bool submitted = false;
+  bool isLoading = false;
+  String? error;
 
   @override
   void dispose() {
@@ -1169,14 +1183,36 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!formKey.currentState!.validate()) {
       return;
     }
 
     setState(() {
-      submitted = true;
+      isLoading = true;
+      error = null;
     });
+
+    try {
+      final api = ApiClient();
+      await api.post('/auth/forgot-password', {
+        'email': email.text.trim(),
+      });
+      setState(() {
+        submitted = true;
+        isLoading = false;
+      });
+    } on ApiException catch (e) {
+      setState(() {
+        error = e.message;
+        isLoading = false;
+      });
+    } catch (_) {
+      setState(() {
+        error = 'La connexion au serveur est indisponible.';
+        isLoading = false;
+      });
+    }
   }
 
   @override
@@ -1197,14 +1233,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             ),
             const SizedBox(height: 24),
             AppButton(
-              label: 'Envoyer le lien',
-              onPressed: _submit,
+              label: isLoading ? 'Envoi en cours...' : 'Envoyer le lien',
+              onPressed: isLoading ? null : _submit,
             ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(
+                  error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.error),
+                ),
+              ),
             if (submitted)
               const Padding(
                 padding: EdgeInsets.only(top: 16),
                 child: Text(
-                  'Votre demande est prête à être envoyée.',
+                  'Si cet email existe, un lien de réinitialisation a été envoyé.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.success,
@@ -1360,6 +1405,127 @@ class _AuthButton extends ConsumerWidget {
           : () {
               onPressed();
             },
+    );
+  }
+}
+
+// ============================================================
+// COMPANY REGISTER
+// ============================================================
+
+class CompanyRegisterScreen extends ConsumerStatefulWidget {
+  const CompanyRegisterScreen({super.key});
+
+  @override
+  ConsumerState<CompanyRegisterScreen> createState() => _CompanyRegisterScreenState();
+}
+
+class _CompanyRegisterScreenState extends ConsumerState<CompanyRegisterScreen> {
+  final formKey = GlobalKey<FormState>();
+  final companyName = TextEditingController();
+  final email = TextEditingController();
+  final password = TextEditingController();
+  final confirmation = TextEditingController();
+
+  @override
+  void dispose() {
+    companyName.dispose();
+    email.dispose();
+    password.dispose();
+    confirmation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!formKey.currentState!.validate()) return;
+    final ok = await ref.read(authProvider.notifier).registerCompany(
+          companyName: companyName.text,
+          email: email.text,
+          password: password.text,
+        );
+    if (!mounted) return;
+    if (ok) context.go('/recruiter/dashboard');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.primary,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.business_center_rounded, size: 56, color: Colors.white),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Inscription Entreprise',
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Créez votre compte recruteur',
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 32),
+                  AppTextField(
+                    label: 'Nom de l\'entreprise *',
+                    controller: companyName,
+                    prefixIcon: Icons.business_rounded,
+                    textInputAction: TextInputAction.next,
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Le nom est obligatoire.' : null,
+                  ),
+                  const SizedBox(height: 14),
+                  AppTextField(
+                    label: 'Email *',
+                    controller: email,
+                    prefixIcon: Icons.email_outlined,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    validator: Validators.email,
+                  ),
+                  const SizedBox(height: 14),
+                  AppPasswordField(
+                    label: 'Mot de passe *',
+                    controller: password,
+                    textInputAction: TextInputAction.next,
+                    validator: (v) => v == null || v.length < 8 ? '8 caractères minimum.' : null,
+                  ),
+                  const SizedBox(height: 14),
+                  AppPasswordField(
+                    label: 'Confirmer le mot de passe *',
+                    controller: confirmation,
+                    textInputAction: TextInputAction.done,
+                    validator: (v) => v != password.text ? 'Les mots de passe ne correspondent pas.' : null,
+                  ),
+                  const SizedBox(height: 24),
+                  _AuthButton(
+                    label: 'Créer mon compte',
+                    loadingLabel: 'Création...',
+                    onPressed: _submit,
+                    ref: ref,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Déjà un compte ?', style: TextStyle(color: Colors.white)),
+                      TextButton(
+                        onPressed: () => context.go('/login'),
+                        child: const Text('Se connecter'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -27,7 +27,7 @@ class NotificationsState {
       notifications: notifications ?? this.notifications,
       unreadCount: unreadCount ?? this.unreadCount,
       isLoading: isLoading ?? this.isLoading,
-      error: error,
+      error: error ?? this.error,
     );
   }
 }
