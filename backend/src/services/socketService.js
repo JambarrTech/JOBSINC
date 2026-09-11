@@ -40,12 +40,18 @@ function init(httpServer, corsOrigins) {
     },
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token;
       if (!token || !process.env.JWT_SECRET) return next(new Error('unauthorized'));
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       if (!decoded?.userId) return next(new Error('unauthorized'));
+
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { tokenVersion: true } });
+      if (!user || user.tokenVersion !== decoded.tokenVersion) {
+        return next(new Error('session_revoked'));
+      }
+
       socket.data.userId = decoded.userId;
       socket.data.role = decoded.role || null;
       return next();

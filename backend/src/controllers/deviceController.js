@@ -19,9 +19,14 @@ exports.register = async (req, res) => {
     }
     const platform = PLATFORMS.has(req.body?.platform) ? req.body.platform : 'android';
 
+    const existing = await prisma.deviceToken.findUnique({ where: { token } });
+    if (existing && existing.userId !== req.user.userId) {
+      return res.status(409).json({ error: 'Ce token est déjà associé à un autre compte.' });
+    }
+
     await prisma.deviceToken.upsert({
       where: { token },
-      update: { userId: req.user.userId, platform },
+      update: { platform },
       create: { token, userId: req.user.userId, platform },
     });
     res.json({ message: 'Appareil enregistré.' });

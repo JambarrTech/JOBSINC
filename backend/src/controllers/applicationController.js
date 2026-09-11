@@ -37,12 +37,14 @@ exports.create = async (req, res) => {
   try {
     if (req.user.role !== 'CANDIDATE') return res.status(403).json({ error: 'Seuls les candidats peuvent postuler.' });
     const candidate = await candidateFor(req.user.userId); if (!candidate) return res.status(409).json({ error: 'Profil candidat incomplet.' });
-    const job = await prisma.job.findFirst({ where: { id: req.params.jobId, isOpen: true, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] } }); if (!job) return res.status(404).json({ error: 'Offre introuvable ou fermée.' });
+    const job = await prisma.job.findFirst({ where: { id: req.params.jobId, isOpen: true, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] }, include: { company: true } }); if (!job) return res.status(404).json({ error: 'Offre introuvable ou fermée.' });
     const { cvUrl, coverLetter } = req.body;
-    if (!cvUrl || !cvUrl.trim()) return res.status(400).json({ error: 'Le lien du CV est obligatoire.' });
-    if (!coverLetter || !coverLetter.trim()) return res.status(400).json({ error: 'La lettre de motivation est obligatoire.' });
+    const cvUrlStr = String(cvUrl || '').trim();
+    const coverLetterStr = String(coverLetter || '').trim();
+    if (!cvUrlStr) return res.status(400).json({ error: 'Le lien du CV est obligatoire.' });
+    if (!coverLetterStr) return res.status(400).json({ error: 'La lettre de motivation est obligatoire.' });
     const application = await prisma.application.create({
-      data: { jobId: job.id, candidateProfileId: candidate.id, cvUrl: cvUrl.trim(), coverLetter: coverLetter.trim() },
+      data: { jobId: job.id, candidateProfileId: candidate.id, cvUrl: cvUrlStr, coverLetter: coverLetterStr },
       include: { job: { include: { company: true } }, candidate: true },
     });
 
@@ -67,18 +69,33 @@ exports.mine = async (req, res) => {
   try {
     const candidate = await candidateFor(req.user.userId);
     if (!candidate) return res.json({ data: [] });
-    const values = await prisma.application.findMany({
-      where: { candidateProfileId: candidate.id },
-      include: { job: { include: { company: true } }, candidate: true, interview: true },
-      orderBy: { createdAt: 'desc' },
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const where = { candidateProfileId: candidate.id };
+    const [values, total] = await Promise.all([
+      prisma.application.findMany({
+        where,
+        include: { job: { include: { company: true } }, candidate: true, interview: true },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.application.count({ where }),
+    ]);
+
+    res.json({
+      data: values.map(dto),
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
-    res.json({ data: values.map(dto) });
   } catch (_) { res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
 };
 
 exports.updateStatus = async (req, res) => {
   try {
-    if (req.user.role !== 'RECRUITER') return res.status(403).json({ error: 'Cet espace est réservé aux recruteurs.' });
+    if (req.user.role !== 'RECRUITER' && req.user.role !== 'ADMIN') return res.status(403).json({ error: 'Cet espace est réservé aux recruteurs.' });
     const status = req.body.status;
     if (!['UNDER_REVIEW', 'INTERVIEW', 'ACCEPTED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Statut de candidature invalide.' });
 

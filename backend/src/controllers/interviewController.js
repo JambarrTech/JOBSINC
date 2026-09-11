@@ -90,7 +90,7 @@ async function loadAuthorizedContext(req, applicationId) {
   if (!req.user?.userId) return {};
   const role = req.user.role;
 
-  if (role === 'RECRUITER' || role === 'EMPLOYER' || role === 'ADMIN') {
+  if (role === 'RECRUITER' || role === 'ADMIN') {
     const company = await prisma.company.findUnique({ where: { userId: req.user.userId } });
     if (!company) return {};
     const application = await prisma.application.findFirst({
@@ -354,17 +354,19 @@ exports.cancel = async (req, res) => {
 
 exports.listCompany = async (req, res) => {
   try {
-    if (req.user.role !== 'RECRUITER' && req.user.role !== 'EMPLOYER' && req.user.role !== 'ADMIN') {
+    if (req.user.role !== 'RECRUITER' && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Cet espace est réservé aux recruteurs.' });
     }
     const company = await prisma.company.findUnique({ where: { userId: req.user.userId } });
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
-    const interviews = await prisma.interview.findMany({
-      where: { application: { job: { companyId: company.id } } },
-      include: interviewInclude,
-      orderBy: [{ status: 'asc' }, { scheduledAt: 'desc' }],
-    });
-    res.json(interviews.map((item) => interviewDto(item)));
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+    const [rows, total] = await Promise.all([
+      prisma.interview.findMany({ where: { application: { job: { companyId: company.id } } }, include: interviewInclude, orderBy: [{ status: 'asc' }, { scheduledAt: 'desc' }], skip, take: limit }),
+      prisma.interview.count({ where: { application: { job: { companyId: company.id } } } }),
+    ]);
+    res.json({ data: rows.map((item) => interviewDto(item)), pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error('Erreur liste entretiens entreprise:', error);
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });
@@ -376,12 +378,14 @@ exports.listCandidate = async (req, res) => {
     if (req.user.role !== 'CANDIDATE' && req.user.role !== 'EMPLOYEE') {
       return res.status(403).json({ error: 'Accès réservé aux candidats.' });
     }
-    const interviews = await prisma.interview.findMany({
-      where: { application: { candidate: { userId: req.user.userId } } },
-      include: interviewInclude,
-      orderBy: [{ status: 'asc' }, { scheduledAt: 'desc' }],
-    });
-    res.json(interviews.map((item) => interviewDto(item)));
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+    const [rows, total] = await Promise.all([
+      prisma.interview.findMany({ where: { application: { candidate: { userId: req.user.userId } } }, include: interviewInclude, orderBy: [{ status: 'asc' }, { scheduledAt: 'desc' }], skip, take: limit }),
+      prisma.interview.count({ where: { application: { candidate: { userId: req.user.userId } } } }),
+    ]);
+    res.json({ data: rows.map((item) => interviewDto(item)), pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error('Erreur liste entretiens candidat:', error);
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });
@@ -391,9 +395,22 @@ exports.listCandidate = async (req, res) => {
 exports.getByApplication = async (req, res) => {
   try {
     const { id } = req.params;
+
+    const application = await prisma.application.findUnique({
+      where: { id },
+      include: { job: { include: { company: { select: { userId: true } } } }, candidate: { select: { userId: true } } },
+    });
+    if (!application) return res.status(404).json({ error: 'Candidature introuvable.' });
+
+    const isRecruiter = req.user.role === 'RECRUITER' && application.job?.company?.userId === req.user.userId;
+    const isCandidate = (req.user.role === 'CANDIDATE' || req.user.role === 'EMPLOYEE') && application.candidate?.userId === req.user.userId;
+    if (!isRecruiter && !isCandidate && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Accès refusé.' });
+    }
+
     const interview = await prisma.interview.findUnique({ where: { applicationId: id } });
     if (!interview) return res.status(404).json({ error: 'Aucun entretien planifié.' });
-    res.json(interviewDto({ ...interview, application: null }));
+    res.json(interviewDto({ ...interview, application }));
   } catch (error) {
     res.status(500).json({ error: 'Impossible de charger l\'entretien.' });
   }

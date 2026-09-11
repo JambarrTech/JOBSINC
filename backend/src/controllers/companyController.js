@@ -2,12 +2,24 @@ const prisma = require('../config/prisma');
 const fs = require('fs/promises');
 const path = require('path');
 const { getMatches, getCompanyMatches, getJobMatches, computeMatch } = require('../services/matchingService');
+const { getCached, setCache } = require('../utils/cache');
 
 const jobInclude = { _count: { select: { applications: true } } };
 const companyInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
 
+function paginate(req) {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+}
+
+function paginated(data, total, page, limit) {
+  return { data, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+}
+
 function isRecruiter(req, res) {
-  if (req.user?.role !== 'RECRUITER') {
+  if (req.user?.role !== 'RECRUITER' && req.user?.role !== 'ADMIN') {
     res.status(403).json({ error: 'Cet espace est réservé aux recruteurs.' });
     return false;
   }
@@ -16,6 +28,14 @@ function isRecruiter(req, res) {
 
 async function getCompany(userId) {
   return prisma.company.findUnique({ where: { userId }, include: companyInclude });
+}
+
+async function resolveCompany(userId, role) {
+  let company = await prisma.company.findUnique({ where: { userId }, include: companyInclude });
+  if (!company && role === 'ADMIN') {
+    company = await prisma.company.findFirst({ include: companyInclude });
+  }
+  return company;
 }
 
 function absoluteUrl(req, value) {
@@ -45,11 +65,41 @@ function companyDto(company, req) {
 
 exports.listPublic = async (req, res) => {
   try {
-    const companies = await prisma.company.findMany({ include: companyInclude, orderBy: { createdAt: 'desc' } });
-    return res.json({ success: true, data: companies.map((company) => ({ ...companyDto(company, req), location: [company.city, company.country].filter(Boolean).join(', ') || null })) });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const [companies, total] = await Promise.all([
+      prisma.company.findMany({ include: companyInclude, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.company.count(),
+    ]);
+
+    return res.json({
+      success: true,
+      data: companies.map((company) => ({ ...companyDto(company, req), location: [company.city, company.country].filter(Boolean).join(', ') || null })),
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error) {
     console.error('Erreur entreprises publiques:', error);
     return res.status(500).json({ success: false, error: 'Impossible de charger les entreprises.' });
+  }
+};
+
+exports.publicCompanyJobs = async (req, res) => {
+  try {
+    const company = await prisma.company.findUnique({ where: { id: req.params.id } });
+    if (!company) return res.status(404).json({ error: 'Entreprise introuvable.' });
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+    const [rows, total] = await Promise.all([
+      prisma.job.findMany({ where: { companyId: company.id, isOpen: true }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.job.count({ where: { companyId: company.id, isOpen: true } }),
+    ]);
+    res.json({ data: rows.map((j) => ({ id: j.id, title: j.title, location: j.location, contractType: j.contractType, jobType: j.jobType, createdAt: j.createdAt })), pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
+  } catch (error) {
+    console.error('Erreur publicCompanyJobs:', error);
+    res.status(500).json({ error: 'Impossible de charger les offres.' });
   }
 };
 
@@ -93,12 +143,17 @@ function applicationDto(application, company) {
 exports.dashboard = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
-    const company = await getCompany(req.user.userId);
+    const company = await resolveCompany(req.user.userId, req.user.role);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+
+    const cacheKey = `company:dashboard:${company.id}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
     const days = Math.min(Math.max(Number.parseInt(req.query.days, 10) || 30, 7), 365);
 
-    const [user, jobs, applications, receivedActions, stats, activityRaw, notifications, matches, interviews] = await Promise.all([
-      prisma.user.findUnique({ where: { id: req.user.userId }, select: { id: true, email: true, role: true } }),
+    const [companyUser, jobs, applications, receivedActions, stats, activityRaw, notifications, matches, interviews] = await Promise.all([
+      prisma.user.findUnique({ where: { id: company.userId }, select: { id: true, email: true, role: true } }),
       prisma.job.findMany({ where: { companyId: company.id }, include: jobInclude, orderBy: { createdAt: 'desc' } }),
       prisma.application.findMany({ where: { job: { companyId: company.id } }, include: { job: true, candidate: true, interview: true }, orderBy: { createdAt: 'desc' }, take: 10 }),
       prisma.application.findMany({ where: { job: { companyId: company.id }, status: 'RECEIVED' }, include: { job: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
@@ -143,12 +198,13 @@ exports.dashboard = async (req, res) => {
       });
     }
 
-    res.json({
+    const result = {
       user: {
-        id: user?.id || req.user.userId,
-        email: user?.email || null,
+        id: companyUser?.id || req.user.userId,
+        email: companyUser?.email || null,
         role: req.user.role,
         name: company.name,
+        avatar: company.logo || null,
       },
       company: companyDto(company, req),
       stats: {
@@ -187,7 +243,10 @@ exports.dashboard = async (req, res) => {
           : 'Candidat',
       })),
       notifications: notifications.map((n) => ({ id: n.id, label: n.title, body: n.body, type: n.type, link: n.link, read: n.isRead, date: n.createdAt })),
-    });
+    };
+
+    setCache(cacheKey, result, 30000);
+    res.json(result);
   } catch (error) {
     console.error('Erreur dashboard:', error);
     res.status(500).json({ error: 'Impossible de charger le tableau de bord.' });
@@ -195,13 +254,25 @@ exports.dashboard = async (req, res) => {
 };
 
 exports.profile = async (req, res) => {
-  try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); res.json(companyDto(company, req)); }
+  try { if (!isRecruiter(req, res)) return; const company = await resolveCompany(req.user.userId, req.user.role); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); res.json(companyDto(company, req)); }
   catch { res.status(500).json({ error: 'Impossible de charger le profil entreprise.' }); }
 };
 
 exports.jobs = async (req, res) => {
-  try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); const jobs = await prisma.job.findMany({ where: { companyId: company.id }, include: jobInclude, orderBy: { createdAt: 'desc' } }); res.json(jobs.map(jobDto)); }
-  catch { res.status(500).json({ error: 'Impossible de charger les offres.' }); }
+  try {
+    if (!isRecruiter(req, res)) return;
+    const company = await getCompany(req.user.userId);
+    if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+
+    const { page, limit, skip } = paginate(req);
+    const where = { companyId: company.id };
+    const [jobs, total] = await Promise.all([
+      prisma.job.findMany({ where, include: jobInclude, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.job.count({ where }),
+    ]);
+
+    res.json(paginated(jobs.map(jobDto), total, page, limit));
+  } catch { res.status(500).json({ error: 'Impossible de charger les offres.' }); }
 };
 
 exports.createJob = async (req, res) => {
@@ -218,8 +289,17 @@ exports.createJob = async (req, res) => {
 };
 
 exports.applications = async (req, res) => {
-  try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); const applications = await prisma.application.findMany({ where: { job: { companyId: company.id } }, include: { job: true, candidate: true, interview: true }, orderBy: { createdAt: 'desc' } }); res.json(applications.map((application) => applicationDto(application, company))); }
-  catch { res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
+  try {
+    if (!isRecruiter(req, res)) return;
+    const company = await getCompany(req.user.userId);
+    if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.application.findMany({ where: { job: { companyId: company.id } }, include: { job: true, candidate: true, interview: true }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.application.count({ where: { job: { companyId: company.id } } }),
+    ]);
+    res.json(paginated(rows.map((a) => applicationDto(a, company)), total, page, limit));
+  } catch { res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
 };
 
 exports.applicationDetail = async (req, res) => {
@@ -242,7 +322,7 @@ exports.applicationDetail = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
-    const company = await getCompany(req.user.userId);
+    const company = await resolveCompany(req.user.userId, req.user.role);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const { name, description, website, sector, size, country, city, address, foundedYear } = req.body;
     const updated = await prisma.company.update({
@@ -293,10 +373,10 @@ exports.uploadLogo = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
     if (!req.companyLogo) return res.status(400).json({ error: 'Aucun logo fourni.' });
-    const company = await getCompany(req.user.userId);
+    const company = await resolveCompany(req.user.userId, req.user.role);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     if (company.logo) {
-      const oldPath = path.resolve(__dirname, '../..', company.logo);
+      const oldPath = path.join(__dirname, '../..', company.logo);
       await fs.unlink(oldPath).catch(() => {});
     }
     const updated = await prisma.company.update({ where: { id: company.id }, data: { logo: req.companyLogo.url }, include: companyInclude });
@@ -314,7 +394,7 @@ exports.deleteImage = async (req, res) => {
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const image = await prisma.companyImage.findFirst({ where: { id: req.params.id, companyId: company.id } });
     if (!image) return res.status(404).json({ error: 'Image introuvable.' });
-    const filePath = path.resolve(__dirname, '../..', image.url);
+    const filePath = path.join(__dirname, '../..', image.url);
     await fs.unlink(filePath).catch(() => {});
     await prisma.companyImage.delete({ where: { id: image.id } });
     res.json({ message: 'Image supprimée.' });
@@ -400,28 +480,28 @@ exports.candidates = async (req, res) => {
     if (!isRecruiter(req, res)) return;
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
-    const applications = await prisma.application.findMany({
-      where: { job: { companyId: company.id } },
-      include: { candidate: true, job: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    const seen = new Set();
-    const candidates = [];
-    for (const app of applications) {
-      if (!app.candidate || seen.has(app.candidate.id)) continue;
-      seen.add(app.candidate.id);
-      candidates.push({
-        id: app.candidate.id,
-        name: `${app.candidate.firstName} ${app.candidate.lastName}`.trim(),
-        avatar: app.candidate.avatarUrl || null,
-        skills: app.candidate.skills || null,
-        country: app.candidate.country || null,
-        city: app.candidate.city || null,
-        appliedTo: app.job?.title || null,
-        appliedAt: app.createdAt,
-      });
-    }
-    res.json(candidates);
+    const { page, limit, skip } = paginate(req);
+
+    const distinctRows = await prisma.$queryRaw`
+      SELECT DISTINCT p."id", p."firstName", p."lastName", p."avatarUrl", p."skills", p."country", p."city"
+      FROM "CandidateProfile" p
+      INNER JOIN "Application" a ON a."candidateId" = p."id"
+      INNER JOIN "Job" j ON j."id" = a."jobId"
+      WHERE j."companyId" = ${company.id}
+      ORDER BY p."firstName" ASC
+    `;
+
+    const total = distinctRows.length;
+    const paged = distinctRows.slice(skip, skip + limit).map((r) => ({
+      id: r.id,
+      name: `${r.firstName} ${r.lastName}`.trim(),
+      avatar: r.avatarUrl || null,
+      skills: r.skills || null,
+      country: r.country || null,
+      city: r.city || null,
+    }));
+
+    res.json(paginated(paged, total, page, limit));
   } catch (error) {
     console.error('Erreur candidates:', error);
     res.status(500).json({ error: 'Impossible de charger les candidats.' });

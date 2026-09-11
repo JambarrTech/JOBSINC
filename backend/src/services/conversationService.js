@@ -26,16 +26,18 @@ const rateBuckets = new Map();
 const RATE_LIMIT_MAX_MESSAGES = 20;
 const RATE_LIMIT_WINDOW_MS = 10000;
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateBuckets) {
+    if (now > value.resetAt) rateBuckets.delete(key);
+  }
+}, 60_000);
+
 function isRateLimited(userId) {
   const now = Date.now();
   const bucket = rateBuckets.get(userId);
   if (!bucket || now > bucket.resetAt) {
     rateBuckets.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    if (rateBuckets.size > 5000) {
-      for (const [key, value] of rateBuckets) {
-        if (now > value.resetAt) rateBuckets.delete(key);
-      }
-    }
     return false;
   }
   bucket.count += 1;
@@ -456,10 +458,17 @@ exports.ensureForCandidate = async (recruiterUser, candidateUserId) => {
     };
   }
 
-  const conversation = await prisma.conversation.create({
-    data: {
+  const conversation = await prisma.conversation.upsert({
+    where: {
+      companyUserId_candidateUserId: { companyUserId: recruiterUser.userId, candidateUserId },
+    },
+    create: {
       companyUserId: recruiterUser.userId,
       candidateUserId,
+      applicationId: authorizedApplication.id,
+      subject: authorizedApplication.job.title,
+    },
+    update: {
       applicationId: authorizedApplication.id,
       subject: authorizedApplication.job.title,
     },
