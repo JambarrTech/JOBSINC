@@ -25,6 +25,8 @@ export default function AdminAuthGuard({ children, onUser }: { children: React.R
           return;
         }
         localStorage.setItem('jobsinc_admin_user', JSON.stringify(user));
+        document.cookie = `jobsinc_token=${localStorage.getItem('jobsinc_token') || ''}; path=/; max-age=${24 * 60 * 60}; SameSite=Lax`;
+        document.cookie = `jobsinc_admin_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=${24 * 60 * 60}; SameSite=Lax`;
         if (active) {
           onUser(user);
           setState('authorized');
@@ -34,7 +36,11 @@ export default function AdminAuthGuard({ children, onUser }: { children: React.R
       }
     }
     checkSession();
-    return () => { active = false; };
+    function onStorage(event: StorageEvent) {
+      if (event.key === 'jobsinc_admin_user' || event.key === 'jobsinc_token') checkSession();
+    }
+    window.addEventListener('storage', onStorage);
+    return () => { active = false; window.removeEventListener('storage', onStorage); };
   }, [onUser]);
 
   if (state === 'checking') return <div className="admin-session-state"><div className="admin-spinner" aria-hidden="true" /><p>Vérification de votre session…</p></div>;

@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import Icon from '@/components/ui/Icon';
+import { assetUrl } from '@/lib/api';
 import { useDashboard } from './DashboardContext';
 
 function value(value?: string | number | null, fallback = 'Non renseigné') { return value === undefined || value === null || value === '' ? fallback : String(value); }
@@ -14,7 +15,7 @@ export default function CompanyOverview() {
   const companyName = value(company?.name, 'Votre entreprise');
   const location = [company?.city, company?.country].filter(Boolean).join(', ');
   const primaryImage = company?.image || company?.photos?.[0];
-  const logoImage = company?.logo || null;
+  const logoImage = assetUrl(company?.logo) || null;
 
   if (error) return <section className="company-page"><div className="dashboard-state dashboard-error"><strong>Impossible de charger le profil de votre entreprise.</strong><button type="button" className="button button-outline button-small" onClick={reload}>Réessayer</button></div></section>;
   if (loading) return <section className="company-page"><div className="company-loading-hero" /><div className="company-loading-grid"><div /><div /><div /></div></section>;
