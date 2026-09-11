@@ -56,7 +56,7 @@ class AuthController extends Notifier<AuthState> {
   Future<void> initialize() async {
     _storage ??= await LocalStorage.create();
 
-    final token = _storage!.authToken;
+    final token = await _storage!.authToken;
 
     // Aucune session locale : l'utilisateur n'a jamais de compte
     // sur cet appareil (première installation ou réinstallation).
@@ -152,7 +152,7 @@ class AuthController extends Notifier<AuthState> {
       state = const AuthState.loading();
 
       final response = await _api.post(
-        '/auth/login/candidate',
+        '/auth/login',
         {
           'email': email.trim(),
           'password': password,
@@ -217,12 +217,20 @@ class AuthController extends Notifier<AuthState> {
 
       if (avatar != null) {
         final bytes = await avatar.readAsBytes();
+        final fileName = avatar.path.split(RegExp(r'[/\\]')).last;
+        final ext = fileName.split('.').last.toLowerCase();
+        final mediaType = switch (ext) {
+          'png' => MediaType('image', 'png'),
+          'gif' => MediaType('image', 'gif'),
+          'webp' => MediaType('image', 'webp'),
+          _ => MediaType('image', 'jpeg'),
+        };
         response = await _api.postMultipart(
           '/auth/register/candidate',
           fields,
           file: http.MultipartFile.fromBytes('avatar', bytes,
-              filename: 'avatar.jpg',
-              contentType: MediaType('image', 'jpeg')),
+              filename: fileName,
+              contentType: mediaType),
         );
       } else {
         response = await _api.post(
@@ -237,7 +245,7 @@ class AuthController extends Notifier<AuthState> {
 
       if (rawUser == null || token == null || token.isEmpty) {
         throw const ApiException(
-          'Réponse d’inscription invalide.',
+          'Réponse d\'inscription invalide.',
         );
       }
 
@@ -260,8 +268,49 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  Future<bool> registerCompany({
+    required String companyName,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      state = const AuthState.loading();
+
+      final response = await _api.post(
+        '/auth/register/company',
+        {
+          'companyName': companyName.trim(),
+          'email': email.trim(),
+          'password': password,
+        },
+      );
+
+      final rawUser = response['user'] as Map<String, dynamic>?;
+      final token = response['token']?.toString();
+
+      if (rawUser == null || token == null || token.isEmpty) {
+        throw const ApiException('Réponse d\'inscription invalide.');
+      }
+
+      final user = _userFromApi(rawUser, token);
+      await _saveSession(user);
+      state = AuthState.authenticated(user);
+      return true;
+    } catch (error) {
+      state = AuthState.error(_messageFor(error));
+      return false;
+    }
+  }
+
   Future<void> signOut() async {
     _storage ??= await LocalStorage.create();
+
+    final token = await _storage!.authToken;
+    if (token != null && token.isNotEmpty) {
+      try {
+        await _api.post('/auth/logout', {}, token: token);
+      } catch (_) {}
+    }
 
     await _storage!.clearSession();
 
@@ -290,6 +339,7 @@ class AuthController extends Notifier<AuthState> {
       status:
           role == 'EMPLOYEE' ? AccountStatus.employee : role == 'RECRUITER' ? AccountStatus.recruiter : AccountStatus.candidate,
       token: token,
+      companyId: rawUser['companyId']?.toString() ?? rawUser['company']?['id']?.toString(),
       photoUrl: profile?['photoUrl']?.toString() ?? profile?['avatar']?.toString() ?? profile?['avatarUrl']?.toString(),
       cvUrl: profile?['cvUrl']?.toString(),
       skills: profile?['skills']?.toString(),

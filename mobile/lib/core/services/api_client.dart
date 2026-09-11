@@ -10,7 +10,7 @@ class ApiException implements Exception {
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
   static const _baseUrl = String.fromEnvironment('API_URL', defaultValue: 'http://127.0.0.1:5000/api');
-  static const _serverBase = 'http://127.0.0.1:5000';
+  static final _serverBase = _baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
   final http.Client _client;
 
   static String resolveUrl(String? url) {

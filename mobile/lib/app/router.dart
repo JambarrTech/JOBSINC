@@ -69,6 +69,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/onboarding',
         '/login',
         '/register',
+        '/register/company',
         '/forgot-password',
       };
 
@@ -194,6 +195,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/register',
         builder: (_, __) => const RegisterScreen(),
+      ),
+
+      GoRoute(
+        path: '/register/company',
+        builder: (_, __) => const CompanyRegisterScreen(),
       ),
 
       GoRoute(

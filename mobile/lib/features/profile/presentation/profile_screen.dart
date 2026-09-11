@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
+
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../candidate/home/candidate_home_screen.dart';
 import '../providers/candidate_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -232,7 +235,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           AppColors.primary.withValues(alpha: .12),
                       backgroundImage: user?.photoUrl != null &&
                               user!.photoUrl!.isNotEmpty
-                          ? NetworkImage(ApiClient.resolveUrl(user.photoUrl!))
+                          ? CachedNetworkImageProvider(ApiClient.resolveUrl(user.photoUrl!))
                           : null,
                       child: (user?.photoUrl == null ||
                               user!.photoUrl!.isEmpty)
@@ -383,6 +386,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 14),
+
+        // ── Statistiques ────────────────────────────────────────────
+        const ProfileStatsSection(),
         const SizedBox(height: 14),
 
         // ── Informations personnelles ─────────────────────────────────
@@ -747,9 +754,11 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
 
     setState(() => _saving = false);
 
-    Navigator.of(context).pop();
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    nav.pop();
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       error != null
           ? SnackBar(
               content: Text(error), backgroundColor: AppColors.error)

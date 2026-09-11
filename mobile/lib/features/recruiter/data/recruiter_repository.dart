@@ -36,7 +36,7 @@ class RecruiterDashboardData {
 }
 
 class RecruiterCompany {
-  const RecruiterCompany({required this.id, required this.name, this.description, this.sector, this.city, this.country, this.website});
+  const RecruiterCompany({required this.id, required this.name, this.description, this.sector, this.city, this.country, this.website, this.logo});
 
   final String id;
   final String name;
@@ -45,6 +45,7 @@ class RecruiterCompany {
   final String? city;
   final String? country;
   final String? website;
+  final String? logo;
 
   factory RecruiterCompany.fromJson(Map<String, dynamic> json) {
     return RecruiterCompany(
@@ -55,6 +56,7 @@ class RecruiterCompany {
       city: json['city']?.toString(),
       country: json['country']?.toString(),
       website: json['website']?.toString(),
+      logo: json['logo']?.toString(),
     );
   }
 }
@@ -151,14 +153,14 @@ class RecruiterRepository {
   }
 
   Future<List<RecruiterJob>> loadJobs(String token) async {
-    final response = await _api.getRaw('/company/jobs', token: token);
-    final list = response is List ? response : <dynamic>[];
+    final response = await _api.get('/company/jobs', token: token);
+    final list = response['data'] as List<dynamic>? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(RecruiterJob.fromJson).toList(growable: false);
   }
 
   Future<List<RecruiterApplication>> loadApplications(String token) async {
-    final response = await _api.getRaw('/company/applications', token: token);
-    final list = response is List ? response : <dynamic>[];
+    final response = await _api.get('/company/applications', token: token);
+    final list = response['data'] as List<dynamic>? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(RecruiterApplication.fromJson).toList(growable: false);
   }
 

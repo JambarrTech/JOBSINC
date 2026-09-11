@@ -25,7 +25,7 @@ class MessagesState {
     return MessagesState(
       conversations: conversations ?? this.conversations,
       isLoading: isLoading ?? this.isLoading,
-      error: error,
+      error: error ?? this.error,
     );
   }
 }
@@ -129,7 +129,7 @@ class ChatState {
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       sending: sending ?? this.sending,
-      error: error,
+      error: error ?? this.error,
       hasMore: hasMore ?? this.hasMore,
       isLoadingOlder: isLoadingOlder ?? this.isLoadingOlder,
       isReconnecting: isReconnecting ?? this.isReconnecting,

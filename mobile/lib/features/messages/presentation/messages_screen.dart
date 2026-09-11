@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:cached_network_image/cached_network_image.dart';
+
 import '../../../core/services/api_client.dart';
 import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -36,7 +38,9 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     // Filet de sécurité : rafraîchissement léger des badges si le
     // socket est indisponible.
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      ref.read(messagesProvider.notifier).refreshQuietly();
+      if (!ChatSocketService.instance.isConnected) {
+        ref.read(messagesProvider.notifier).refreshQuietly();
+      }
     });
   }
 
@@ -424,7 +428,7 @@ class _Avatar extends StatelessWidget {
           radius: 25,
           backgroundColor: AppColors.navy,
           backgroundImage:
-              hasPhoto ? NetworkImage(ApiClient.resolveUrl(conversation.avatarUrl!)) : null,
+              hasPhoto ? CachedNetworkImageProvider(ApiClient.resolveUrl(conversation.avatarUrl!)) : null,
           child: hasPhoto
               ? null
               : Text(

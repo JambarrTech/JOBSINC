@@ -153,8 +153,8 @@ class HomeRepository {
 
   Future<HomeDashboardData> load(String token) async {
     final results = await Future.wait([
-      _api.get('/jobs'),
-      _api.get('/companies'),
+      _api.get('/jobs', token: token),
+      _api.get('/companies', token: token),
     ]);
     final jobs = (results[0]['data'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
