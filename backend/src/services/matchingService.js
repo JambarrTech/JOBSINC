@@ -231,26 +231,42 @@ function educationRank(text) {
 
 function scoreEducation(job, profile) {
   const jobRank = educationRank(job.educationLevel);
+  const candidateRank = educationRank(profile.educationLevel);
   const hasFieldData = Boolean(job.educationField || job.department) && Boolean(profile.educationField);
-  if (jobRank == null && !hasFieldData) return { known: false };
+  if (jobRank == null && candidateRank == null && !hasFieldData) return { known: false };
 
   let levelScore = null;
-  let fieldScore = null;
-  if (jobRank != null) {
-    levelScore = 50;
+  if (jobRank != null && candidateRank != null) {
+    if (candidateRank >= jobRank) levelScore = 100;
+    else if (candidateRank === jobRank - 1) levelScore = 60;
+    else if (candidateRank === jobRank - 2) levelScore = 35;
+    else levelScore = 20;
+  } else if (jobRank != null && candidateRank == null) {
+    // Niveau candidat non renseigné mais offre exige un niveau : on ne peut pas évaluer
+    levelScore = null;
+  } else if (jobRank == null && candidateRank != null) {
+    // Offre sans exigence de niveau, candidat a un niveau : neutre
+    levelScore = null;
   }
+
+  let fieldScore = null;
   if (hasFieldData) {
     const jobWords = words(`${job.educationField || ''} ${job.department || ''}`);
     const candWords = words(profile.educationField);
     const hits = [...candWords].filter((word) => wordHits(jobWords, word)).length;
     fieldScore = candWords.size === 0 ? null : Math.round((hits / candWords.size) * 100);
+    // Si aucun mot du domaine ne match, on considère un score faible mais pas nul
+    if (fieldScore === 0) fieldScore = 20;
   }
+
   const parts = [];
   if (levelScore != null) parts.push(levelScore);
   if (fieldScore != null) parts.push(fieldScore);
   if (parts.length === 0) return { known: false };
+  // Si on a les deux, on fait la moyenne ; sinon on prend le seul disponible
   const score = Math.round(parts.reduce((total, part) => total + part, 0) / parts.length);
-  return { known: true, score, label: fieldScore != null && fieldScore > 50 ? 'Formation compatible' : 'Formation à évaluer' };
+  const label = score >= 80 ? 'Formation compatible' : score >= 50 ? 'Formation à évaluer' : 'Formation éloignée';
+  return { known: true, score, label };
 }
 
 // ── Localisation ─────────────────────────────────────────────
@@ -336,6 +352,8 @@ function computeMatch(job, profile, context = {}) {
     experience: () => scoreExperience(job, profile.experienceYears),
     education: () => scoreEducation(job, profile),
     location: () => scoreLocation(job, profile, company),
+    contract: () => scoreContract(job, profile),
+    availability: () => scoreAvailability(job, profile),
     other: () => scoreOther(profile),
   };
 

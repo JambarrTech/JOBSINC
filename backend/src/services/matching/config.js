@@ -6,10 +6,12 @@
 // ─────────────────────────────────────────────────────────────
 
 const weights = {
-  skills: 0.45,
-  experience: 0.25,
+  skills: 0.40,
+  experience: 0.20,
   education: 0.15,
-  location: 0.1,
+  location: 0.10,
+  contract: 0.05,
+  availability: 0.05,
   other: 0.05,
 };
 
