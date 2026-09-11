@@ -2,6 +2,8 @@ const express = require('express');
 const auth = require('../middlewares/authMiddleware');
 const companyUpload = require('../middlewares/companyUpload');
 const controller = require('../controllers/companyController');
+const faqController = require('../controllers/faqController');
+const feedbackController = require('../controllers/feedbackController');
 
 const router = express.Router();
 router.use(auth);
@@ -22,5 +24,13 @@ router.get('/applications', controller.applications);
 router.get('/applications/:id', controller.applicationDetail);
 router.get('/candidates', controller.candidates);
 router.get('/matching', controller.matching);
+
+// FAQ entreprise
+router.get('/faq', faqController.listByCompany);
+router.post('/faq', faqController.create);
+
+// Feedback entreprise
+router.get('/feedback', feedbackController.listByCompany);
+router.post('/feedback', feedbackController.create);
 
 module.exports = router;

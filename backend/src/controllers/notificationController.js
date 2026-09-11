@@ -2,17 +2,22 @@ const prisma = require('../config/prisma');
 
 exports.getNotifications = async (req, res) => {
   try {
-    const notifications = await prisma.notification.findMany({
-      where: { userId: req.user.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
 
-    const unreadCount = await prisma.notification.count({
-      where: { userId: req.user.userId, isRead: false },
-    });
+    const [notifications, total, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        where: { userId: req.user.userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.notification.count({ where: { userId: req.user.userId } }),
+      prisma.notification.count({ where: { userId: req.user.userId, isRead: false } }),
+    ]);
 
-    res.json({ data: notifications, unreadCount });
+    res.json({ data: notifications, unreadCount, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error('Erreur getNotifications:', error);
     res.status(500).json({ error: 'Impossible de récupérer les notifications.' });

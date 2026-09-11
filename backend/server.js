@@ -5,6 +5,7 @@ const http = require('http');
 require('dotenv').config();
 
 const path = require('path');
+const jwt = require('jsonwebtoken');
 const authRoutes = require('./src/routes/authRoutes');
 const companyRoutes = require('./src/routes/companyRoutes');
 const publicCompanyRoutes = require('./src/routes/publicCompanyRoutes');
@@ -14,10 +15,14 @@ const interviewRoutes = require('./src/routes/interviewRoutes');
 const candidateRoutes = require('./src/routes/candidateRoutes');
 const notificationRoutes = require('./src/routes/notificationRoutes');
 const statsRoutes = require('./src/routes/statsRoutes');
-const messageRoutes = require('./src/routes/messageRoutes');
 const conversationRoutes = require('./src/routes/conversationRoutes');
 const deviceRoutes = require('./src/routes/deviceRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
+const prisma = require('./src/config/prisma');
+const faqRoutes = require('./src/routes/faqRoutes');
+const feedbackRoutes = require('./src/routes/feedbackRoutes');
+const savedJobRoutes = require('./src/routes/savedJobRoutes');
+const skillRoutes = require('./src/routes/skillRoutes');
 const { globalLimiter, authLimiter } = require('./src/middlewares/rateLimit');
 
 const app = express();
@@ -57,7 +62,25 @@ app.use(express.json({ limit: '1mb' }));
 // passent pas par ce limiter pour ne pas pénaliser le chargement d'images.
 app.use('/api', globalLimiter);
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', async (req, res, next) => {
+  if (req.path.startsWith('/cvs/')) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Accès non autorisé.' });
+    try {
+      const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      if (!decoded?.userId) return res.status(401).json({ error: 'Token invalide.' });
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { tokenVersion: true } });
+      if (!user || user.tokenVersion !== decoded.tokenVersion) {
+        return res.status(401).json({ error: 'Session révoquée.' });
+      }
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'Token invalide.' });
+    }
+  }
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // Routes API
 app.use('/api/auth', authLimiter, authRoutes);
@@ -69,10 +92,17 @@ app.use('/api/interviews', interviewRoutes);
 app.use('/api/candidate', candidateRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/stats', statsRoutes);
-app.use('/api/company/messages', messageRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/faq', faqRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/saved-jobs', savedJobRoutes);
+app.use('/api/skills', skillRoutes);
+
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Route introuvable.' });
+});
 
 app.use((error, req, res, next) => {
   if (error?.status === 400) return res.status(400).json({ error: error.message });
@@ -81,7 +111,7 @@ app.use((error, req, res, next) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('🚀 Serveur JOBSYNC opérationnel !');
+  res.send('🚀 Serveur JOBSINC opérationnel !');
 });
 
 const PORT = process.env.PORT || 5000;

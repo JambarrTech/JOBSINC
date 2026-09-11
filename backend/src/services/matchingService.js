@@ -231,15 +231,13 @@ function educationRank(text) {
 
 function scoreEducation(job, profile) {
   const jobRank = educationRank(job.educationLevel);
-  const candRank = educationRank(profile.educationLevel);
   const hasFieldData = Boolean(job.educationField || job.department) && Boolean(profile.educationField);
-  if (jobRank == null && candRank == null && !hasFieldData) return { known: false };
+  if (jobRank == null && !hasFieldData) return { known: false };
 
   let levelScore = null;
   let fieldScore = null;
-  if (jobRank != null && candRank != null) {
-    const gap = jobRank - candRank;
-    levelScore = gap <= 0 ? 100 : gap === 1 ? 60 : 25; // un niveau au-dessus de la demande : non pénalisé
+  if (jobRank != null) {
+    levelScore = 50;
   }
   if (hasFieldData) {
     const jobWords = words(`${job.educationField || ''} ${job.department || ''}`);
@@ -252,7 +250,7 @@ function scoreEducation(job, profile) {
   if (fieldScore != null) parts.push(fieldScore);
   if (parts.length === 0) return { known: false };
   const score = Math.round(parts.reduce((total, part) => total + part, 0) / parts.length);
-  return { known: true, score, label: levelScore === 100 ? 'Formation compatible' : 'Formation à évaluer' };
+  return { known: true, score, label: fieldScore != null && fieldScore > 50 ? 'Formation compatible' : 'Formation à évaluer' };
 }
 
 // ── Localisation ─────────────────────────────────────────────
@@ -338,8 +336,6 @@ function computeMatch(job, profile, context = {}) {
     experience: () => scoreExperience(job, profile.experienceYears),
     education: () => scoreEducation(job, profile),
     location: () => scoreLocation(job, profile, company),
-    contract: () => scoreContract(job, profile),
-    availability: () => scoreAvailability(job, profile),
     other: () => scoreOther(profile),
   };
 

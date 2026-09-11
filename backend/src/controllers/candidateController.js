@@ -6,7 +6,7 @@ exports.getProfile = async (req, res) => {
   try {
     const candidate = await prisma.candidateProfile.findUnique({
       where: { userId: req.user.userId },
-      include: { user: true },
+      include: { user: { select: { email: true } } },
     });
     if (!candidate) {
       return res.status(404).json({ error: 'Profil candidat introuvable.' });
@@ -23,10 +23,7 @@ exports.getProfile = async (req, res) => {
       cvUrl: candidate.cvUrl,
       skills: candidate.skills,
       experienceYears: candidate.experienceYears,
-      educationLevel: candidate.educationLevel,
       educationField: candidate.educationField,
-      desiredContracts: candidate.desiredContracts,
-      availableFrom: candidate.availableFrom,
       email: candidate.user.email,
     });
   } catch (error) {
@@ -44,14 +41,10 @@ exports.updateProfile = async (req, res) => {
       return res.status(404).json({ error: 'Profil candidat introuvable.' });
     }
 
-    const { firstName, lastName, phone, country, city, skills, experienceYears, educationLevel, educationField, desiredContracts, availableFrom } = req.body;
+    const { firstName, lastName, phone, country, city, skills, experienceYears, educationField } = req.body;
 
-    // Champs alimentant le moteur de matching : numériques et dates
-    // normalisés, chaînes bornées pour éviter les valeurs absurdes.
     const experience = experienceYears === undefined ? undefined
       : experienceYears === null || experienceYears === '' ? null : Math.max(0, Math.min(45, Number(experienceYears)));
-    const availableAt = availableFrom === undefined ? undefined
-      : !availableFrom ? null : Number.isNaN(new Date(availableFrom).getTime()) ? undefined : new Date(availableFrom);
 
     const updated = await prisma.candidateProfile.update({
       where: { id: candidate.id },
@@ -63,12 +56,9 @@ exports.updateProfile = async (req, res) => {
         ...(city !== undefined && { city }),
         ...(skills !== undefined && { skills }),
         ...(experience !== undefined && { experienceYears: experience }),
-        ...(educationLevel !== undefined && { educationLevel }),
         ...(educationField !== undefined && { educationField }),
-        ...(desiredContracts !== undefined && { desiredContracts }),
-        ...(availableAt !== undefined && { availableFrom: availableAt }),
       },
-      include: { user: true },
+      include: { user: { select: { email: true } } },
     });
 
     res.json({
@@ -83,10 +73,7 @@ exports.updateProfile = async (req, res) => {
       cvUrl: updated.cvUrl,
       skills: updated.skills,
       experienceYears: updated.experienceYears,
-      educationLevel: updated.educationLevel,
       educationField: updated.educationField,
-      desiredContracts: updated.desiredContracts,
-      availableFrom: updated.availableFrom,
       email: updated.user.email,
     });
   } catch (error) {
@@ -137,7 +124,7 @@ exports.uploadAvatar = async (req, res) => {
     }
 
     if (candidate.avatarUrl) {
-      const oldPath = path.resolve(__dirname, '../..', candidate.avatarUrl);
+      const oldPath = path.join(__dirname, '../..', candidate.avatarUrl);
       await fs.unlink(oldPath).catch(() => {});
     }
 
@@ -153,5 +140,47 @@ exports.uploadAvatar = async (req, res) => {
   } catch (error) {
     console.error('Erreur uploadAvatar:', error);
     res.status(500).json({ error: 'Impossible de mettre à jour la photo de profil.' });
+  }
+};
+
+exports.getStats = async (req, res) => {
+  try {
+    const candidate = await prisma.candidateProfile.findUnique({
+      where: { userId: req.user.userId },
+    });
+    if (!candidate) {
+      return res.status(404).json({ error: 'Profil candidat introuvable.' });
+    }
+
+    const [totalApplications, interviewCount, acceptedCount, rejectedCount, savedCount, profile] =
+      await Promise.all([
+        prisma.application.count({ where: { candidateProfileId: candidate.id } }),
+        prisma.application.count({ where: { candidateProfileId: candidate.id, status: 'INTERVIEW' } }),
+        prisma.application.count({ where: { candidateProfileId: candidate.id, status: 'ACCEPTED' } }),
+        prisma.application.count({ where: { candidateProfileId: candidate.id, status: 'REJECTED' } }),
+        prisma.savedJob.count({ where: { userId: req.user.userId } }),
+        prisma.candidateProfile.findUnique({ where: { id: candidate.id } }),
+      ]);
+
+    const fields = ['firstName', 'lastName', 'phone', 'city', 'country', 'skills', 'experienceYears', 'educationField', 'cvUrl'];
+    const filled = fields.filter((f) => profile[f] != null && profile[f] !== '').length;
+    const completion = Math.round((filled / fields.length) * 100);
+
+    const interviewRate = totalApplications > 0 ? Math.round((interviewCount / totalApplications) * 100) : 0;
+    const acceptRate = totalApplications > 0 ? Math.round((acceptedCount / totalApplications) * 100) : 0;
+
+    res.json({
+      totalApplications,
+      interviewCount,
+      acceptedCount,
+      rejectedCount,
+      savedCount,
+      profileCompletion: completion,
+      interviewRate,
+      acceptRate,
+    });
+  } catch (error) {
+    console.error('Erreur getStats:', error);
+    res.status(500).json({ error: 'Impossible de charger les statistiques.' });
   }
 };

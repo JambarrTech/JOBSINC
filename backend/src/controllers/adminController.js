@@ -1,8 +1,20 @@
 const prisma = require('../config/prisma');
 const fs = require('fs/promises');
 const path = require('path');
+const { getCached, setCache } = require('../utils/cache');
 
 const DAY_MS = 86400000;
+
+function paginate(req) {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+}
+
+function paginated(data, total, page, limit) {
+  return { data, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+}
 
 function dayKey(date) {
   return new Date(date).toISOString().slice(0, 10);
@@ -58,9 +70,12 @@ function decorateUserRecord(user) {
 
 exports.overview = async (req, res) => {
   try {
+    const cached = getCached('admin:overview');
+    if (cached) return res.json(cached);
+
     const since14 = new Date(Date.now() - 13 * DAY_MS);
     const [
-      totalUsers, candidatesCount, employeesCount, adminsCount,
+      totalUsers, candidatesCount, employeesCount, recruitersCount, adminsCount,
       companiesCount, pendingCompaniesCount, jobsCount, activeJobsCount,
       applicationsCount, interviewsCount, upcomingInterviewsCount, recruitmentsCount,
       receivedApplicationsCount, recentUsers, recentApplications, recentJobs,
@@ -68,6 +83,7 @@ exports.overview = async (req, res) => {
       prisma.user.count(),
       prisma.user.count({ where: { role: 'CANDIDATE' } }),
       prisma.user.count({ where: { role: 'EMPLOYEE' } }),
+      prisma.user.count({ where: { role: 'RECRUITER' } }),
       prisma.user.count({ where: { role: 'ADMIN' } }),
       prisma.company.count(),
       prisma.company.count({ where: { isApproved: false } }),
@@ -88,7 +104,6 @@ exports.overview = async (req, res) => {
     let storageOk = true;
     try { await fs.access(path.join(__dirname, '../../uploads'), fs.constants.W_OK); } catch { storageOk = false; }
 
-    const recruitersCount = await prisma.user.count({ where: { role: 'RECRUITER' } });
     const distributionTotal = Math.max(1, candidatesCount + employeesCount + recruitersCount + adminsCount);
     const pct = (value) => Math.round((value / distributionTotal) * 100);
 
@@ -125,7 +140,7 @@ exports.overview = async (req, res) => {
       })),
     ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 12);
 
-    res.json({
+    const result = {
       stats: {
         users: totalUsers,
         candidates: candidatesCount,
@@ -154,7 +169,7 @@ exports.overview = async (req, res) => {
       activitySeries,
       activity,
       system: [
-        { id: 'database', label: 'Base de données', status: dbOk ? 'operational' : 'down', description: dbOk ? 'Connexion MySQL opérationnelle.' : 'Base de données injoignable.' },
+        { id: 'database', label: 'Base de données', status: dbOk ? 'operational' : 'down', description: dbOk ? 'Connexion base de données opérationnelle.' : 'Base de données injoignable.' },
         { id: 'api', label: 'API JOBSINC', status: 'operational', description: 'Service HTTP en ligne.' },
         { id: 'storage', label: 'Stockage des fichiers', status: storageOk ? 'operational' : 'degraded', description: storageOk ? 'Dossier uploads accessible en écriture.' : 'Dossier uploads inaccessible.' },
       ],
@@ -163,7 +178,10 @@ exports.overview = async (req, res) => {
         { label: 'Entreprises non validées', value: pendingCompaniesCount, status: pendingCompaniesCount > 0 ? 'warning' : 'ok', href: '/admin/companies' },
         { label: 'Comptes totaux', value: totalUsers, status: 'ok' },
       ],
-    });
+    };
+
+    setCache('admin:overview', result, 60000);
+    res.json(result);
   } catch (error) {
     console.error('Erreur admin overview:', error);
     res.status(500).json({ error: 'Impossible de charger la vue d’ensemble admin.' });
@@ -172,11 +190,12 @@ exports.overview = async (req, res) => {
 
 exports.users = async (req, res) => {
   try {
-    const users = await prisma.user.findMany({
-      include: userIncludeForList,
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(users.map(decorateUserRecord));
+    const { page, limit, skip } = paginate(req);
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({ include: userIncludeForList, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.user.count(),
+    ]);
+    res.json(paginated(users.map(decorateUserRecord), total, page, limit));
   } catch (error) {
     console.error('Erreur admin users:', error);
     res.status(500).json({ error: 'Impossible de charger les utilisateurs.' });
@@ -208,20 +227,12 @@ exports.userDetail = async (req, res) => {
 
 exports.candidates = async (req, res) => {
   try {
-    const rows = await prisma.candidateProfile.findMany({
-      include: { user: { select: { email: true, createdAt: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(rows.map((row) => ({
-      id: row.id,
-      name: candidateName(row),
-      email: row.user?.email || null,
-      status: 'active',
-      location: [row.city, row.country].filter(Boolean).join(', ') || null,
-      skills: row.skills || null,
-      createdAt: row.createdAt,
-      lastActivity: row.updatedAt,
-    })));
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.candidateProfile.findMany({ include: { user: { select: { email: true, createdAt: true } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.candidateProfile.count(),
+    ]);
+    res.json(paginated(rows.map((row) => ({ id: row.id, name: candidateName(row), email: row.user?.email || null, status: 'active', location: [row.city, row.country].filter(Boolean).join(', ') || null, skills: row.skills || null, createdAt: row.createdAt, lastActivity: row.updatedAt })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin candidates:', error);
     res.status(500).json({ error: 'Impossible de charger les candidats.' });
@@ -230,19 +241,12 @@ exports.candidates = async (req, res) => {
 
 exports.employees = async (req, res) => {
   try {
-    const rows = await prisma.employment.findMany({
-      include: { candidate: true, company: { select: { name: true } } },
-      orderBy: { startDate: 'desc' },
-    });
-    res.json(rows.map((row) => ({
-      id: row.id,
-      name: candidateName(row.candidate),
-      companyName: row.company?.name || null,
-      role: 'EMPLOYEE',
-      position: row.position,
-      status: row.status === 'ACTIVE' ? 'active' : 'inactive',
-      lastActivity: row.endDate || row.updatedAt,
-    })));
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.employment.findMany({ include: { candidate: true, company: { select: { name: true } } }, orderBy: { startDate: 'desc' }, skip, take: limit }),
+      prisma.employment.count(),
+    ]);
+    res.json(paginated(rows.map((row) => ({ id: row.id, name: candidateName(row.candidate), companyName: row.company?.name || null, role: 'EMPLOYEE', position: row.position, status: row.status === 'ACTIVE' ? 'active' : 'inactive', lastActivity: row.endDate || row.updatedAt })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin employees:', error);
     res.status(500).json({ error: 'Impossible de charger les employés.' });
@@ -251,23 +255,51 @@ exports.employees = async (req, res) => {
 
 exports.companies = async (req, res) => {
   try {
-    const rows = await prisma.company.findMany({
-      include: { user: { select: { email: true } }, _count: { select: { jobs: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      email: row.user?.email || null,
-      sector: row.sector || null,
-      location: [row.city, row.country].filter(Boolean).join(', ') || null,
-      status: row.isApproved ? 'active' : 'pending',
-      jobsCount: row._count.jobs,
-      createdAt: row.createdAt,
-    })));
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.company.findMany({ include: { user: { select: { email: true } }, _count: { select: { jobs: true } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.company.count(),
+    ]);
+    res.json(paginated(rows.map((row) => ({ id: row.id, name: row.name, email: row.user?.email || null, sector: row.sector || null, location: [row.city, row.country].filter(Boolean).join(', ') || null, status: row.isApproved ? 'active' : 'pending', jobsCount: row._count.jobs, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin companies:', error);
     res.status(500).json({ error: 'Impossible de charger les entreprises.' });
+  }
+};
+
+exports.approveCompany = async (req, res) => {
+  try {
+    const company = await prisma.company.findUnique({ where: { id: req.params.id } });
+    if (!company) return res.status(404).json({ error: 'Entreprise introuvable.' });
+
+    const updated = await prisma.company.update({
+      where: { id: company.id },
+      data: { isApproved: true },
+      include: { user: { select: { email: true } } },
+    });
+
+    res.json({ message: 'Entreprise approuvée.', id: updated.id, name: updated.name, isApproved: updated.isApproved });
+  } catch (error) {
+    console.error('Erreur approveCompany:', error);
+    res.status(500).json({ error: "Impossible d'approuver l'entreprise." });
+  }
+};
+
+exports.rejectCompany = async (req, res) => {
+  try {
+    const company = await prisma.company.findUnique({ where: { id: req.params.id } });
+    if (!company) return res.status(404).json({ error: 'Entreprise introuvable.' });
+
+    const updated = await prisma.company.update({
+      where: { id: company.id },
+      data: { isApproved: false },
+      include: { user: { select: { email: true } } },
+    });
+
+    res.json({ message: 'Entreprise rejetée.', id: updated.id, name: updated.name, isApproved: updated.isApproved });
+  } catch (error) {
+    console.error('Erreur rejectCompany:', error);
+    res.status(500).json({ error: "Impossible de rejeter l'entreprise." });
   }
 };
 
@@ -291,19 +323,12 @@ exports.administrators = async (req, res) => {
 
 exports.jobs = async (req, res) => {
   try {
-    const rows = await prisma.job.findMany({
-      include: { company: { select: { name: true } }, _count: { select: { applications: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      companyName: row.company?.name || null,
-      location: row.location,
-      status: row.isOpen ? 'active' : 'closed',
-      applicationsCount: row._count.applications,
-      createdAt: row.createdAt,
-    })));
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.job.findMany({ include: { company: { select: { name: true } }, _count: { select: { applications: true } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.job.count(),
+    ]);
+    res.json(paginated(rows.map((row) => ({ id: row.id, title: row.title, companyName: row.company?.name || null, location: row.location, status: row.isOpen ? 'active' : 'closed', applicationsCount: row._count.applications, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin jobs:', error);
     res.status(500).json({ error: 'Impossible de charger les offres.' });
@@ -312,18 +337,12 @@ exports.jobs = async (req, res) => {
 
 exports.applications = async (req, res) => {
   try {
-    const rows = await prisma.application.findMany({
-      include: { candidate: true, job: { include: { company: { select: { name: true } } } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(rows.map((row) => ({
-      id: row.id,
-      candidateName: candidateName(row.candidate),
-      companyName: row.job?.company?.name || null,
-      jobTitle: row.job?.title || null,
-      status: row.status,
-      createdAt: row.createdAt,
-    })));
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.application.findMany({ include: { candidate: true, job: { include: { company: { select: { name: true } } } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.application.count(),
+    ]);
+    res.json(paginated(rows.map((row) => ({ id: row.id, candidateName: candidateName(row.candidate), companyName: row.job?.company?.name || null, jobTitle: row.job?.title || null, status: row.status, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin applications:', error);
     res.status(500).json({ error: 'Impossible de charger les candidatures.' });
@@ -332,20 +351,12 @@ exports.applications = async (req, res) => {
 
 exports.interviews = async (req, res) => {
   try {
-    const rows = await prisma.interview.findMany({
-      include: { application: { include: { candidate: true, job: { include: { company: { select: { name: true } } } } } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(rows.map((row) => ({
-      id: row.id,
-      candidateName: candidateName(row.application?.candidate),
-      companyName: row.application?.job?.company?.name || null,
-      jobTitle: row.application?.job?.title || null,
-      mode: row.mode,
-      scheduledAt: row.scheduledAt,
-      status: row.scheduledAt ? 'scheduled' : 'pending',
-      createdAt: row.createdAt,
-    })));
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.interview.findMany({ include: { application: { include: { candidate: true, job: { include: { company: { select: { name: true } } } } } } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.interview.count(),
+    ]);
+    res.json(paginated(rows.map((row) => ({ id: row.id, candidateName: candidateName(row.application?.candidate), companyName: row.application?.job?.company?.name || null, jobTitle: row.application?.job?.title || null, mode: row.mode, scheduledAt: row.scheduledAt, status: row.scheduledAt ? 'scheduled' : 'pending', createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin interviews:', error);
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });
@@ -354,20 +365,12 @@ exports.interviews = async (req, res) => {
 
 exports.recruitments = async (req, res) => {
   try {
-    const rows = await prisma.employment.findMany({
-      include: { candidate: true, company: { select: { name: true } }, job: { select: { title: true } } },
-      orderBy: { startDate: 'desc' },
-    });
-    res.json(rows.map((row) => ({
-      id: row.id,
-      candidateName: candidateName(row.candidate),
-      companyName: row.company?.name || null,
-      jobTitle: row.position || row.job?.title || null,
-      status: row.status === 'ACTIVE' ? 'completed' : 'inactive',
-      startDate: row.startDate,
-      endDate: row.endDate,
-      createdAt: row.createdAt,
-    })));
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.employment.findMany({ include: { candidate: true, company: { select: { name: true } }, job: { select: { title: true } } }, orderBy: { startDate: 'desc' }, skip, take: limit }),
+      prisma.employment.count(),
+    ]);
+    res.json(paginated(rows.map((row) => ({ id: row.id, candidateName: candidateName(row.candidate), companyName: row.company?.name || null, jobTitle: row.position || row.job?.title || null, status: row.status === 'ACTIVE' ? 'completed' : 'inactive', startDate: row.startDate, endDate: row.endDate, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin recruitments:', error);
     res.status(500).json({ error: 'Impossible de charger les recrutements.' });
@@ -626,7 +629,7 @@ exports.system = async (req, res) => {
 
     res.json([
       { id: 'api', label: 'API JOBSINC', status: 'operational', latency: '<1 ms', checkedAt },
-      { id: 'database', label: 'Base de données MySQL', status: dbStatus, latency: dbLatency, checkedAt },
+      { id: 'database', label: 'Base de données PostgreSQL', status: dbStatus, latency: dbLatency, checkedAt },
       { id: 'storage', label: 'Stockage des fichiers', status: storageStatus, latency: '—', checkedAt },
     ]);
   } catch (error) {

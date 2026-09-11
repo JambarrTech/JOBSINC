@@ -7,6 +7,7 @@ const candidateController = require('../controllers/candidateController');
 router.use(auth);
 
 router.get('/profile', candidateController.getProfile);
+router.get('/stats', candidateController.getStats);
 router.put('/profile', candidateController.updateProfile);
 router.post('/cv', cvUpload, candidateController.uploadCv);
 router.post('/avatar', candidateUpload, candidateController.uploadAvatar);
