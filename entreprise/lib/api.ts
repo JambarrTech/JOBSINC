@@ -28,6 +28,18 @@ export const getDashboardData = (days?: number) => apiRequest<DashboardData>(`${
 export async function getMatching(params?: Record<string, string | number | undefined>) { const base = process.env.NEXT_PUBLIC_MATCHING_ENDPOINT || '/company/matching'; const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); }); const qs = query.toString(); return apiRequest<{ data?: Match[]; results?: Match[] } | Match[]>(qs ? `${base}?${qs}` : base); }
 export async function getJobMatches(jobId: string | number, params?: Record<string, string | number | undefined>) { const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); }); const qs = query.toString(); return apiRequest<{ data?: Match[]; results?: Match[] } | Match[]>(`/company/jobs/${jobId}/matches${qs ? `?${qs}` : ''}`); }
 export async function getCompanyJobs() { return list(await apiRequest<any[] | { data?: any[]; results?: any[] }>(process.env.NEXT_PUBLIC_COMPANY_JOBS_ENDPOINT || '/company/jobs')).map((job: any) => ({ ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company })); }
+export type CompanyProfile = Company & { website?: string; size?: string; address?: string; foundedYear?: string | number };
+export const getCompanyProfile = () => apiRequest<CompanyProfile>('/company/profile');
+export type CompanyProfileFields = Partial<Record<'name' | 'description' | 'website' | 'sector' | 'size' | 'country' | 'city' | 'address' | 'foundedYear', string | number | null>>;
+export const updateCompanyProfile = (fields: CompanyProfileFields) => apiRequest<CompanyProfile>('/company/profile', { method: 'PUT', body: JSON.stringify(fields) });
+export async function uploadCompanyLogo(file: File) {
+  const token = typeof window === 'undefined' ? null : localStorage.getItem('jobsinc_token');
+  const response = await fetch(endpoint('/company/logo'), { method: 'POST', ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}), body: (() => { const form = new FormData(); form.append('logo', file); return form; })(), credentials: 'include', cache: 'no-store' });
+  if (!response.ok) { const body = await response.json().catch(() => null); const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number }; error.status = response.status; throw error; }
+  return response.json() as Promise<CompanyProfile>;
+}
+export const deleteCompanyJob = (jobId: string | number) => apiRequest<{ message: string }>(`/company/jobs/${jobId}`, { method: 'DELETE' });
+export const setJobOpen = (jobId: string | number, isOpen: boolean) => apiRequest<Record<string, unknown>>(`/company/jobs/${jobId}`, { method: 'PUT', body: JSON.stringify({ isOpen }) });
 export async function getCompanyApplications() { return list(await apiRequest<NonNullable<DashboardData['applications']> | { data?: NonNullable<DashboardData['applications']>; results?: NonNullable<DashboardData['applications']> }>(process.env.NEXT_PUBLIC_COMPANY_APPLICATIONS_ENDPOINT || '/company/applications')); }
 export async function getCompanyMessages() { const path = process.env.NEXT_PUBLIC_COMPANY_MESSAGES_ENDPOINT; return path ? list(await apiRequest<CompanyMessage[] | { data?: CompanyMessage[]; results?: CompanyMessage[] }>(path)) : null; }
 export async function getConversationMessages(conversationId: string | number) { return apiRequest<ChatResponse>(`/company/messages/${conversationId}`); }
@@ -54,5 +66,20 @@ export const isApiConfigured = () => Boolean(API_URL);
 export async function getCompanies() { return list(await apiRequest<Company[] | { data?: Company[]; results?: Company[] }>(process.env.NEXT_PUBLIC_COMPANIES_ENDPOINT || '/companies')).map(normalizeCompany); }
 export async function getJobs() { return list(await apiRequest<any[] | { data?: any[]; results?: any[] }>(process.env.NEXT_PUBLIC_JOBS_ENDPOINT || '/jobs')).map((job: any) => ({ ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company })); }
 export async function getStats(): Promise<Record<string, number>> { const response = await apiRequest<Record<string, number> | { data?: Record<string, number> }>(process.env.NEXT_PUBLIC_STATS_ENDPOINT || '/stats'); return typeof response === 'object' && response !== null && 'data' in response && response.data ? response.data as Record<string, number> : response as Record<string, number>; }
+export type OverviewCandidate = { initials: string; name: string; detail: string };
+export type OverviewData = { talents: number; growth: number; activeJobs: number; applicationsToday: number; candidates: OverviewCandidate[]; activity: number[] };
+export async function getOverviewStats(): Promise<OverviewData> { return apiRequest<OverviewData>('/stats/overview'); }
 export async function authenticate(path: string, payload: Record<string, unknown>) { return apiRequest<{ token?: string; user?: unknown }>(path, { method: 'POST', body: JSON.stringify(payload) }); }
 export async function authenticateWithFiles(path: string, fields: Record<string, string>, files: File[], fieldName = 'photos') { const formData = new FormData(); Object.entries(fields).forEach(([key, value]) => formData.append(key, value)); files.forEach((file) => formData.append(fieldName, file, file.name)); const response = await fetch(endpoint(path), { method: 'POST', body: formData, credentials: 'include', cache: 'no-store' }); if (!response.ok) { const body = await response.json().catch(() => null); throw new Error(body?.message || body?.error || `Erreur serveur (${response.status})`); } return response.json() as Promise<{ token?: string; user?: unknown }>; }
+
+// ── FAQ ──
+export type FAQItem = { id: string; companyId?: string; question: string; answer?: string | null; isPublished?: boolean; createdAt?: string; company?: { name?: string } };
+export async function getPublicFAQ(): Promise<FAQItem[]> { return list(await apiRequest<FAQItem[] | { data?: FAQItem[] }>('/faq/public')); }
+export async function getCompanyFAQ(): Promise<FAQItem[]> { return list(await apiRequest<FAQItem[] | { data?: FAQItem[] }>('/company/faq')); }
+export async function createCompanyFAQ(question: string): Promise<FAQItem> { return apiRequest<FAQItem>('/company/faq', { method: 'POST', body: JSON.stringify({ question }) }); }
+
+// ── Feedback ──
+export type FeedbackItem = { id: string; companyId?: string; author: string; role?: string | null; text: string; isPublished?: boolean; createdAt?: string; company?: { name?: string } };
+export async function getPublicFeedback(): Promise<FeedbackItem[]> { return list(await apiRequest<FeedbackItem[] | { data?: FeedbackItem[] }>('/feedback/public')); }
+export async function getCompanyFeedback(): Promise<FeedbackItem[]> { return list(await apiRequest<FeedbackItem[] | { data?: FeedbackItem[] }>('/company/feedback')); }
+export async function createCompanyFeedback(author: string, role: string, text: string): Promise<FeedbackItem> { return apiRequest<FeedbackItem>('/company/feedback', { method: 'POST', body: JSON.stringify({ author, role, text }) }); }
