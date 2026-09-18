@@ -13,20 +13,21 @@ jobs:
       run:
         working-directory: backend
     services:
-      mysql:
-        image: mysql:8.0
+      postgres:
+        image: postgres:16
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: jobsinc_test
+          POSTGRES_USER: jobsinc
+          POSTGRES_PASSWORD: jobsinc
+          POSTGRES_DB: jobsinc_test
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -proot"
+          --health-cmd="pg_isready -U jobsinc -d jobsinc_test"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
     env:
-      DATABASE_URL: mysql://root:root@127.0.0.1:3306/jobsinc_test
+      DATABASE_URL: postgresql://jobsinc:jobsinc@127.0.0.1:5432/jobsinc_test?schema=public
       JWT_SECRET: ci-secret-de-test-longueur-suffisante-1234567890
       PORT: '5000'
       CORS_ORIGINS: http://localhost:3000

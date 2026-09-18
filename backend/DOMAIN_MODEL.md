@@ -1,101 +1,126 @@
 # Modèle métier JOBSINC
 
-Le dossier backend ne contient actuellement ni application, ni `schema.prisma`, ni migration. Ce document décrit le contrat à implémenter lorsque le backend sera ajouté.
+Ce document décrit le domaine métier effectif, tel que défini par le schéma
+Prisma (`backend/prisma/schema.prisma`, base **PostgreSQL**).
 
-## Compte utilisateur unique
+## Compte utilisateur et rôles
 
-Un utilisateur possède un seul compte. Son statut courant est porté par `User.accountStatus` :
+Un utilisateur possède un seul compte (`User`), avec un rôle parmi :
 
 ```prisma
-enum AccountStatus {
+enum Role {
   CANDIDATE
   EMPLOYEE
-}
-
-model User {
-  id            String        @id @default(cuid())
-  email         String        @unique
-  accountStatus AccountStatus @default(CANDIDATE)
-  applications  JobApplication[]
-  employments   Employment[]
+  RECRUITER
+  ADMIN
 }
 ```
 
-L’inscription ne doit accepter aucun champ permettant de choisir `EMPLOYEE`. Le backend initialise toujours `accountStatus` à `CANDIDATE`.
+- Un **CANDIDATE** est décrit par `CandidateProfile` (CV, compétences, localisation, disponibilité).
+- Un **RECRUITER** est lié à une `Company` (1:1 via `Company.userId`).
+- Un **EMPLOYEE** est un ancien candidat recruté (voir `Employment`).
+- Les **ADMIN** accèdent à un panneau de modération côté web (`/admin`).
 
-## Historique des candidatures et des emplois
+La sécurité est renforcée par :
+- `tokenVersion` sur `User` : révoque toutes les sessions lors d'un changement de mot de passe / déconnexion.
+- `PasswordReset` et `EmailVerification` : jetons à usage unique avec expiration.
 
-Les candidatures sont conservées après le recrutement. Une relation d’emploi est ajoutée séparément :
+## Offres et candidatures
 
 ```prisma
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  INTERNSHIP
+  FREELANCE
+}
+
 enum ApplicationStatus {
-  SUBMITTED
+  RECEIVED
+  UNDER_REVIEW
   INTERVIEW
-  HIRED
+  ACCEPTED
   REJECTED
-  WITHDRAWN
+}
+```
+
+- `Job` : appartient à une `Company` (`Job.companyId`), associe une liste de
+  compétences via `JobSkill` (relation vers le référentiel `Skill`).
+- `Application` : relie un `CandidateProfile` à un `Job`
+  (`@@unique([jobId, candidateProfileId])`), porte un `cvUrl` et un statut.
+- `Skill` / `CandidateSkill` / `JobSkill` : référentiel de compétences alimentant
+  le moteur de matching.
+
+## Entretiens et emplois
+
+```prisma
+enum InterviewMode {
+  ONLINE
+  PRESENTIEL
+}
+
+enum InterviewStatus {
+  PLANIFIE
+  EN_COURS
+  TERMINE
+  ANNULE
 }
 
 enum EmploymentStatus {
   ACTIVE
-  ENDED
-  SUSPENDED
-}
-
-model JobApplication {
-  id          String            @id @default(cuid())
-  userId      String
-  companyId   String
-  jobId       String
-  status      ApplicationStatus @default(SUBMITTED)
-  user        User              @relation(fields: [userId], references: [id])
-  company     Company           @relation(fields: [companyId], references: [id])
-  employment  Employment?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  @@index([userId])
-  @@index([companyId, jobId])
-}
-
-model Employment {
-  id          String           @id @default(cuid())
-  userId      String
-  companyId   String
-  jobId       String
-  applicationId String         @unique
-  position    String
-  startDate   DateTime
-  endDate     DateTime?
-  status      EmploymentStatus @default(ACTIVE)
-  user        User             @relation(fields: [userId], references: [id])
-  company     Company          @relation(fields: [companyId], references: [id])
-  application JobApplication   @relation(fields: [applicationId], references: [id])
-
-  @@index([userId, status])
-  @@index([companyId, status])
-}
-
-model Company {
-  id           String            @id @default(cuid())
-  name         String
-  applications JobApplication[]
-  employments  Employment[]
+  INACTIVE
 }
 ```
 
-Les noms et champs existants devront être fusionnés avec ce modèle lorsqu’un vrai schéma sera disponible ; ce bloc n’est pas une migration exécutable en l’état.
+- `Interview` : lié à une candidature (1:1 via `Application.interview`). Le mode
+  ONLINE fournit un `streamingUrl` (visioconférence).
+- `Employment` : créé lors d'un recrutement confirmé, relie un candidat à une
+  entreprise et une offre. Les fins/suspensions modifient uniquement
+  `Employment.status`, ce qui conserve l'historique professionnel du candidat.
 
-## Transition sécurisée
+## Messagerie
 
-La confirmation d’un recrutement doit être une transaction backend :
+```prisma
+enum NotificationType {
+  APPLICATION
+  INTERVIEW
+  MESSAGE
+  GENERAL
+}
+```
 
-1. vérifier que l’entreprise est autorisée à traiter l’offre ;
-2. vérifier que la candidature appartient bien à l’utilisateur et à l’offre ;
-3. passer la candidature à `HIRED` ;
-4. créer `Employment` avec `userId`, `companyId`, `jobId`, `position`, `startDate` et `status: ACTIVE` ;
-5. passer `User.accountStatus` à `EMPLOYEE`.
+- `Conversation` : conversations **recruteur ↔ candidat**, toujours rattachées à
+  une `Application` autorisée (statuts `INTERVIEW` ou `ACCEPTED`).
+  Contrainte d'unicité `@@unique([companyUserId, candidateUserId])`.
+- `Message` : ligne horodatée avec `senderId`, `receiverId` et `isRead`.
+  Lecteur partagé entre `/api/conversations` et l'endpoint legacy
+  `/api/company/messages` (`conversationService`).
+- Les notifications (`Notification`) et les push FCM (`DeviceToken`) alertent les
+  utilisateurs des événements clés (nouveau message, statut d'application, etc.).
 
-Aucune route publique ne doit permettre `PATCH User.accountStatus = EMPLOYEE`. Le mobile ne doit jamais être considéré comme une autorité pour cette transition.
+## FAQ et feedback
 
-Les anciennes candidatures restent liées à `User`. Une fin ou une suspension d’emploi modifie uniquement `Employment.status`, ce qui permet de conserver plusieurs expériences professionnelles et de réactiver ultérieurement une expérience ou un nouveau rattachement.
+- `Faq` (table `FAQ`) : questions/réponses par entreprise, publication modérée (`isPublished`).
+- `Feedback` (table `Feedback`) : témoignages d'entreprises, publication modérée.
+- `SavedJob` : offres épinglées par un utilisateur (`@@unique([userId, jobId])`).
+
+## Relations principales
+
+- `User` 1—1 `CandidateProfile` / 1—1 `Company`
+- `Company` 1—n `Job`, 1—n `Faq`, 1—n `Feedback`
+- `Job` 1—n `Application`, 1—n `JobSkill`
+- `CandidateProfile` 1—n `Application`, 1—n `CandidateSkill`, 1—n `Employment`
+- `Application` 1—1 `Interview`, 1—1 `Conversation`, 1—1 `Employment`
+- `Conversation` 1—n `Message` (2 autres participants `User`)
+
+## Endpoints principaux
+
+Tous les endpoints sont servis sous `/api` (voir `server.js` pour le montage complet) :
+- Auth : `/auth/register/candidate`, `/auth/register/company`, `/auth/login`,
+  `/auth/login/candidate`, `/auth/login/company`, `/auth/me`,
+  `/auth/forgot-password`, `/auth/reset-password`
+- Entreprise : `/company/*` (dashboard, profil, offres, candidatures, matching, messagerie, FAQ, feedback)
+- Public : `/companies`, `/jobs`, `/stats`, `/faq/public`, `/feedback/public`
+- Candidatures : `/applications/*`, entretiens : `/interviews/*`
+- Messagerie : `/conversations/*`, legacy `/company/messages`
+- Admin : `/admin/*`

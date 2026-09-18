@@ -1,22 +1,96 @@
-### 1. Test Inscription
-POST http://localhost:5000/api/auth/register
+### Fichier de tests manuels de l'API JOBSINC (Jeton VS Code / REST Client)
+### Serveur : npm run dev dans backend/ — base http://localhost:5000/api
+
+### 1. Inscription candidat
+POST http://localhost:5000/api/auth/register/candidate
+Content-Type: application/json
+
+{
+  "firstName": "Alice",
+  "lastName": "Test",
+  "email": "alice@test.com",
+  "password": "Password123!",
+  "phone": "+221770000111",
+  "country": "Sénégal",
+  "city": "Dakar",
+  "birthDate": "1996-01-01"
+}
+
+### 2. Inscription entreprise
+POST http://localhost:5000/api/auth/register/company
+Content-Type: application/json
+
+{
+  "firstName": "E2E",
+  "lastName": "Recruiter",
+  "email": "recruteur@test.com",
+  "password": "Password123!",
+  "companyName": "JOBSINC Corp"
+}
+
+### 3. Connexion entreprise
+POST http://localhost:5000/api/auth/login/company
 Content-Type: application/json
 
 {
   "email": "recruteur@test.com",
-  "password": "password123",
-  "role": "RECRUITER"
+  "password": "Password123!"
 }
 
-### 2. Test Connexion
-POST http://localhost:5000/api/auth/login
-Content-Type: application/json
-
-{
-  "email": "recruteur@test.com",
-  "password": "password123"
-}
-
-### 3. Test Session /me (Remplace VOTRE_TOKEN_ICI par le token reçu au Login)
+### 4. Session courante /me (remplacer VOTRE_TOKEN_ICI par le token du login)
 GET http://localhost:5000/api/auth/me
 Authorization: Bearer VOTRE_TOKEN_ICI
+
+### 5. Profil entreprise (authentifié)
+GET http://localhost:5000/api/company/profile
+Authorization: Bearer VOTRE_TOKEN_ICI
+
+### 6. Création d'une offre d'emploi
+POST http://localhost:5000/api/company/jobs
+Content-Type: application/json
+Authorization: Bearer VOTRE_TOKEN_ICI
+
+{
+  "title": "Développeur Full-Stack",
+  "description": "Poste de développeur TypeScript / Node.js / React.",
+  "location": "Dakar",
+  "contractType": "CDI",
+  "workMode": "Sur site",
+  "experience": "2 à 5 ans",
+  "skills": "JavaScript\nReact\nNode.js",
+  "educationLevel": "Licence",
+  "minExperienceYears": 0,
+  "maxExperienceYears": 3
+}
+
+### 7. Dashboard entreprise
+GET http://localhost:5000/api/company/dashboard?days=30
+Authorization: Bearer VOTRE_TOKEN_ICI
+
+### 8. Candidatures entreprise (avec scores de matching)
+GET http://localhost:5000/api/company/applications
+Authorization: Bearer VOTRE_TOKEN_ICI
+
+### 9. Recommandations matching (décroissant)
+GET http://localhost:5000/api/company/matching?minScore=0
+Authorization: Bearer VOTRE_TOKEN_ICI
+
+### 10. Liste des conversations recruteur (legacy)
+GET http://localhost:5000/api/company/messages
+Authorization: Bearer VOTRE_TOKEN_ICI
+
+### 11. Liste des conversations candidat (unifié)
+GET http://localhost:5000/api/conversations
+Authorization: Bearer VOTRE_TOKEN_ICI
+
+### 12. Offres publiques
+GET http://localhost:5000/api/jobs
+
+### 13. Entreprises publiques
+GET http://localhost:5000/api/companies
+
+### 14. FAQ publique
+GET http://localhost:5000/api/faq/public
+
+### 15. Feedback public
+GET http://localhost:5000/api/feedback/public
