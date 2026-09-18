@@ -24,6 +24,45 @@ if (Math.abs(weightSum - 1) > 1e-9) {
 // et niveaux de compatibilité (label affiché dans l'interface).
 const MIN_SCORE_DEFAULT = 15;
 
+// ── Constantes de scoring (ne pas dupliquer dans matchingService.js) ──
+// Expérience : plancher et pénalité par année d'écart hors fourchette.
+const EXPERIENCE = {
+  floor: 20,
+  penaltyPerYear: 25,
+};
+
+// Formation : niveau au-dessus/égal = 100, décotes par niveau d'écart,
+// domaine sans correspondance = score plancher.
+const EDUCATION = {
+  rankOk: 100,
+  oneBelow: 60,
+  twoBelow: 35,
+  farBelow: 20,
+  fieldMismatch: 20,
+};
+
+// Localisation.
+const LOCATION = {
+  sameCity: 100,
+  sameCountry: 70,
+  otherRegion: 20,
+};
+
+// Disponibilité (décalage en jours par rapport à la date de début d'offre).
+const AVAILABILITY = {
+  onTime: 100,
+  within30Days: 70,
+  later: 30,
+  lateGraceDays: 30,
+};
+
+// Complétude du dossier candidat (« autres »).
+const OTHER = {
+  cv: 50,
+  location: 30,
+  skills: 20,
+};
+
 const levels = [
   { key: 'excellent', min: 85, label: 'Excellent match' },
   { key: 'very_good', min: 70, label: 'Très bon match' },
@@ -149,5 +188,10 @@ module.exports = {
   CONTRACT_GROUPS,
   REMOTE_MODES,
   MIN_SCORE_DEFAULT,
+  EXPERIENCE,
+  EDUCATION,
+  LOCATION,
+  AVAILABILITY,
+  OTHER,
   semantic,
 };

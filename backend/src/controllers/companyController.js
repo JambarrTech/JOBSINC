@@ -109,7 +109,7 @@ function jobDto(job) {
     contractType: job.contractType || job.jobType, status: job.isOpen ? 'active' : 'inactive',
     publishedAt: job.createdAt, createdAt: job.createdAt, department: job.department,
     workMode: job.workMode, experience: job.experience, salaryMin: job.salaryMin,
-    salaryMax: job.salaryMax, currency: job.currency, deadline: job.deadline,
+    salaryMax: job.salaryMax, currency: job.currency, deadline: job.deadline, startsAt: job.startsAt,
     responsibilities: job.responsibilities, skills: job.skills,
     educationLevel: job.educationLevel, minExperienceYears: job.minExperienceYears, maxExperienceYears: job.maxExperienceYears,
     applicationsCount: job._count?.applications || 0,
@@ -278,12 +278,12 @@ exports.jobs = async (req, res) => {
 exports.createJob = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
-    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, responsibilities, skills, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
+    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
     if (!title?.trim() || !description?.trim() || !location?.trim() || !contractType || !skills?.trim()) return res.status(400).json({ error: 'Les champs obligatoires de l’offre sont manquants.' });
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
-    const job = await prisma.job.create({ data: { companyId: company.id, title: title.trim(), description: description.trim(), location: location.trim(), jobType: types[contractType] || 'FULL_TIME', contractType, department: department || null, workMode: workMode || null, experience: experience || null, salaryMin: salaryMin === null || salaryMin === '' ? null : Number(salaryMin), salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax), currency: currency || null, deadline: deadline ? new Date(deadline) : null, responsibilities: responsibilities || null, skills: skills.trim(), educationLevel: educationLevel || null, minExperienceYears: minExperienceYears == null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)), maxExperienceYears: maxExperienceYears == null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }, include: jobInclude });
+    const job = await prisma.job.create({ data: { companyId: company.id, title: title.trim(), description: description.trim(), location: location.trim(), jobType: types[contractType] || 'FULL_TIME', contractType, department: department || null, workMode: workMode || null, experience: experience || null, salaryMin: salaryMin === null || salaryMin === '' ? null : Number(salaryMin), salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax), currency: currency || null, deadline: deadline ? new Date(deadline) : null, startsAt: startsAt ? new Date(startsAt) : null, responsibilities: responsibilities || null, skills: skills.trim(), educationLevel: educationLevel || null, minExperienceYears: minExperienceYears == null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)), maxExperienceYears: maxExperienceYears == null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }, include: jobInclude });
     res.status(201).json(jobDto(job));
   } catch { res.status(500).json({ error: 'Impossible de créer l’offre.' }); }
 };
@@ -425,7 +425,7 @@ exports.updateJob = async (req, res) => {
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const job = await prisma.job.findFirst({ where: { id: req.params.id, companyId: company.id } });
     if (!job) return res.status(404).json({ error: 'Offre introuvable.' });
-    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
+    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
     const updated = await prisma.job.update({
       where: { id: job.id },
@@ -441,6 +441,7 @@ exports.updateJob = async (req, res) => {
         ...(salaryMax !== undefined && { salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax) }),
         ...(currency !== undefined && { currency }),
         ...(deadline !== undefined && { deadline: deadline ? new Date(deadline) : null }),
+        ...(startsAt !== undefined && { startsAt: startsAt ? new Date(startsAt) : null }),
         ...(responsibilities !== undefined && { responsibilities }),
         ...(skills !== undefined && { skills: skills.trim() }),
         ...(educationLevel !== undefined && { educationLevel }),

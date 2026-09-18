@@ -9,6 +9,11 @@ const {
   CONTRACT_GROUPS,
   REMOTE_MODES,
   MIN_SCORE_DEFAULT,
+  EXPERIENCE,
+  EDUCATION,
+  LOCATION,
+  AVAILABILITY,
+  OTHER,
 } = require('./matching/config');
 
 // ─────────────────────────────────────────────────────────────
@@ -208,7 +213,7 @@ function scoreExperience(job, candidateYears) {
     return { known: true, score: 100, label: `${years} an${years > 1 ? 's' : ''} — dans la fourchette recherchée` };
   }
   const gap = years < range.min ? range.min - years : years - range.max;
-  const score = Math.max(20, 100 - gap * 25);
+  const score = Math.max(EXPERIENCE.floor, 100 - gap * EXPERIENCE.penaltyPerYear);
   const side = years < range.min ? 'en dessous' : 'au-dessus';
   return { known: true, score, label: `${years} an${years > 1 ? 's' : ''} (${side} de la fourchette ${range.min}-${range.max} ans)` };
 }
@@ -237,10 +242,10 @@ function scoreEducation(job, profile) {
 
   let levelScore = null;
   if (jobRank != null && candidateRank != null) {
-    if (candidateRank >= jobRank) levelScore = 100;
-    else if (candidateRank === jobRank - 1) levelScore = 60;
-    else if (candidateRank === jobRank - 2) levelScore = 35;
-    else levelScore = 20;
+    if (candidateRank >= jobRank) levelScore = EDUCATION.rankOk;
+    else if (candidateRank === jobRank - 1) levelScore = EDUCATION.oneBelow;
+    else if (candidateRank === jobRank - 2) levelScore = EDUCATION.twoBelow;
+    else levelScore = EDUCATION.farBelow;
   } else if (jobRank != null && candidateRank == null) {
     // Niveau candidat non renseigné mais offre exige un niveau : on ne peut pas évaluer
     levelScore = null;
@@ -256,7 +261,7 @@ function scoreEducation(job, profile) {
     const hits = [...candWords].filter((word) => wordHits(jobWords, word)).length;
     fieldScore = candWords.size === 0 ? null : Math.round((hits / candWords.size) * 100);
     // Si aucun mot du domaine ne match, on considère un score faible mais pas nul
-    if (fieldScore === 0) fieldScore = 20;
+    if (fieldScore === 0) fieldScore = EDUCATION.fieldMismatch;
   }
 
   const parts = [];
@@ -274,19 +279,19 @@ function scoreEducation(job, profile) {
 function scoreLocation(job, profile, company) {
   const mode = normalize(job.workMode);
   if (mode && REMOTE_MODES.some((remote) => mode.includes(remote))) {
-    return { known: true, score: 100, label: `Poste ${normalize(job.workMode).includes('hybride') ? 'hybride' : 'ouvert au télétravail'} — aucune contrainte géographique` };
+    return { known: true, score: LOCATION.sameCity, label: `Poste ${normalize(job.workMode).includes('hybride') ? 'hybride' : 'ouvert au télétravail'} — aucune contrainte géographique` };
   }
   const jobLocation = normalize(job.location);
   const city = normalize(profile.city);
   const country = normalize(profile.country);
   if (!jobLocation || (!city && !country)) return { known: false };
   const locationWords = words(jobLocation);
-  if (city && wordHits(locationWords, city)) return { known: true, score: 100, label: profile.city };
+  if (city && wordHits(locationWords, city)) return { known: true, score: LOCATION.sameCity, label: profile.city };
   // Même pays que l'offre ou que l'entreprise → compatibilité partielle.
   if (country && (locationWords.has(country) || (company?.country && normalize(company.country) === country))) {
-    return { known: true, score: 70, label: `${profile.country} (même pays)` };
+    return { known: true, score: LOCATION.sameCountry, label: `${profile.country} (même pays)` };
   }
-  return { known: true, score: 20, label: `${[profile.city, profile.country].filter(Boolean).join(', ')} — autre région que ${job.location}` };
+  return { known: true, score: LOCATION.otherRegion, label: `${[profile.city, profile.country].filter(Boolean).join(', ')} — autre région que ${job.location}` };
 }
 
 // ── Contrat ──────────────────────────────────────────────────
@@ -315,17 +320,17 @@ function scoreContract(job, profile) {
 // ── Disponibilité ────────────────────────────────────────────
 
 function scoreAvailability(job, profile) {
-  // Aucune date de début d'offre n'existe encore dans le schéma ;
-  // le critère ne devient actif que si une date candidate est connue
-  // et comparable (champ futur job.startsAt pris en charge ici).
+  // Compare la date de début d'offre (job.startsAt) avec la disponibilité
+  // du candidat (profile.availableFrom) : le critère est inactif tant que
+  // l'une des deux dates est inconnue.
   const startsAt = job.startsAt ? new Date(job.startsAt) : null;
   if (!startsAt || !profile.availableFrom) return { known: false };
   const available = new Date(profile.availableFrom);
   if (Number.isNaN(available.getTime())) return { known: false };
   const diffDays = Math.round((available - startsAt) / 86400000);
-  if (diffDays <= 0) return { known: true, score: 100, label: 'Disponible pour le démarrage' };
-  if (diffDays <= 30) return { known: true, score: 70, label: `Disponible avec ~${diffDays} j de décalage` };
-  return { known: true, score: 30, label: `Disponible seulement à partir du ${available.toISOString().slice(0, 10)}` };
+  if (diffDays <= 0) return { known: true, score: AVAILABILITY.onTime, label: 'Disponible pour le démarrage' };
+  if (diffDays <= AVAILABILITY.lateGraceDays) return { known: true, score: AVAILABILITY.within30Days, label: `Disponible avec ~${diffDays} j de décalage` };
+  return { known: true, score: AVAILABILITY.later, label: `Disponible seulement à partir du ${available.toISOString().slice(0, 10)}` };
 }
 
 // ── Autres critères (complétude du dossier, signaux réels) ──
@@ -333,9 +338,9 @@ function scoreAvailability(job, profile) {
 function scoreOther(profile) {
   const signals = [];
   let score = 0;
-  if (profile.cvUrl) { score += 50; signals.push('CV déposé'); } else signals.push('CV manquant');
-  if (profile.city || profile.country) { score += 30; signals.push('Localisation renseignée'); }
-  if (profile.skills && profile.skills.trim()) { score += 20; signals.push('Compétences renseignées'); }
+  if (profile.cvUrl) { score += OTHER.cv; signals.push('CV déposé'); } else signals.push('CV manquant');
+  if (profile.city || profile.country) { score += OTHER.location; signals.push('Localisation renseignée'); }
+  if (profile.skills && profile.skills.trim()) { score += OTHER.skills; signals.push('Compétences renseignées'); }
   return { known: true, score, label: signals.join(' · ') };
 }
 

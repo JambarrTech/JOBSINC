@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:socket_io_client/socket_io_client.dart' as sio;
 
+import 'api_client.dart';
+
 /// Événement « en train d'écrire » reçu du serveur.
 class TypingEvent {
   const TypingEvent({required this.conversationId, required this.typing});
@@ -26,9 +28,7 @@ class ChatSocketService {
   static final ChatSocketService instance = ChatSocketService._();
 
   /// Même origine que l'API : API_URL sans le suffixe /api.
-  static final String socketUrl =
-      const String.fromEnvironment('API_URL', defaultValue: 'http://127.0.0.1:5000/api')
-          .replaceFirst(RegExp(r'/api/?$'), '');
+  static final String socketUrl = ApiClient.serverBaseUrl;
 
   sio.Socket? _socket;
   String? _connectedToken;

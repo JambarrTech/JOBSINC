@@ -16,7 +16,6 @@ import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/pressable_button.dart';
 import '../../applications/presentation/applications_screen.dart';
 import '../../applications/providers/applications_provider.dart';
-import '../../applications/providers/upcoming_interviews_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../jobs/models/job_offer.dart';
 import '../../jobs/presentation/job_detail_screen.dart';
@@ -204,9 +203,6 @@ class _HomeContent extends ConsumerWidget {
               // 🔴 Bandeau entretien en cours (priorité absolue sur le reste).
               const _LiveInterviewBanner(),
 
-              // 📅 Entretiens à venir
-              const _UpcomingInterviewsSection(),
-
               // 🏢 Entreprises suggérées
               if (data.companies.isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -268,10 +264,6 @@ class _HomeContent extends ConsumerWidget {
 
               // 💾 Offres sauvegardées
               const _SavedJobsSection(),
-
-              // 💡 Conseils & tips
-              const SizedBox(height: 10),
-              const _TipsSection(),
 
               const SizedBox(height: 18),
             ],
@@ -1376,130 +1368,6 @@ class StatItem extends StatelessWidget {
 }
 
 // ============================================================
-// UPCOMING INTERVIEWS SECTION
-// ============================================================
-
-class _UpcomingInterviewsSection extends ConsumerWidget {
-  const _UpcomingInterviewsSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final interviews = ref.watch(upcomingInterviewsProvider);
-    return interviews.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (data) {
-        if (data.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _SectionHeader(
-                title: 'Entretiens à venir',
-                subtitle: '${data.length} planifié${data.length > 1 ? 's' : ''}',
-              ),
-              const SizedBox(height: 12),
-              ...data.map(
-                (app) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _UpcomingInterviewCard(application: app),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _UpcomingInterviewCard extends StatelessWidget {
-  const _UpcomingInterviewCard({required this.application});
-  final HomeApplication application;
-
-  @override
-  Widget build(BuildContext context) {
-    final interview = application.interview;
-    final scheduledAt = interview?.scheduledAt;
-    final dateStr = scheduledAt != null
-        ? DateFormat('EEEE d MMMM', 'fr').format(scheduledAt)
-        : '';
-    final timeStr = scheduledAt != null
-        ? DateFormat('HH:mm', 'fr').format(scheduledAt)
-        : '';
-    final isOnline = interview?.isOnline ?? true;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.background),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFF8B5CF6).withValues(alpha: .1),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.videocam_outlined,
-              color: Color(0xFF8B5CF6),
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  application.jobTitle ?? 'Entretien',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${application.companyName ?? ''} · ${isOnline ? 'En ligne' : 'Présentiel'}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.secondaryText,
-                  ),
-                ),
-                if (dateStr.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    '$dateStr à $timeStr',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF8B5CF6),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: AppColors.secondaryText.withValues(alpha: .5),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
 // SAVED JOBS SECTION
 // ============================================================
 
@@ -1631,124 +1499,6 @@ class _CompanyChip extends StatelessWidget {
         Icons.business_outlined,
         color: AppColors.primary,
         size: 20,
-      ),
-    );
-  }
-}
-
-// ============================================================
-// TIPS SECTION (static)
-// ============================================================
-
-class _TipsSection extends StatelessWidget {
-  const _TipsSection();
-
-  static const _tips = [
-    _Tip(
-      icon: Icons.description_outlined,
-      title: 'Soigne ton CV',
-      subtitle: 'Un CV clair et structuré augmente tes chances de 40%.',
-      color: Color(0xFF3B82F6),
-    ),
-    _Tip(
-      icon: Icons.psychology_outlined,
-      title: 'Prépare tes entretiens',
-      subtitle: 'Renseigne-toi sur l\'entreprise et prépare tes réponses.',
-      color: Color(0xFF8B5CF6),
-    ),
-    _Tip(
-      icon: Icons.notifications_active_outlined,
-      title: 'Active les alertes',
-      subtitle: 'Ne rate aucune opportunité en configurant tes alertes.',
-      color: Color(0xFFF59E0B),
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionHeader(
-          title: 'Conseils',
-          subtitle: 'Pour booster ta recherche',
-        ),
-        const SizedBox(height: 12),
-        ..._tips.map(
-          (tip) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _TipCard(tip: tip),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Tip {
-  const _Tip({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-}
-
-class _TipCard extends StatelessWidget {
-  const _TipCard({required this.tip});
-  final _Tip tip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.background),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: tip.color.withValues(alpha: .1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(tip.icon, color: tip.color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tip.title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  tip.subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.secondaryText,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
