@@ -4,6 +4,7 @@ const companyUpload = require('../middlewares/companyUpload');
 const controller = require('../controllers/companyController');
 const faqController = require('../controllers/faqController');
 const feedbackController = require('../controllers/feedbackController');
+const messageController = require('../controllers/messageController');
 
 const router = express.Router();
 router.use(auth);
@@ -24,6 +25,12 @@ router.get('/applications', controller.applications);
 router.get('/applications/:id', controller.applicationDetail);
 router.get('/candidates', controller.candidates);
 router.get('/matching', controller.matching);
+
+// Messagerie recruteur (legacy /api/company/messages → conversationService)
+router.get('/messages', messageController.listConversations);
+router.get('/messages/:conversationId', messageController.getMessages);
+router.post('/messages', messageController.send);
+router.patch('/messages/:conversationId/read', messageController.markAsRead);
 
 // FAQ entreprise
 router.get('/faq', faqController.listByCompany);
