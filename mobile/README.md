@@ -12,7 +12,9 @@ Frontend Flutter pour les candidats et les employés/recruteurs de JOBSINC.
 - Navigation `go_router` adaptée au statut `CANDIDATE` ou `EMPLOYEE`
 - Dashboards candidat et employé avec bottom navigation
 
-Les données affichées sont uniquement des placeholders UI. Aucune API backend n’est appelée dans cette phase.
+> Note historique : à ce stade les écrans affichaient des placeholders UI.
+> Depuis, tous les écrans sont alimentés par l'API backend (aucune donnée
+> codée en dur dans l'UI).
 
 ## Lancer le projet
 
@@ -20,3 +22,22 @@ Les données affichées sont uniquement des placeholders UI. Aucune API backend 
 flutter pub get
 flutter run
 ```
+
+L'API par défaut pointe sur `127.0.0.1:5000` (le localhost de l'appareil). Le
+backend étant sur votre PC, la façon la plus simple de le joindre depuis un
+appareil Android (émulateur ou téléphone réel en USB) est le port-renvoi adb :
+
+```bash
+adb reverse tcp:5000 tcp:5000
+flutter run
+```
+
+Sans `adb reverse` (ex. téléphone réel non branché en USB), indiquez l'adresse
+IP de la machine qui exécute le backend :
+
+```bash
+flutter run --dart-define=API_URL=http://192.168.1.10:5000/api
+```
+
+Note : la cleartext HTTP est autorisée sur Android (`usesCleartextTraffic`);
+sur iOS le trafic HTTP vers un IP LAN exige d'ajouter une exception ATS.

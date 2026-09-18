@@ -24,6 +24,8 @@ exports.getProfile = async (req, res) => {
       skills: candidate.skills,
       experienceYears: candidate.experienceYears,
       educationField: candidate.educationField,
+      desiredContracts: candidate.desiredContracts,
+      availableFrom: candidate.availableFrom,
       email: candidate.user.email,
     });
   } catch (error) {
@@ -41,10 +43,13 @@ exports.updateProfile = async (req, res) => {
       return res.status(404).json({ error: 'Profil candidat introuvable.' });
     }
 
-    const { firstName, lastName, phone, country, city, skills, experienceYears, educationField } = req.body;
+    const { firstName, lastName, phone, country, city, skills, experienceYears, educationField, desiredContracts, availableFrom } = req.body;
 
     const experience = experienceYears === undefined ? undefined
       : experienceYears === null || experienceYears === '' ? null : Math.max(0, Math.min(45, Number(experienceYears)));
+
+    const availability = availableFrom === undefined ? undefined
+      : availableFrom === null || availableFrom === '' ? null : new Date(availableFrom);
 
     const updated = await prisma.candidateProfile.update({
       where: { id: candidate.id },
@@ -57,6 +62,8 @@ exports.updateProfile = async (req, res) => {
         ...(skills !== undefined && { skills }),
         ...(experience !== undefined && { experienceYears: experience }),
         ...(educationField !== undefined && { educationField }),
+        ...(desiredContracts !== undefined && { desiredContracts }),
+        ...(availability !== undefined && { availableFrom: availability }),
       },
       include: { user: { select: { email: true } } },
     });
@@ -74,6 +81,8 @@ exports.updateProfile = async (req, res) => {
       skills: updated.skills,
       experienceYears: updated.experienceYears,
       educationField: updated.educationField,
+      desiredContracts: updated.desiredContracts,
+      availableFrom: updated.availableFrom,
       email: updated.user.email,
     });
   } catch (error) {
