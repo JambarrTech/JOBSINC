@@ -1,6 +1,9 @@
 const prisma = require('../config/prisma');
+const { getCached, setCache } = require('../utils/cache');
 
 exports.getStats = async (_req, res) => {
+  const cached = getCached('stats:global');
+  if (cached) return res.json(cached);
   try {
     const [talents, companies, jobs, applications] = await Promise.all([
       prisma.candidateProfile.count(),
@@ -8,10 +11,15 @@ exports.getStats = async (_req, res) => {
       prisma.job.count({ where: { isOpen: true, company: { isApproved: true } } }),
       prisma.application.count(),
     ]);
-    return res.json({ talents, companies, jobs, applications });
+    const result = { talents, companies, jobs, applications };
+    setCache('stats:global', result, 30000);
+    return res.json(result);
   } catch (error) {
+    // Fallback cache stale si DB lente
+    const stale = getCached('stats:global');
+    if (stale) return res.json(stale);
     console.error('Erreur stats:', error);
-    return res.status(500).json({ error: 'Impossible de charger les statistiques.' });
+    return res.status(503).json({ error: 'Service temporairement indisponible.' });
   }
 };
 
