@@ -11,6 +11,16 @@ const base = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
 });
 
+let reconnecting = null;
+async function safeReconnect() {
+  if (reconnecting) return reconnecting;
+  reconnecting = (async () => {
+    try { await base.$disconnect(); } catch {}
+    try { await base.$connect(); } catch {}
+  })().finally(() => { reconnecting = null; });
+  return reconnecting;
+}
+
 const prisma = base.$extends({
   query: {
     $allModels: {
@@ -22,13 +32,8 @@ const prisma = base.$extends({
           } catch (err) {
             const retriable = err && RETRIABLE_CODES.has(err.code);
             if (!retriable) throw err;
-            // Le pool peut être « empoisonné » (PgBouncer a coupé les
-            // connexions après une suspension Neon, Prisma ne les recrée
-            // pas tout seul). Un $disconnect + $connect force un pool
-            // neuf, qui se reconnecte en ~7 s (vérifié).
-            try { await base.$disconnect(); } catch {}
-            try { await base.$connect(); } catch {}
             if (attempt === MAX_ATTEMPTS) throw err;
+            await safeReconnect();
             await sleep(2000 * attempt);
           }
         }
@@ -38,11 +43,11 @@ const prisma = base.$extends({
 });
 
 if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma;
+  if (!global.prisma) global.prisma = prisma;
 }
 
 process.on('beforeExit', async () => {
-  await prisma.$disconnect();
+  try { await prisma.$disconnect(); } catch {}
 });
 
 module.exports = prisma;
