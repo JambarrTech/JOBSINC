@@ -100,6 +100,15 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/saved-jobs', savedJobRoutes);
 app.use('/api/skills', skillRoutes);
 
+app.get('/', (req, res) => {
+  res.send('🚀 Serveur JOBSINC opérationnel !');
+});
+
+// Health check endpoint for load balancers / monitoring
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Route introuvable.' });
 });
@@ -108,15 +117,6 @@ const { handleError } = require('./src/utils/errors');
 
 app.use((error, req, res, next) => {
   handleError(error, res);
-});
-
-app.get('/', (req, res) => {
-  res.send('🚀 Serveur JOBSINC opérationnel !');
-});
-
-// Health check endpoint for load balancers / monitoring
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 const PORT = process.env.PORT || 5000;
@@ -180,6 +180,18 @@ async function startServer() {
       }
     }, 2 * 60 * 1000);
     
+    // Gestion d'erreur du serveur (EADDRINUSE, etc.)
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} déjà utilisé. Arrêtez l'ancien processus :`);
+        console.error(`   PowerShell: Get-NetTCPConnection -LocalPort ${PORT} | % { Stop-Process -Id $_.OwningProcess -Force }`);
+        console.error(`   ou changez PORT dans .env`);
+        process.exit(1);
+      }
+      console.error('❌ Erreur serveur:', err);
+      process.exit(1);
+    });
+
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`✅ Serveur démarré sur http://0.0.0.0:${PORT} (Socket.IO actif)`);
     });
