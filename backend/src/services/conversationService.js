@@ -21,15 +21,22 @@ const MAX_MESSAGE_LENGTH = 2000;
 const DEFAULT_PAGE_LIMIT = 200;
 const MAX_PAGE_LIMIT = 200;
 
-// --- Limitation de débit en mémoire (pas de dépendance externe) ---
+// --- Limitation de débit en mémoire (borne LRU 5000) ---
 const rateBuckets = new Map();
 const RATE_LIMIT_MAX_MESSAGES = 20;
 const RATE_LIMIT_WINDOW_MS = 10000;
+const RATE_BUCKETS_MAX = 5000;
 
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of rateBuckets) {
     if (now > value.resetAt) rateBuckets.delete(key);
+  }
+  // LRU : si trop d'entrées, supprime les plus anciennes
+  if (rateBuckets.size > RATE_BUCKETS_MAX) {
+    const toDelete = rateBuckets.size - RATE_BUCKETS_MAX;
+    const keys = rateBuckets.keys();
+    for (let i = 0; i < toDelete; i++) rateBuckets.delete(keys.next().value);
   }
 }, 60_000);
 
