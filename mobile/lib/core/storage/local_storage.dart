@@ -35,21 +35,27 @@ class LocalStorage {
   String? get cvUrl => _preferences.getString(StorageKeys.cvUrl);
 
   Future<void> saveSession({required String token, String? refreshToken, required String id, required String status, required String firstName, String? lastName, String? email, String? phone, DateTime? birthDate, String? country, String? city, String? photoUrl, String? cvUrl}) async {
-    await _secureStorage.write(key: StorageKeys.authToken, value: token);
-    if (refreshToken != null) {
-      await _secureStorage.write(key: StorageKeys.refreshToken, value: refreshToken);
-    }
-    await _preferences.setString(StorageKeys.userId, id);
-    await _preferences.setString(StorageKeys.accountStatus, status);
-    await _preferences.setString(StorageKeys.firstName, firstName);
-    if (lastName != null) await _preferences.setString(StorageKeys.lastName, lastName);
-    if (email != null) await _preferences.setString(StorageKeys.email, email);
-    if (phone != null) await _preferences.setString(StorageKeys.phone, phone);
-    if (birthDate != null) await _preferences.setString(StorageKeys.birthDate, birthDate.toIso8601String());
-    if (country != null) await _preferences.setString(StorageKeys.country, country);
-    if (city != null) await _preferences.setString(StorageKeys.city, city);
-    if (photoUrl != null) await _preferences.setString(StorageKeys.photoUrl, photoUrl);
-    if (cvUrl != null) await _preferences.setString(StorageKeys.cvUrl, cvUrl);
+    // Écritures groupées pour limiter les fenêtres d'incohérence si kill entre deux writes
+    await Future.wait([
+      _secureStorage.write(key: StorageKeys.authToken, value: token),
+      if (refreshToken != null) _secureStorage.write(key: StorageKeys.refreshToken, value: refreshToken),
+    ]);
+    final futures = <Future<bool>>[
+      _preferences.setString(StorageKeys.userId, id),
+      _preferences.setString(StorageKeys.accountStatus, status),
+      _preferences.setString(StorageKeys.firstName, firstName),
+    ];
+    if (lastName != null) futures.add(_preferences.setString(StorageKeys.lastName, lastName));
+    if (email != null) futures.add(_preferences.setString(StorageKeys.email, email));
+    if (phone != null) futures.add(_preferences.setString(StorageKeys.phone, phone));
+    if (birthDate != null) futures.add(_preferences.setString(StorageKeys.birthDate, birthDate.toIso8601String()));
+    if (country != null) futures.add(_preferences.setString(StorageKeys.country, country));
+    if (city != null) futures.add(_preferences.setString(StorageKeys.city, city));
+    if (photoUrl != null) futures.add(_preferences.setString(StorageKeys.photoUrl, photoUrl));
+    if (cvUrl != null) futures.add(_preferences.setString(StorageKeys.cvUrl, cvUrl));
+    await Future.wait(futures);
+    // Nettoie l'ancienne clé legacy
+    await _preferences.remove(StorageKeys.userRole);
   }
 
   Future<void> clearSession() async {
