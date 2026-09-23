@@ -56,6 +56,18 @@ function handleError(err, res) {
     if (err.code === 'P2025') {
       return res.status(404).json({ error: 'Enregistrement introuvable.', code: 'NOT_FOUND' });
     }
+    if (err.code === 'P2003') {
+      return res.status(400).json({ error: 'Référence invalide (clé étrangère).', code: 'FOREIGN_KEY_ERROR' });
+    }
+    if (err.code === 'P2014') {
+      return res.status(400).json({ error: 'Relation invalide.', code: 'RELATION_ERROR' });
+    }
+    if (err.code === 'P2024') {
+      return res.status(503).json({ error: 'Service temporairement indisponible, réessayez.', code: 'POOL_TIMEOUT' });
+    }
+  }
+  if (err.code === 'P1001' || err.code === 'P1000') {
+    return res.status(503).json({ error: 'Base de données temporairement indisponible.', code: 'DB_UNAVAILABLE' });
   }
 
   if (err.name === 'JsonWebTokenError') {
