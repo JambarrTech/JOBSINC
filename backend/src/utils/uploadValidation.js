@@ -35,6 +35,21 @@ function validateFile(file, allowedMimes, limits = DEFAULT_LIMITS.image) {
     const maxMB = Math.round(limits.maxSize / (1024 * 1024));
     throw new ValidationError(`Fichier trop volumineux. Taille max: ${maxMB} MB`);
   }
+
+  // Vérification magic bytes (évite .exe renommé .jpg)
+  if (file.buffer) {
+    const header = file.buffer.subarray(0, 8);
+    const isJpeg = header[0] === 0xFF && header[1] === 0xD8;
+    const isPng = header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47;
+    const isWebp = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46;
+    const isPdf = header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46;
+    if (file.mimetype.startsWith('image/') && !(isJpeg || isPng || isWebp)) {
+      throw new ValidationError('Contenu du fichier image invalide (magic bytes).');
+    }
+    if (file.mimetype === 'application/pdf' && !isPdf) {
+      throw new ValidationError('Contenu PDF invalide.');
+    }
+  }
   
   return true;
 }

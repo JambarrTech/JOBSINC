@@ -55,12 +55,27 @@ function parseMultipart(buffer, boundary) {
 async function collectBody(req, maxSize = DEFAULT_MAX_SIZE + 1024 * 1024) {
   const chunks = [];
   let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > maxSize) throw badRequest(`Corps de requête trop volumineux (max ${Math.round(maxSize / 1024 / 1024)} MB).`);
-    chunks.push(chunk);
+  const timeoutMs = 30000;
+  let timeout;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeout = setTimeout(() => reject(badRequest('Timeout lecture du corps.')), timeoutMs);
+  });
+  try {
+    const readPromise = (async () => {
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > maxSize) throw badRequest(`Corps de requête trop volumineux (max ${Math.round(maxSize / 1024 / 1024)} MB).`);
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    })();
+    const result = await Promise.race([readPromise, timeoutPromise]);
+    clearTimeout(timeout);
+    return result;
+  } catch (e) {
+    clearTimeout(timeout);
+    throw e;
   }
-  return Buffer.concat(chunks);
 }
 
 function extractBoundary(contentType) {
