@@ -1,14 +1,7 @@
 const path = require('path');
 const { createUploadMiddleware } = require('./multipartParser');
+const { UPLOAD_CONFIGS } = require('../utils/uploadValidation');
 
-const ACCEPTED_TYPES = new Map([
-  ['image/jpeg', '.jpg'],
-  ['image/png', '.png'],
-  ['image/webp', '.webp'],
-]);
+const config = { ...UPLOAD_CONFIGS.avatar, uploadDir: path.resolve(__dirname, '../../uploads/candidates') };
 
-module.exports = createUploadMiddleware({
-  fieldName: 'avatar',
-  uploadDir: path.resolve(__dirname, '../../uploads/candidates'),
-  acceptedTypes: ACCEPTED_TYPES,
-});
+module.exports = createUploadMiddleware(config);

@@ -113,10 +113,6 @@ function init(httpServer, corsOrigins) {
   return io;
 }
 
-function getIO() {
-  return io;
-}
-
 // Un utilisateur est « en ligne » s'il a au moins un socket connecté.
 // Utilisé pour décider d'envoyer (ou non) une notification push FCM.
 function isUserConnected(userId) {
@@ -149,4 +145,4 @@ function notifyInterviewUpdate(userIds, payload) {
   }
 }
 
-module.exports = { init, getIO, notifyNewMessage, isUserConnected, notifyInterviewUpdate };
+module.exports = { init, notifyNewMessage, isUserConnected, notifyInterviewUpdate };

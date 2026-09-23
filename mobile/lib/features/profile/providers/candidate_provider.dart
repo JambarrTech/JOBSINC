@@ -78,6 +78,23 @@ final candidateProfileProvider =
   }
 });
 
+/// Résultat typé de l'upload de CV. Permet aux écrans de distinguer le
+/// succès (avec l'URL du CV) de l'échec (avec un message) sans avoir à
+/// « sniffer » des chaînes d'erreur renvoyées par le provider.
+sealed class CvUploadResult {
+  const CvUploadResult();
+}
+
+class CvUploadSuccess extends CvUploadResult {
+  const CvUploadSuccess(this.url);
+  final String url;
+}
+
+class CvUploadFailure extends CvUploadResult {
+  const CvUploadFailure(this.message);
+  final String message;
+}
+
 class CandidateProfileController
     extends AutoDisposeNotifier<CandidateProfile> {
 
@@ -133,18 +150,18 @@ class CandidateProfileController
       ref.invalidate(candidateProfileProvider);
 
       // Synchronise l'état auth pour que l'en-tête reflète les changements.
+      // La mutation reste encapsulée dans AuthController (pas d'écriture
+      // directe de `state` depuis une autre feature).
       final currentUser = ref.read(authProvider).user;
       if (currentUser != null) {
-        ref.read(authProvider.notifier).state = AuthState.authenticated(
-          currentUser.copyWith(
-            firstName: updated['firstName']?.toString() ?? (fields['firstName'] as String?),
-            lastName: updated['lastName']?.toString() ?? (fields['lastName'] as String?),
-            phone: updated['phone']?.toString() ?? (fields['phone'] as String?),
-            country: updated['country']?.toString() ?? (fields['country'] as String?),
-            city: updated['city']?.toString() ?? (fields['city'] as String?),
-            skills: updated['skills']?.toString() ?? (fields['skills'] as String?),
-          ),
-        );
+        ref.read(authProvider.notifier).patchUser((user) => user.copyWith(
+              firstName: updated['firstName']?.toString() ?? (fields['firstName'] as String?),
+              lastName: updated['lastName']?.toString() ?? (fields['lastName'] as String?),
+              phone: updated['phone']?.toString() ?? (fields['phone'] as String?),
+              country: updated['country']?.toString() ?? (fields['country'] as String?),
+              city: updated['city']?.toString() ?? (fields['city'] as String?),
+              skills: updated['skills']?.toString() ?? (fields['skills'] as String?),
+            ));
       }
       return null;
     } on ApiException catch (e) {
@@ -154,9 +171,11 @@ class CandidateProfileController
     }
   }
 
-  Future<String?> uploadCv(File file) async {
+  Future<CvUploadResult> uploadCv(File file) async {
     final token = ref.read(authProvider).user?.token;
-    if (token == null || token.isEmpty) return 'Non connecté.';
+    if (token == null || token.isEmpty) {
+      return const CvUploadFailure('Non connecté.');
+    }
 
     try {
       final api = ApiClient();
@@ -179,13 +198,21 @@ class CandidateProfileController
         file: multipartFile,
       );
       ref.invalidate(candidateProfileProvider);
-      return response['cvUrl']?.toString();
+      final url = response['cvUrl']?.toString() ?? '';
+      if (url.isEmpty) {
+        return const CvUploadFailure(
+          'Le serveur n\'a pas renvoyé d\'URL pour le CV.',
+        );
+      }
+      return CvUploadSuccess(url);
     } on ApiException catch (e) {
-      return e.message;
+      return CvUploadFailure(e.message);
     } on TimeoutException catch (_) {
-      return 'Le serveur met trop de temps à répondre. Vérifiez votre connexion Internet.';
+      return const CvUploadFailure(
+        'Le serveur met trop de temps à répondre. Vérifiez votre connexion Internet.',
+      );
     } catch (e) {
-      return 'Erreur : $e';
+      return CvUploadFailure('Erreur : $e');
     }
   }
 
@@ -221,12 +248,9 @@ class CandidateProfileController
       final newAvatarUrl = response['avatarUrl']?.toString();
       ref.invalidate(candidateProfileProvider);
       if (newAvatarUrl != null) {
-        final currentUser = ref.read(authProvider).user;
-        if (currentUser != null) {
-          ref.read(authProvider.notifier).state = AuthState.authenticated(
-            currentUser.copyWith(photoUrl: newAvatarUrl),
-          );
-        }
+        ref.read(authProvider.notifier).patchUser(
+              (user) => user.copyWith(photoUrl: newAvatarUrl),
+            );
       }
       return null;
     } on ApiException catch (e) {

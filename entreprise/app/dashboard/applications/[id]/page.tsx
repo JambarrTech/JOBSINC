@@ -11,7 +11,7 @@ const STATUS_LABELS: Record<string, string> = {
   RECEIVED: 'Reçue', UNDER_REVIEW: 'En cours d\'examen', INTERVIEW: 'Entretien', ACCEPTED: 'Acceptée', REJECTED: 'Refusée',
 };
 const STATUS_COLORS: Record<string, string> = {
-  RECEIVED: '#f59e0b', UNDER_REVIEW: '#3b82f6', INTERVIEW: '#8b5cf6', ACCEPTED: '#10b981', REJECTED: '#ef4444',
+  RECEIVED: '#f59e0b', UNDER_REVIEW: '#3b82f6', INTERVIEW: '#3b8bff', ACCEPTED: '#0b5fe0', REJECTED: '#ef4444',
 };
 const TRANSITIONS: Record<string, string[]> = {
   RECEIVED: ['UNDER_REVIEW', 'INTERVIEW', 'ACCEPTED', 'REJECTED'],
@@ -82,7 +82,7 @@ function MeetingJoinModal({ interview, companyName, candidateName, onClose }: {
               {interview.duration ? ` — ${interview.duration} min` : ''}
             </div>
           )}
-          <div style={{ wordBreak: 'break-all', color: '#8b5cf6' }}>{meetUrl}</div>
+          <div style={{ wordBreak: 'break-all', color: '#3b8bff' }}>{meetUrl}</div>
         </div>
         <button
           type="button"
@@ -90,7 +90,7 @@ function MeetingJoinModal({ interview, companyName, candidateName, onClose }: {
           disabled={!meetUrl}
           style={{
             width: '100%', marginTop: '18px', padding: '13px', borderRadius: '10px', border: 'none',
-            background: meetUrl ? '#8b5cf6' : '#c4b5fd', color: '#fff', fontSize: '14px',
+            background: meetUrl ? '#3b8bff' : '#93c5fd', color: '#fff', fontSize: '14px',
             fontWeight: 700, cursor: meetUrl ? 'pointer' : 'not-allowed',
           }}
         >Ouvrir Google Meet</button>
@@ -212,8 +212,8 @@ function InterviewVideoCard({ interview, jobTitle, online, meetUrl, canStart, op
   return (
     <div style={{
       marginTop: '1.5rem', padding: '20px', borderRadius: '14px',
-      background: online ? '#f5f3ff' : '#fffbeb',
-      border: `1px solid ${online ? '#ddd6fe' : '#fde68a'}`,
+      background: online ? '#eff6ff' : '#fffbeb',
+      border: `1px solid ${online ? '#bfdbfe' : '#fde68a'}`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
         <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#1a1a2e' }}>
@@ -236,7 +236,7 @@ function InterviewVideoCard({ interview, jobTitle, online, meetUrl, canStart, op
           <div>
             <strong>Lien</strong><br />
             {canStart ? (
-              <a href={meetUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#8b5cf6', wordBreak: 'break-all' }}>{meetUrl}</a>
+              <a href={meetUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#3b8bff', wordBreak: 'break-all' }}>{meetUrl}</a>
             ) : (
               <span style={{ color: '#9ca3af' }}>
                 Disponible à partir de {opensAt ? formatInterviewTime(opensAt.toISOString()) : 'l\'ouverture'}
@@ -261,13 +261,13 @@ function InterviewVideoCard({ interview, jobTitle, online, meetUrl, canStart, op
           title={canStart ? '' : 'Disponible jusqu\'à 10 minutes avant l\'heure prévue'}
           style={{
             padding: '11px 20px', borderRadius: '10px', border: 'none',
-            background: busy || !canStart ? '#c4b5fd' : '#dc2626', color: '#fff',
+            background: busy || !canStart ? '#93c5fd' : '#dc2626', color: '#fff',
             cursor: busy || !canStart ? 'not-allowed' : 'pointer',
             fontSize: '13px', fontWeight: 800,
           }}
         >🎥 Démarrer l&apos;entretien</button>
         {!canStart && opensAt && (
-          <span style={{ fontSize: '12px', color: '#8b5cf6' }}>
+          <span style={{ fontSize: '12px', color: '#3b8bff' }}>
             Ouverture possible à partir de {formatInterviewTime(opensAt.toISOString())}
           </span>
         )}
@@ -337,9 +337,9 @@ function InterviewScheduleForm({ applicationId, onSuccess, onCancel }: {
         <button
           type="button" onClick={() => setMode('ONLINE')}
           style={{
-            flex: 1, padding: '12px', borderRadius: '10px', border: `2px solid ${mode === 'ONLINE' ? '#8b5cf6' : '#e5ebf0'}`,
-            background: mode === 'ONLINE' ? '#8b5cf610' : '#fff', cursor: 'pointer',
-            fontSize: '13px', fontWeight: 700, color: mode === 'ONLINE' ? '#8b5cf6' : '#6b7280', textAlign: 'center',
+            flex: 1, padding: '12px', borderRadius: '10px', border: `2px solid ${mode === 'ONLINE' ? '#3b8bff' : '#e5ebf0'}`,
+            background: mode === 'ONLINE' ? '#3b8bff10' : '#fff', cursor: 'pointer',
+            fontSize: '13px', fontWeight: 700, color: mode === 'ONLINE' ? '#3b8bff' : '#6b7280', textAlign: 'center',
           }}
         >
           📹 En ligne
@@ -422,7 +422,7 @@ function InterviewScheduleForm({ applicationId, onSuccess, onCancel }: {
           type="button" onClick={submit} disabled={loading || !date || !time || (mode === 'ONLINE' && !streamingUrl) || (mode === 'PRESENTIEL' && !location)}
           style={{
             flex: 1, padding: '12px', borderRadius: '10px', border: 'none',
-            background: loading ? '#a5b4fc' : '#8b5cf6', cursor: loading ? 'not-allowed' : 'pointer',
+            background: loading ? '#93c5fd' : '#3b8bff', cursor: loading ? 'not-allowed' : 'pointer',
             fontSize: '13px', fontWeight: 700, color: '#fff',
           }}
         >{loading ? 'Envoi...' : 'Planifier et notifier'}</button>
@@ -617,7 +617,7 @@ export default function ApplicationDetailsPage() {
               style={{
                 display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
                 padding: '10px 14px', borderRadius: '9px', border: 'none',
-                background: openingChat ? '#a5b4fc' : '#0a64e8', color: '#fff',
+                background: openingChat ? '#93c5fd' : '#0a64e8', color: '#fff',
                 cursor: openingChat ? 'not-allowed' : 'pointer',
                 fontSize: '13px', fontWeight: 700, marginTop: '8px',
               }}
@@ -665,7 +665,7 @@ export default function ApplicationDetailsPage() {
             onClick={() => setShowInterviewForm(true)}
             style={{
               marginTop: '12px', padding: '10px 18px', borderRadius: '10px', border: 'none',
-              background: '#8b5cf6', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+              background: '#3b8bff', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
             }}
           >Planifier l'entretien</button>
         </div>

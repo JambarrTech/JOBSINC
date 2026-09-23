@@ -1,0 +1,6 @@
+{
+  "watch": ["src", "server.js", "prisma"],
+  "ext": "js,mjs,cjs,json,prisma",
+  "ignore": ["uploads/*", "node_modules/*", "backups/*", "*.log", ".git/*", ".windsurf/*", ".agents/*", ".claude/*"],
+  "legacyWatch": true
+}

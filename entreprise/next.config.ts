@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
+// Origine du backend (uploads, avatars, CV…) servis par Express sur :5000.
+const API_ORIGIN = new URL(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').origin;
+
 const nextConfig: NextConfig = {
+  async rewrites() {
+    // Proxie les fichiers uploadés du backend vers le front (logos, couvertures, CV…).
+    return [{ source: '/uploads/:path*', destination: `${API_ORIGIN}/uploads/:path*` }];
+  },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
     NEXT_PUBLIC_SESSION_ENDPOINT: process.env.NEXT_PUBLIC_SESSION_ENDPOINT || '/auth/me',

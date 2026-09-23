@@ -18,6 +18,7 @@ class LocalStorage {
   Future<void> setOnboardingCompleted(bool value) => _preferences.setBool(StorageKeys.onboardingCompleted, value);
 
   Future<String?> get authToken async => await _secureStorage.read(key: StorageKeys.authToken);
+  Future<String?> get refreshToken async => await _secureStorage.read(key: StorageKeys.refreshToken);
   String? get userId => _preferences.getString(StorageKeys.userId);
   String? get accountStatus => _preferences.getString(StorageKeys.accountStatus) ?? _preferences.getString(StorageKeys.userRole);
   String? get firstName => _preferences.getString(StorageKeys.firstName);
@@ -33,8 +34,11 @@ class LocalStorage {
   String? get photoUrl => _preferences.getString(StorageKeys.photoUrl);
   String? get cvUrl => _preferences.getString(StorageKeys.cvUrl);
 
-  Future<void> saveSession({required String token, required String id, required String status, required String firstName, String? lastName, String? email, String? phone, DateTime? birthDate, String? country, String? city, String? photoUrl, String? cvUrl}) async {
+  Future<void> saveSession({required String token, String? refreshToken, required String id, required String status, required String firstName, String? lastName, String? email, String? phone, DateTime? birthDate, String? country, String? city, String? photoUrl, String? cvUrl}) async {
     await _secureStorage.write(key: StorageKeys.authToken, value: token);
+    if (refreshToken != null) {
+      await _secureStorage.write(key: StorageKeys.refreshToken, value: refreshToken);
+    }
     await _preferences.setString(StorageKeys.userId, id);
     await _preferences.setString(StorageKeys.accountStatus, status);
     await _preferences.setString(StorageKeys.firstName, firstName);
@@ -50,6 +54,7 @@ class LocalStorage {
 
   Future<void> clearSession() async {
     await _secureStorage.delete(key: StorageKeys.authToken);
+    await _secureStorage.delete(key: StorageKeys.refreshToken);
     await _preferences.remove(StorageKeys.userId);
     await _preferences.remove(StorageKeys.accountStatus);
     await _preferences.remove(StorageKeys.userRole);
@@ -62,5 +67,17 @@ class LocalStorage {
     await _preferences.remove(StorageKeys.city);
     await _preferences.remove(StorageKeys.photoUrl);
     await _preferences.remove(StorageKeys.cvUrl);
+  }
+
+  /// Met à jour UNIQUEMENT les tokens après un refresh, sans toucher au
+  /// profil. Nécessaire quand le user state n'est pas encore reconstruit
+  /// (ex. refresh pendant initialize()) pour ne pas perdre la rotation.
+  Future<void> updateTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    await _secureStorage.write(key: StorageKeys.authToken, value: accessToken);
+    await _secureStorage.write(
+        key: StorageKeys.refreshToken, value: refreshToken);
   }
 }

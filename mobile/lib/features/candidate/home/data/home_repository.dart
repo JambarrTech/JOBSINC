@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../../core/services/api_client.dart';
 import '../../../jobs/models/job_offer.dart';
 
@@ -152,15 +154,22 @@ class HomeRepository {
   final ApiClient _api;
 
   Future<HomeDashboardData> load(String token) async {
-    final results = await Future.wait([
-      _api.get('/jobs', token: token),
-      _api.get('/companies', token: token),
+    // Les deux sections sont chargées en parallèle mais INDÉPENDAMMENT :
+    // si /jobs (ou /companies) échoue, l'autre section s'affiche quand
+    // même au lieu de faire planter tout l'accueil (ancien fail-fast).
+    final results = await Future.wait<Map<String, dynamic>?>([
+      _safeGet('/jobs', token),
+      _safeGet('/companies', token),
     ]);
-    final jobs = (results[0]['data'] as List<dynamic>? ?? const [])
+
+    final jobsResponse = results[0];
+    final companiesResponse = results[1];
+
+    final jobs = (jobsResponse?['data'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(JobOffer.fromJson)
         .toList(growable: false);
-    final companies = (results[1]['data'] as List<dynamic>? ?? const [])
+    final companies = (companiesResponse?['data'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(HomeCompany.fromJson)
         .where((company) => company.id.isNotEmpty && company.name.isNotEmpty)
@@ -183,5 +192,20 @@ class HomeRepository {
               company.copyWith(openOffersCount: offersCount[company.id] ?? 0))
           .toList(growable: false),
     );
+  }
+
+  /// Get « sûr » : l'échec d'une section est loggé (diagnostic en dev) et
+  /// traduit en `null` pour que l'appelant affiche une section vide plutôt
+  /// que de bloquer le reste de la page.
+  Future<Map<String, dynamic>?> _safeGet(
+    String path,
+    String token,
+  ) async {
+    try {
+      return await _api.get(path, token: token);
+    } catch (e) {
+      debugPrint('[HomeRepository] Échec de $path : $e');
+      return null;
+    }
   }
 }

@@ -161,10 +161,10 @@ class _JobCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (isActive ? AppColors.green : AppColors.secondaryText).withValues(alpha: .1),
+                  color: (isActive ? AppColors.accent : AppColors.secondaryText).withValues(alpha: .1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(isActive ? 'Active' : 'Inactive', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isActive ? AppColors.green : AppColors.secondaryText)),
+                child: Text(isActive ? 'Active' : 'Inactive', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isActive ? AppColors.accent : AppColors.secondaryText)),
               ),
             ],
           ),
@@ -289,7 +289,7 @@ class _CreateJobSheetState extends ConsumerState<_CreateJobSheet> {
               _Field(label: 'Département', controller: _departmentCtrl, hint: 'Technologie'),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
-                value: _selectedContract,
+                initialValue: _selectedContract,
                 decoration: _inputDecoration('Type de contrat *'),
                 items: _contractTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setState(() => _selectedContract = v),
@@ -297,7 +297,7 @@ class _CreateJobSheetState extends ConsumerState<_CreateJobSheet> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _selectedWorkMode,
+                initialValue: _selectedWorkMode,
                 decoration: _inputDecoration('Mode de travail'),
                 items: _workModes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setState(() => _selectedWorkMode = v),
@@ -370,7 +370,7 @@ class _CreateJobSheetState extends ConsumerState<_CreateJobSheet> {
     if (error == null) {
       widget.onCreated();
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offre publiée avec succès.'), backgroundColor: AppColors.green));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offre publiée avec succès.'), backgroundColor: AppColors.accent));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: AppColors.error));
     }

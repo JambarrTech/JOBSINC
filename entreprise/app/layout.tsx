@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: 'JOBSINC — Recruter avec confiance'
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fr" className={inter.variable}>
+    <html lang="fr" className={inter.variable} data-scroll-behavior="smooth">
       <body>{children}</body>
     </html>
   );

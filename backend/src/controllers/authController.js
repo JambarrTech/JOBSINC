@@ -1,44 +1,36 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const prisma = require('../config/prisma');
+const authService = require('../services/authService');
 const { recordFailedAttempt, isLocked, clearAttempts, remainingSeconds } = require('../utils/loginLimiter');
-
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function error(res, status, message) {
-  return res.status(status).json({ error: message });
-}
-
-function clean(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function candidateDto(candidate) {
-  if (!candidate) return null;
-  return {
-    firstName: candidate.firstName,
-    lastName: candidate.lastName,
-    phone: candidate.phone,
-    birthDate: candidate.birthDate,
-    country: candidate.country,
-    city: candidate.city,
-    avatarUrl: candidate.avatarUrl,
-    cvUrl: candidate.cvUrl,
-    skills: candidate.skills,
-  };
-}
+const {
+  generateAccessToken,
+  verifyRefreshToken,
+  rotateRefreshToken,
+} = require('../utils/tokenUtils');
+const { handleError, ValidationError, AuthenticationError, NotFoundError } = require('../utils/errors');
 
 function userDto(user) {
-  const candidate = candidateDto(user.candidate);
+  const candidate = user.candidate ? {
+    firstName: user.candidate.firstName,
+    lastName: user.candidate.lastName,
+    phone: user.candidate.phone,
+    birthDate: user.candidate.birthDate,
+    country: user.candidate.country,
+    city: user.candidate.city,
+    avatarUrl: user.candidate.avatarUrl,
+    cvUrl: user.candidate.cvUrl,
+    skills: user.candidate.skills,
+  } : null;
+  
   const company = user.company ? {
     id: user.company.id,
     name: user.company.name,
     logo: user.company.logo || null,
     sector: user.company.sector || null,
   } : null;
+  
   const name = user.role === 'RECRUITER' || user.role === 'ADMIN'
     ? (company?.name || null)
     : (candidate ? [candidate.firstName, candidate.lastName].filter(Boolean).join(' ') || null : null);
+    
   return {
     id: user.id,
     email: user.email,
@@ -55,350 +47,260 @@ function userDto(user) {
   };
 }
 
-function createToken(user) {
-  return jwt.sign(
-    { userId: user.id, id: user.id, role: user.role, tokenVersion: user.tokenVersion || 0 },
-    process.env.JWT_SECRET,
-    { expiresIn: '24h' },
-  );
+async function issueTokens(user, res) {
+  const accessToken = generateAccessToken(user);
+  const { hashAndStoreRefreshToken, generateRefreshToken } = require('../utils/tokenUtils');
+  const refreshToken = await hashAndStoreRefreshToken(user.id, generateRefreshToken());
+  
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    path: '/api/auth',
+  });
+  
+  return { accessToken, token: accessToken, refreshToken, user: userDto(user) };
+}
+
+async function loginUser(req, res, user) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  clearAttempts(user.email, ip);
+  const tokens = await issueTokens(user, res);
+  return res.json({ message: 'Connexion réussie.', ...tokens });
 }
 
 exports.registerCandidate = async (req, res) => {
   try {
-    if (!process.env.JWT_SECRET) return error(res, 500, 'Configuration de sécurité incomplète.');
-
-    const email = clean(req.body.email).toLowerCase();
-    const password = typeof req.body.password === 'string' ? req.body.password : '';
-    const firstName = clean(req.body.firstName);
-    const lastName = clean(req.body.lastName);
-    const phone = clean(req.body.phone);
-    const country = clean(req.body.country);
-    const city = clean(req.body.city);
-    const birthDate = req.body.birthDate ? new Date(req.body.birthDate) : null;
-
-    if (!emailPattern.test(email)) return error(res, 400, 'Veuillez saisir une adresse email valide.');
-    if (password.length < 8) return error(res, 400, 'Le mot de passe doit contenir au moins 8 caractères.');
-    if (firstName.length < 2 || lastName.length < 2) return error(res, 400, 'Le prénom et le nom doivent contenir au moins 2 caractères.');
-    if (!phone || phone.replace(/\D/g, '').length < 8) return error(res, 400, 'Veuillez saisir un numéro de téléphone valide.');
-    if (!country || !city) return error(res, 400, 'Le pays et la ville sont obligatoires.');
-    if (!birthDate || Number.isNaN(birthDate.getTime())) return error(res, 400, 'Veuillez saisir une date de naissance valide.');
-
-    const now = new Date();
-    let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
-    const birthdayThisYear = new Date(Date.UTC(now.getUTCFullYear(), birthDate.getUTCMonth(), birthDate.getUTCDate()));
-    if (now < birthdayThisYear) age -= 1;
-    if (age < 16 || age > 100) return error(res, 400, 'Vous devez avoir entre 16 et 100 ans pour créer un compte.');
-
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return error(res, 409, 'Cette adresse email est déjà utilisée.');
-
-    const avatarUrl = req.candidateImage ? req.candidateImage.url : null;
-
-    const passwordHash = await bcrypt.hash(password, 12);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        role: 'CANDIDATE',
-        candidate: { create: { firstName, lastName, phone, birthDate, country, city, avatarUrl } },
-      },
-      include: { candidate: true },
-    });
-
-    const token = createToken(user);
-
-    await prisma.notification.createMany({
-      data: [
-        {
-          userId: user.id,
-          title: 'Bienvenue sur JOBSINC !',
-          body: `Bienvenue ${firstName} ! Créez votre profil complet pour maximiser vos chances.`,
-          type: 'GENERAL',
-        },
-        {
-          userId: user.id,
-          title: 'Complétez votre profil',
-          body: 'Ajoutez votre CV et vos compétences pour attirer les recruteurs.',
-          type: 'GENERAL',
-        },
-        {
-          userId: user.id,
-          title: 'Explorez les offres',
-          body: 'Des milliers d\'offres d\'emploi vous attendent. Commencez votre recherche maintenant !',
-          type: 'APPLICATION',
-        },
-      ],
-    });
-
-    return res.status(201).json({ message: 'Compte créé avec succès.', token, user: userDto(user) });
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+    
+    const data = {
+      email: req.body.email,
+      password: req.body.password,
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      phone: req.body.phone,
+      country: req.body.country,
+      city: req.body.city,
+      birthDate: req.body.birthDate,
+      avatarUrl: req.avatarFile?.url || null,
+    };
+    
+    const user = await authService.createCandidate(data);
+    const tokens = await issueTokens(user, res);
+    return res.status(201).json({ message: 'Compte créé avec succès.', ...tokens });
   } catch (cause) {
-    console.error('Erreur inscription:', cause);
-    return error(res, 500, 'Impossible de créer le compte pour le moment.');
+    return handleError(cause, res);
   }
 };
 
 exports.loginCandidate = async (req, res) => {
   try {
-    if (!process.env.JWT_SECRET) return error(res, 500, 'Configuration de sécurité incomplète.');
-    const email = clean(req.body.email).toLowerCase();
-    const password = typeof req.body.password === 'string' ? req.body.password : '';
-    if (!email || !password) return error(res, 400, "L'adresse email et le mot de passe sont obligatoires.");
-
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+    
+    const email = req.body.email;
+    const password = req.body.password;
+    if (!email || !password) return handleError(new Error("L'adresse email et le mot de passe sont obligatoires."), res);
+    
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (isLocked(email, ip)) {
+    if (await isLocked(email, ip)) {
       const sec = remainingSeconds(email, ip);
-      return error(res, 429, `Trop de tentatives. Réessayez dans ${Math.ceil(sec / 60)} minute(s).`);
+      const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
+      return handleError(new Error(`Trop de tentatives. Réessayez dans ${minutes} minute(s).`), res);
     }
-
-    const user = await prisma.user.findUnique({ where: { email }, include: { candidate: true } });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      recordFailedAttempt(email, ip);
-      return error(res, 401, 'Identifiants invalides.');
-    }
-
-    if (user.role !== 'CANDIDATE') {
-      return error(res, 403, 'Accès réservé aux candidats.');
-    }
-
-    clearAttempts(email, ip);
-    return res.json({ message: 'Connexion réussie.', token: createToken(user), user: userDto(user) });
+    
+    const user = await authService.authenticateUser(email, password, ['CANDIDATE']);
+    return loginUser(req, res, user);
   } catch (cause) {
-    console.error('Erreur connexion:', cause);
-    return error(res, 500, 'Impossible de vous connecter pour le moment.');
+    if (cause.message === 'Identifiants invalides.') {
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      recordFailedAttempt(req.body?.email, ip);
+    }
+    return handleError(cause, res);
   }
 };
 
 exports.login = async (req, res) => {
   try {
-    if (!process.env.JWT_SECRET) return error(res, 500, 'Configuration de sécurité incomplète.');
-    const email = clean(req.body.email).toLowerCase();
-    const password = typeof req.body.password === 'string' ? req.body.password : '';
-    if (!email || !password) return error(res, 400, 'L\'adresse email et le mot de passe sont obligatoires.');
-
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+    
+    const email = req.body.email;
+    const password = req.body.password;
+    if (!email || !password) return handleError(new Error('L\'adresse email et le mot de passe sont obligatoires.'), res);
+    
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (isLocked(email, ip)) {
+    if (await isLocked(email, ip)) {
       const sec = remainingSeconds(email, ip);
-      return error(res, 429, `Trop de tentatives. Réessayez dans ${Math.ceil(sec / 60)} minute(s).`);
+      const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
+      return handleError(new Error(`Trop de tentatives. Réessayez dans ${minutes} minute(s).`), res);
     }
-
-    const user = await prisma.user.findUnique({ where: { email }, include: { candidate: true, company: true } });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      recordFailedAttempt(email, ip);
-      return error(res, 401, 'Identifiants invalides.');
-    }
-
-    if (user.role === 'RECRUITER' && !user.company) {
-      return error(res, 403, 'Aucune entreprise associée à ce compte.');
-    }
-
-    clearAttempts(email, ip);
-    return res.json({ message: 'Connexion réussie.', token: createToken(user), user: userDto(user) });
+    
+    const user = await authService.authenticateUser(email, password);
+    return loginUser(req, res, user);
   } catch (cause) {
-    console.error('Erreur connexion:', cause);
-    return error(res, 500, 'Impossible de vous connecter pour le moment.');
+    if (cause.message === 'Identifiants invalides.') {
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      recordFailedAttempt(req.body?.email, ip);
+    }
+    return handleError(cause, res);
   }
 };
 
 exports.registerCompany = async (req, res) => {
   try {
-    if (!process.env.JWT_SECRET) return error(res, 500, 'Configuration de sécurité incomplète.');
-
-    const email = clean(req.body.email).toLowerCase();
-    const password = typeof req.body.password === 'string' ? req.body.password : '';
-    const companyName = clean(req.body.companyName);
-
-    if (!emailPattern.test(email)) return error(res, 400, 'Veuillez saisir une adresse email valide.');
-    if (password.length < 8) return error(res, 400, 'Le mot de passe doit contenir au moins 8 caractères.');
-    if (companyName.length < 2) return error(res, 400, 'Le nom de l\'entreprise doit contenir au moins 2 caractères.');
-
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return error(res, 409, 'Cette adresse email est déjà utilisée.');
-
-    const passwordHash = await bcrypt.hash(password, 12);
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
     
-    const companyImagesData = req.companyImages && req.companyImages.length > 0
-        ? {
-            create: req.companyImages.map((img, index) => ({
-              url: img.url,
-              sortOrder: index,
-              isPrimary: index === 0
-            }))
-          }
-        : undefined;
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        role: 'RECRUITER',
-        company: {
-          create: {
-            name: companyName,
-            logo: req.companyLogo?.url || null,
-            images: companyImagesData,
-          }
-        },
-      },
-    });
-
-    return res.status(201).json({ message: 'Compte entreprise créé avec succès.', token: createToken(user), user: { id: user.id, email: user.email, role: user.role } });
+    const data = {
+      email: req.body.email,
+      password: req.body.password,
+      companyName: req.body.companyName,
+      companyImages: req.companyImages,
+      logo: req.companyLogo?.url || null,
+    };
+    
+    const user = await authService.createCompany(data);
+    const tokens = await issueTokens(user, res);
+    return res.status(201).json({ message: 'Compte entreprise créé avec succès.', ...tokens });
   } catch (cause) {
-    console.error('Erreur inscription entreprise:', cause);
-    return error(res, 500, 'Impossible de créer le compte pour le moment.');
+    return handleError(cause, res);
   }
 };
 
 exports.loginCompany = async (req, res) => {
   try {
-    if (!process.env.JWT_SECRET) return error(res, 500, 'Configuration de sécurité incomplète.');
-    const email = clean(req.body.email).toLowerCase();
-    const password = typeof req.body.password === 'string' ? req.body.password : '';
-    if (!email || !password) return error(res, 400, "L'adresse email et le mot de passe sont obligatoires.");
-
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+    
+    const email = req.body.email;
+    const password = req.body.password;
+    if (!email || !password) return handleError(new Error("L'adresse email et le mot de passe sont obligatoires."), res);
+    
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (isLocked(email, ip)) {
+    if (await isLocked(email, ip)) {
       const sec = remainingSeconds(email, ip);
-      return error(res, 429, `Trop de tentatives. Réessayez dans ${Math.ceil(sec / 60)} minute(s).`);
+      const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
+      return handleError(new Error(`Trop de tentatives. Réessayez dans ${minutes} minute(s).`), res);
     }
-
-    const user = await prisma.user.findUnique({ where: { email }, include: { company: true } });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      recordFailedAttempt(email, ip);
-      return error(res, 401, 'Identifiants invalides.');
-    }
-
-    if (user.role !== 'RECRUITER' && user.role !== 'ADMIN') {
-      return error(res, 403, 'Accès réservé aux entreprises.');
-    }
-
-    if (!user.company) {
-      return error(res, 403, 'Aucune entreprise associée à ce compte. Contactez le support.');
-    }
-
-    clearAttempts(email, ip);
-    return res.json({ message: 'Connexion réussie.', token: createToken(user), user: userDto(user) });
+    
+    const user = await authService.authenticateUser(email, password, ['RECRUITER', 'ADMIN']);
+    return loginUser(req, res, user);
   } catch (cause) {
-    console.error('Erreur connexion entreprise:', cause);
-    return error(res, 500, 'Impossible de vous connecter pour le moment.');
+    if (cause.message === 'Identifiants invalides.') {
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      recordFailedAttempt(req.body?.email, ip);
+    }
+    return handleError(cause, res);
   }
 };
 
 exports.getMe = async (req, res) => {
   try {
     const userId = req.user?.userId;
-    if (!userId) return error(res, 401, 'Session invalide ou expirée.');
+    if (!userId) return handleError(new Error('Session invalide ou expirée.'), res);
+    
+    const prisma = require('../config/prisma');
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { candidate: true, company: true } });
-    if (!user) return error(res, 404, 'Utilisateur introuvable.');
+    if (!user) return handleError(new Error('Utilisateur introuvable.'), res);
     if (!user.company && (user.role === 'RECRUITER' || user.role === 'ADMIN')) {
-      return error(res, 403, 'Aucune entreprise associée à ce compte. Contactez le support.');
+      return handleError(new Error('Aucune entreprise associée à ce compte. Contactez le support.'), res);
     }
-    return res.json({ success: true, user: userDto(user) });
+    // Format cohérent avec l'attente mobile : { user: {...} } sans wrapper success
+    return res.json({ user: userDto(user) });
   } catch (cause) {
-    console.error('Erreur session:', cause);
-    return error(res, 500, 'Impossible de récupérer votre session.');
+    return handleError(cause, res);
+  }
+};
+
+exports.refreshToken = async (req, res) => {
+  try {
+    // Support both cookie (web) and body (mobile) for refresh token
+    const rawToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    if (!rawToken) return handleError(new ValidationError('Refresh token manquant.'), res);
+
+    // Aucun authMiddleware sur cette route : le refresh token (cookie
+    // httpOnly) est la seule preuve d'authenticité. On retrouve
+    // l'utilisateur via le hash stocké en base.
+    const stored = await verifyRefreshToken(null, rawToken);
+    if (!stored) return handleError(new AuthenticationError('Refresh token invalide ou expiré.'), res);
+
+    const prisma = require('../config/prisma');
+    const user = await prisma.user.findUnique({ where: { id: stored.userId }, include: { candidate: true, company: true } });
+    if (!user) return handleError(new NotFoundError('Utilisateur introuvable.'), res);
+
+    const newRefreshToken = await rotateRefreshToken(user.id, rawToken);
+    const accessToken = generateAccessToken(user);
+    
+    // Set cookie for web clients
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/api/auth',
+    });
+    
+    // Also return refresh token in body for mobile clients
+    return res.json({ accessToken, refreshToken: newRefreshToken, user: userDto(user) });
+  } catch (cause) {
+    return handleError(cause, res);
   }
 };
 
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email || !email.trim()) return error(res, 400, 'Email requis.');
-
-    const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-    if (!user) {
-      return res.json({ message: 'Si cet email existe, un lien de réinitialisation a été envoyé.' });
-    }
-
-    const crypto = require('crypto');
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 3600000);
-
-    await prisma.passwordReset.deleteMany({ where: { userId: user.id, used: false } });
-    await prisma.passwordReset.create({ data: { userId: user.id, token, expiresAt } });
-
+    if (!email || !email.trim()) return handleError(new Error('Email requis.'), res);
+    
+    const result = await authService.requestPasswordReset(email);
     return res.json({ message: 'Si cet email existe, un lien de réinitialisation a été envoyé.' });
   } catch (cause) {
-    console.error('Erreur forgotPassword:', cause);
-    return error(res, 500, 'Impossible de traiter la demande.');
+    return handleError(cause, res);
   }
 };
 
 exports.resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
-    if (!token || !newPassword) return error(res, 400, 'Token et nouveau mot de passe requis.');
-    if (newPassword.length < 8) return error(res, 400, 'Le mot de passe doit contenir au moins 8 caractères.');
-
-    const reset = await prisma.passwordReset.findUnique({ where: { token } });
-    if (!reset || reset.used || reset.expiresAt < new Date()) {
-      return error(res, 400, 'Token invalide ou expiré.');
-    }
-
-    const passwordHash = await bcrypt.hash(newPassword, 12);
-    await prisma.user.update({ where: { id: reset.userId }, data: { passwordHash, tokenVersion: { increment: 1 } } });
-    await prisma.passwordReset.update({ where: { id: reset.id }, data: { used: true } });
-
+    if (!token || !newPassword) return handleError(new Error('Token et nouveau mot de passe requis.'), res);
+    
+    await authService.resetPassword(token, newPassword);
     return res.json({ message: 'Mot de passe réinitialisé avec succès.' });
   } catch (cause) {
-    console.error('Erreur resetPassword:', cause);
-    return error(res, 500, 'Impossible de réinitialiser le mot de passe.');
+    return handleError(cause, res);
   }
 };
 
 exports.logout = async (req, res) => {
   try {
-    await prisma.user.update({
-      where: { id: req.user.userId },
-      data: { tokenVersion: { increment: 1 } },
-    });
+    const userId = req.user?.userId;
+    // Support both cookie (web) and body (mobile) for refresh token
+    const rawToken = req.cookies?.refreshToken || req.body?.refreshToken;
+    
+    await authService.logout(userId, rawToken);
+    
+    res.clearCookie('refreshToken', { path: '/api/auth', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
     return res.json({ message: 'Déconnexion réussie.' });
   } catch (cause) {
-    console.error('Erreur logout:', cause);
-    return error(res, 500, 'Impossible de se déconnecter.');
+    return handleError(cause, res);
   }
 };
 
 exports.requestEmailVerification = async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
-    if (!user) return error(res, 404, 'Utilisateur introuvable.');
-    if (user.emailVerified) return res.json({ message: 'Email déjà vérifié.' });
-
-    await prisma.emailVerification.deleteMany({ where: { userId: user.id, used: false } });
-
-    const crypto = require('crypto');
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 24 * 3600000);
-
-    await prisma.emailVerification.create({ data: { userId: user.id, token, expiresAt } });
-
-    return res.json({
-      message: 'Un lien de vérification a été généré.',
-      verificationToken: token,
-    });
+    await authService.requestEmailVerification(req.user.userId);
+    return res.json({ message: 'Un lien de vérification a été envoyé à votre adresse email.' });
   } catch (cause) {
-    console.error('Erreur requestEmailVerification:', cause);
-    return error(res, 500, 'Impossible de générer le lien de vérification.');
+    return handleError(cause, res);
   }
 };
 
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.body;
-    if (!token) return error(res, 400, 'Token requis.');
-
-    const verification = await prisma.emailVerification.findUnique({ where: { token } });
-    if (!verification || verification.used) return error(res, 400, 'Token invalide ou déjà utilisé.');
-    if (new Date() > verification.expiresAt) return error(res, 400, 'Token expiré.');
-
-    await prisma.$transaction([
-      prisma.emailVerification.update({ where: { id: verification.id }, data: { used: true } }),
-      prisma.user.update({ where: { id: verification.userId }, data: { emailVerified: true } }),
-    ]);
-
+    if (!token) return handleError(new Error('Token requis.'), res);
+    
+    await authService.verifyEmail(token);
     return res.json({ message: 'Email vérifié avec succès.' });
   } catch (cause) {
-    console.error('Erreur verifyEmail:', cause);
-    return error(res, 500, 'Impossible de vérifier l\'email.');
+    return handleError(cause, res);
   }
 };

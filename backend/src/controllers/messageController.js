@@ -23,7 +23,7 @@ function fail(res, result) {
 exports.listConversations = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
-    const result = await service.listForUser(req.user);
+    const result = await service.listForUser(req.user, req.query);
     // Forme historique : tableau simple.
     res.json(result.data);
   } catch (error) {

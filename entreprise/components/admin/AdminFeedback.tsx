@@ -67,7 +67,7 @@ export default function AdminFeedback() {
                 <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                   <button
                     onClick={() => togglePublish(item.id, !!item.isPublished)}
-                    style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '9px', fontWeight: 700, border: 'none', cursor: 'pointer', background: item.isPublished ? '#e9f8f3' : '#fff6e7', color: item.isPublished ? 'var(--green)' : '#a66b0b' }}
+                    style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '9px', fontWeight: 700, border: 'none', cursor: 'pointer', background: item.isPublished ? '#e9f2fe' : '#fff6e7', color: item.isPublished ? 'var(--accent)' : '#a66b0b' }}
                   >
                     {item.isPublished ? 'Dépublier' : 'Publier'}
                   </button>

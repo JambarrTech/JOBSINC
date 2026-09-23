@@ -1,6 +1,9 @@
 const prisma = require('../config/prisma');
+const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const companyImagesInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
+// Les offres visibles publiquement proviennent uniquement d'entreprises approuvées.
+const publicJobWhere = { isOpen: true, company: { isApproved: true }, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] };
 
 function absoluteUrl(req, value) {
   if (!value) return null;
@@ -19,35 +22,32 @@ function dto(job, req) {
 }
 
 function paginate(req) {
-  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-  const skip = (page - 1) * limit;
-  return { page, limit, skip };
+  return parsePagination(req.query);
 }
 
 function paginated(data, total, page, limit) {
-  return { data, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  return buildPaginationResponse(data, total, page, limit);
 }
 
 exports.listPublic = async (req, res) => {
   try {
     const { page, limit, skip } = paginate(req);
-    const where = { isOpen: true, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] };
+    const where = publicJobWhere;
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({ where, include: { company: { include: companyImagesInclude } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
       prisma.job.count({ where }),
     ]);
     res.json(paginated(jobs.map((job) => dto(job, req)), total, page, limit));
-  } catch (_) { res.status(500).json({ error: 'Impossible de charger les offres.' }); }
+  } catch (error) { console.error('Erreur listPublic jobs:', error); res.status(500).json({ error: 'Impossible de charger les offres.' }); }
 };
 exports.getPublic = async (req, res) => {
-  try { const job = await prisma.job.findFirst({ where: { id: req.params.id, isOpen: true }, include: { company: { include: companyImagesInclude } } }); if (!job) return res.status(404).json({ error: 'Offre introuvable.' }); res.json(dto(job, req)); }
-  catch (_) { res.status(500).json({ error: "Impossible de charger l'offre." }); }
+  try { const job = await prisma.job.findFirst({ where: { id: req.params.id, isOpen: true, company: { isApproved: true } }, include: { company: { include: companyImagesInclude } } }); if (!job) return res.status(404).json({ error: 'Offre introuvable.' }); res.json(dto(job, req)); }
+  catch (error) { console.error('Erreur getPublic job:', error); res.status(500).json({ error: "Impossible de charger l'offre." }); }
 };
 
 exports.similar = async (req, res) => {
   try {
-    const job = await prisma.job.findFirst({ where: { id: req.params.id, isOpen: true } });
+    const job = await prisma.job.findFirst({ where: { id: req.params.id, isOpen: true, company: { isApproved: true } } });
     if (!job) return res.status(404).json({ error: 'Offre introuvable.' });
 
     const or = [];
@@ -58,6 +58,7 @@ exports.similar = async (req, res) => {
     const similar = await prisma.job.findMany({
       where: {
         isOpen: true,
+        company: { isApproved: true },
         id: { not: job.id },
         ...(or.length > 0 ? { OR: or } : {}),
       },
@@ -67,7 +68,8 @@ exports.similar = async (req, res) => {
     });
 
     res.json({ data: similar.map((j) => dto(j, req)) });
-  } catch (_) {
+  } catch (error) {
+    console.error('Erreur similar jobs:', error);
     res.status(500).json({ error: 'Impossible de charger les offres similaires.' });
   }
 };

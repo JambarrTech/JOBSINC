@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../models/job_offer.dart';
-import '../presentation/job_detail_screen.dart';
 import '../providers/jobs_provider.dart';
 import '../widgets/job_feed_card.dart';
 
@@ -68,9 +68,7 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
   }
 
   void _openDetail(JobOffer offer) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => JobDetailScreen(offer: offer)),
-    );
+    context.push('/jobs/${offer.id ?? 'detail'}', extra: offer);
   }
 
   @override

@@ -15,6 +15,10 @@ function setCache(key, data, ttl = DEFAULT_TTL) {
   cache.set(key, { data, expiresAt: Date.now() + ttl });
 }
 
+/**
+ * Invalide toutes les entrées dont la clé commence par `prefix`
+ * (ex. `company:dashboard:<id>` après une écriture métier).
+ */
 function invalidate(prefix) {
   for (const key of cache.keys()) {
     if (key.startsWith(prefix)) cache.delete(key);

@@ -4,8 +4,8 @@ exports.getStats = async (_req, res) => {
   try {
     const [talents, companies, jobs, applications] = await Promise.all([
       prisma.candidateProfile.count(),
-      prisma.company.count(),
-      prisma.job.count({ where: { isOpen: true } }),
+      prisma.company.count({ where: { isApproved: true } }),
+      prisma.job.count({ where: { isOpen: true, company: { isApproved: true } } }),
       prisma.application.count(),
     ]);
     return res.json({ talents, companies, jobs, applications });
@@ -33,7 +33,7 @@ exports.getOverview = async (_req, res) => {
       prisma.candidateProfile.count(),
       prisma.candidateProfile.count({ where: { createdAt: { gte: startOfMonth } } }),
       prisma.candidateProfile.count({ where: { createdAt: { gte: startOfPrevMonth, lt: startOfMonth } } }),
-      prisma.job.count({ where: { isOpen: true } }),
+      prisma.job.count({ where: { isOpen: true, company: { isApproved: true } } }),
       prisma.application.count({ where: { createdAt: { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) } } }),
       prisma.candidateProfile.findMany({
         orderBy: { createdAt: 'desc' },

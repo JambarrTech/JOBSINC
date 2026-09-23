@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
-
-import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_cached_image.dart';
 import '../../../core/widgets/pressable_button.dart';
 import '../models/job_offer.dart';
 import 'date_helpers.dart';
@@ -21,12 +19,12 @@ class JobFeedCard extends StatelessWidget {
   final VoidCallback? onSave;
 
   static const _contractColors = <String, Color>{
-    'stage': AppColors.green,
-    'alternance': AppColors.turquoise,
+    'stage': AppColors.accent,
+    'alternance': AppColors.accent,
     'cdi': AppColors.primary,
     'cdd': AppColors.warning,
-    'freelance': Color(0xFF7C3AED),
-    'interim': Color(0xFFEC4899),
+    'freelance': Color(0xFF3B8BFF),
+    'interim': Color(0xFF0644B0),
     'saisonnier': Color(0xFFF97316),
   };
 
@@ -245,21 +243,15 @@ class _CompanyAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const size = 36.0;
-    if (logoUrl != null && logoUrl!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(size / 2),
-        child: CachedNetworkImage(
-          imageUrl: ApiClient.resolveUrl(logoUrl!),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          memCacheWidth: size.toInt(),
-          memCacheHeight: size.toInt(),
-          errorWidget: (_, __, ___) => _fallbackAvatar(),
-        ),
-      );
-    }
-    return _fallbackAvatar();
+    // AppCachedImage gère lui-même l'URL vide, le chargement et l'erreur
+    // (retombée sur le fallback entreprise).
+    return AppCachedImage(
+      url: logoUrl,
+      width: size,
+      height: size,
+      borderRadius: BorderRadius.circular(size / 2),
+      errorWidget: (_, __, ___) => _fallbackAvatar(),
+    );
   }
 
   Widget _fallbackAvatar() {
@@ -312,7 +304,7 @@ class _MatchTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = score >= 80
-        ? AppColors.green
+        ? AppColors.accent
         : score >= 60
             ? AppColors.primary
             : AppColors.secondaryText;

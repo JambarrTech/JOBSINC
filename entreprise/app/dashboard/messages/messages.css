@@ -9,7 +9,7 @@
 .messages-list{display:flex;flex-direction:column;overflow-y:auto;flex:1}
 .message-row{display:flex;align-items:center;gap:11px;width:100%;min-width:0;padding:15px 20px;border:0;border-top:1px solid #edf2f5;background:#fff;color:inherit;text-align:left;cursor:pointer;transition:background .2s}
 .message-row:hover,.message-row.active{background:#f5fbfc}
-.message-row.active{box-shadow:inset 3px 0 0 var(--teal)}
+.message-row.active{box-shadow:inset 3px 0 0 var(--accent)}
 .message-row.unread .message-row-copy strong{font-weight:800}
 .message-row-copy{display:flex;min-width:0;flex:1;flex-direction:column;gap:4px}
 .message-row-copy strong,.message-row-copy span,.message-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -18,7 +18,7 @@
 .message-row-copy small{color:var(--muted);font-size:10px}
 .message-row-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
 .message-row time{color:#9aa9b7;font-size:10px;white-space:nowrap}
-.message-unread-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0}
+.message-unread-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
 
 .message-detail-panel{display:flex;min-width:0;flex-direction:column;background:#fbfdfe}
 .message-detail-head{display:flex;align-items:center;gap:13px;padding:22px 24px;border-bottom:1px solid #e8eef2;background:#fff}
@@ -32,7 +32,7 @@
 .message-bubble p{margin:0;color:var(--ink)}
 .message-bubble time{display:block;font-size:9px;color:#9aa9b7;margin-top:6px;text-align:right}
 .message-bubble-incoming{align-self:flex-start;background:#f0f7fa;border:1px solid #e0eef4;border-bottom-left-radius:4px}
-.message-bubble-incoming span{color:var(--teal)}
+.message-bubble-incoming span{color:var(--accent)}
 .message-bubble-outgoing{align-self:flex-end;background:var(--navy);border-bottom-right-radius:4px}
 .message-bubble-outgoing span{color:rgba(255,255,255,.7)}
 .message-bubble-outgoing p{color:#fff}
@@ -40,7 +40,7 @@
 
 .message-compose{display:flex;gap:10px;padding:16px 24px;border-top:1px solid #e8eef2;background:#fff;align-items:flex-end}
 .message-compose textarea{flex:1;resize:none;border:1px solid #dce6ed;border-radius:8px;padding:10px 12px;font-family:inherit;font-size:13px;color:var(--ink);outline:none;transition:border .2s}
-.message-compose textarea:focus{border-color:var(--teal)}
+.message-compose textarea:focus{border-color:var(--accent)}
 .message-compose textarea::placeholder{color:#b0bec5}
 .message-compose .button{flex-shrink:0}
 
@@ -53,7 +53,7 @@
 .message-subject-field{display:flex;flex-direction:column;gap:4px;padding:0 24px;margin-bottom:8px}
 .message-subject-field span{font-size:11px;font-weight:600;color:var(--muted)}
 .message-subject-field input{border:1px solid #dce6ed;border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;color:var(--ink);outline:none;transition:border .2s}
-.message-subject-field input:focus{border-color:var(--teal)}
+.message-subject-field input:focus{border-color:var(--accent)}
 .message-subject-field input::placeholder{color:#b0bec5}
 
 .message-compose-area{border-top:1px solid #e8eef2;padding-top:12px}
@@ -73,9 +73,9 @@
 .messages-skeleton b{width:50px;height:8px;border-radius:4px;background:#edf2f5;animation:pulse 1.5s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-.matching-empty-icon{width:48px;height:48px;border-radius:12px;background:#f0f7fa;display:flex;align-items:center;justify-content:center;color:var(--teal)}
+.matching-empty-icon{width:48px;height:48px;border-radius:12px;background:#f0f7fa;display:flex;align-items:center;justify-content:center;color:var(--accent)}
 
-.candidate-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0;overflow:hidden}
+.candidate-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0;overflow:hidden}
 .candidate-avatar img{width:100%;height:100%;object-fit:cover}
 .candidate-avatar.large{width:42px;height:42px;font-size:14px}
 
@@ -88,7 +88,7 @@
 .button-small{padding:6px 12px;font-size:11px}
 
 .jobs-search{display:flex;align-items:center;gap:8px;border:1px solid #dce6ed;border-radius:8px;padding:8px 12px;background:#f9fbfc;transition:border .2s}
-.jobs-search:focus-within{border-color:var(--teal)}
+.jobs-search:focus-within{border-color:var(--accent)}
 .jobs-search input{flex:1;border:none;background:none;font-size:12px;color:var(--ink);outline:none}
 .jobs-search input::placeholder{color:#b0bec5}
 .jobs-search svg{color:var(--muted);flex-shrink:0}
@@ -96,7 +96,7 @@
 .dashboard-page-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
 .dashboard-page-heading h1{margin:4px 0 0;color:var(--navy);font-size:22px}
 .dashboard-page-heading p{margin:4px 0 0;color:var(--muted);font-size:12px}
-.dashboard-eyebrow{display:block;font-size:10px;font-weight:600;color:var(--teal);text-transform:uppercase;letter-spacing:.5px}
+.dashboard-eyebrow{display:block;font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.5px}
 
 .dashboard-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:40px;text-align:center}
 .dashboard-error{color:var(--muted)}

@@ -21,7 +21,8 @@ if (Math.abs(weightSum - 1) > 1e-9) {
 }
 
 // Seuil minimal pour qu'un candidat apparaisse dans les recommandations
-// et niveaux de compatibilité (label affiché dans l'interface).
+// (interprété côté frontend via le filtre minScore ; aucun plancher n'est
+// appliqué dans le moteur pour ne pas masquer des profils faibles).
 const MIN_SCORE_DEFAULT = 15;
 
 // ── Constantes de scoring (ne pas dupliquer dans matchingService.js) ──

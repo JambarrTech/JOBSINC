@@ -22,7 +22,7 @@ AccountStatus? accountStatusFromStorage(String? value) {
 }
 
 class AuthUser {
-  const AuthUser({required this.id, required this.firstName, required this.lastName, required this.email, required this.status, this.phone, this.birthDate, this.country, this.city, this.token, this.companyId, this.photoUrl, this.cvUrl, this.skills});
+  const AuthUser({required this.id, required this.firstName, required this.lastName, required this.email, required this.status, this.phone, this.birthDate, this.country, this.city, this.token, this.refreshToken, this.companyId, this.photoUrl, this.cvUrl, this.skills});
   final String id;
   final String firstName;
   final String lastName;
@@ -33,12 +33,13 @@ class AuthUser {
   final String? country;
   final String? city;
   final String? token;
+  final String? refreshToken;
   final String? companyId;
   final String? photoUrl;
   final String? cvUrl;
   final String? skills;
 
-  AuthUser copyWith({String? firstName, String? lastName, String? phone, String? country, String? city, String? photoUrl, String? cvUrl, String? skills}) {
+  AuthUser copyWith({String? firstName, String? lastName, String? phone, String? country, String? city, String? photoUrl, String? cvUrl, String? skills, String? token, String? refreshToken}) {
     return AuthUser(
       id: id,
       firstName: firstName ?? this.firstName,
@@ -49,7 +50,8 @@ class AuthUser {
       birthDate: birthDate,
       country: country ?? this.country,
       city: city ?? this.city,
-      token: token,
+      token: token ?? this.token,
+      refreshToken: refreshToken ?? this.refreshToken,
       companyId: companyId,
       photoUrl: photoUrl ?? this.photoUrl,
       cvUrl: cvUrl ?? this.cvUrl,

@@ -1,10 +1,9 @@
 const prisma = require('../config/prisma');
+const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 exports.list = async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(req.query);
 
     const where = { userId: req.user.userId };
 

@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// Notifications locales pour les nouveaux messages reçus hors de la
@@ -41,8 +42,9 @@ class LocalNotificationService {
         const InitializationSettings(android: androidInit, iOS: iosInit),
       );
       _ready = true;
-    } catch (_) {
+    } catch (e) {
       // Jamais bloquant : la messagerie reste utilisable sans notifs.
+      debugPrint('[LocalNotificationService] init : $e');
     }
   }
 
@@ -71,6 +73,8 @@ class LocalNotificationService {
         details,
         payload: payload,
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[LocalNotificationService] showMessage : $e');
+    }
   }
 }

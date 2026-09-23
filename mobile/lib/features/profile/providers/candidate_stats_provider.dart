@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../auth/providers/auth_provider.dart';
+import 'dart:developer' as developer;
 
 class CandidateStats {
   const CandidateStats({
@@ -13,6 +14,7 @@ class CandidateStats {
     this.profileCompletion = 0,
     this.interviewRate = 0,
     this.acceptRate = 0,
+    this.hasError = false,
   });
 
   final int totalApplications;
@@ -23,6 +25,7 @@ class CandidateStats {
   final int profileCompletion;
   final int interviewRate;
   final int acceptRate;
+  final bool hasError;
 
   factory CandidateStats.fromJson(Map<String, dynamic> json) {
     return CandidateStats(
@@ -36,6 +39,10 @@ class CandidateStats {
       acceptRate: json['acceptRate'] as int? ?? 0,
     );
   }
+
+  static CandidateStats error() {
+    return const CandidateStats(hasError: true);
+  }
 }
 
 final candidateStatsProvider = FutureProvider.autoDispose<CandidateStats>((ref) async {
@@ -44,7 +51,8 @@ final candidateStatsProvider = FutureProvider.autoDispose<CandidateStats>((ref) 
   try {
     final response = await ApiClient().get('/candidate/stats', token: token);
     return CandidateStats.fromJson(response);
-  } catch (_) {
-    return const CandidateStats();
+  } catch (e, stack) {
+    developer.log('Erreur chargement stats candidat', name: 'CandidateStats', error: e, stackTrace: stack);
+    return CandidateStats.error();
   }
 });

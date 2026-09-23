@@ -7,19 +7,16 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
-
 import '../../../core/services/api_client.dart';
 import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_cached_image.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/pressable_button.dart';
 import '../../applications/presentation/applications_screen.dart';
 import '../../applications/providers/applications_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../jobs/models/job_offer.dart';
-import '../../jobs/presentation/job_detail_screen.dart';
-import '../../jobs/presentation/offers_screen.dart';
 import '../../jobs/providers/saved_jobs_provider.dart';
 import '../../jobs/widgets/job_feed_card.dart';
 import '../../messages/presentation/messages_screen.dart';
@@ -76,13 +73,10 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
 
   void _submitSearch() {
     final query = _searchController.text.trim();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => OffersScreen(
-          initialQuery: query,
-          initialLocation: _locationController.text,
-        ),
-      ),
+    final location = _locationController.text.trim();
+    context.push(
+      '/jobs?q=${Uri.encodeQueryComponent(query)}'
+      '&loc=${Uri.encodeQueryComponent(location)}',
     );
   }
 
@@ -171,9 +165,7 @@ class _HomeContent extends ConsumerWidget {
   final VoidCallback onOpenProfile;
 
   void _openJobDetail(BuildContext context, JobOffer offer) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => JobDetailScreen(offer: offer)),
-    );
+    context.push('/jobs/${offer.id ?? 'detail'}', extra: offer);
   }
 
   @override
@@ -632,21 +624,14 @@ class _UserAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (photoUrl != null && photoUrl!.isNotEmpty) {
-      return Container(
+      // AppCachedImage dé-duplique le fallback, le chargement et les erreurs
+      // (option -> retombée sur les initiales).
+      return AppCachedImage(
+        url: photoUrl,
         width: 50,
         height: 50,
-        decoration: const BoxDecoration(shape: BoxShape.circle),
-        child: ClipOval(
-          child: CachedNetworkImage(
-            imageUrl: ApiClient.resolveUrl(photoUrl!),
-            width: 50,
-            height: 50,
-            fit: BoxFit.cover,
-            memCacheWidth: 50,
-            memCacheHeight: 50,
-            errorWidget: (_, __, ___) => _initialsAvatar(),
-          ),
-        ),
+        borderRadius: BorderRadius.circular(25),
+        errorWidget: (_, __, ___) => _initialsAvatar(),
       );
     }
     return _initialsAvatar();
@@ -945,28 +930,20 @@ class CompanyFeedCard extends StatelessWidget {
 }
 
 class _CompanyAvatar extends StatelessWidget {
-  const _CompanyAvatar({this.logoUrl, required this.name, this.size = 48});
+  const _CompanyAvatar({this.logoUrl, required this.name, this.size = 40});
   final String? logoUrl;
   final String name;
   final double size;
 
   @override
   Widget build(BuildContext context) {
-    if (logoUrl != null && logoUrl!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(size / 2),
-        child: CachedNetworkImage(
-          imageUrl: ApiClient.resolveUrl(logoUrl!),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          memCacheWidth: size.toInt(),
-          memCacheHeight: size.toInt(),
-          errorWidget: (_, __, ___) => _fallback(),
-        ),
-      );
-    }
-    return _fallback();
+    return AppCachedImage(
+      url: logoUrl,
+      width: size,
+      height: size,
+      borderRadius: BorderRadius.circular(size / 2),
+      errorWidget: (_, __, ___) => _fallback(),
+    );
   }
 
   Widget _fallback() {
@@ -1272,14 +1249,14 @@ class ProfileStatsSection extends ConsumerWidget {
                       icon: Icons.videocam_outlined,
                       value: '${data.interviewCount}',
                       label: 'Entretiens',
-                      color: const Color(0xFF8B5CF6),
+                      color: const Color(0xFF3B8BFF),
                     ),
                     const SizedBox(width: 12),
                     StatItem(
                       icon: Icons.check_circle_outline,
                       value: '${data.acceptedCount}',
                       label: 'Acceptés',
-                      color: const Color(0xFF10B981),
+                      color: const Color(0xFF0644B0),
                     ),
                   ],
                 ),
@@ -1304,7 +1281,7 @@ class ProfileStatsSection extends ConsumerWidget {
                       icon: Icons.person_outline,
                       value: '${data.profileCompletion}%',
                       label: 'Profil',
-                      color: const Color(0xFFEC4899),
+                      color: const Color(0xFF0C2D54),
                     ),
                   ],
                 ),
@@ -1390,6 +1367,8 @@ class _SavedJobsSection extends ConsumerWidget {
               _SectionHeader(
                 title: 'Sauvegardées',
                 subtitle: '${data.length} offre${data.length > 1 ? 's' : ''}',
+                actionLabel: 'Voir tout',
+                onAction: () => context.push('/candidate/saved-jobs'),
               ),
               const SizedBox(height: 12),
               ...data.take(3).map(
@@ -1397,13 +1376,10 @@ class _SavedJobsSection extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: JobFeedCard(
                     offer: entry.job,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => JobDetailScreen(offer: entry.job),
-                        ),
-                      );
-                    },
+                    onTap: () => context.push(
+                      '/jobs/${entry.job.id ?? 'detail'}',
+                      extra: entry.job,
+                    ),
                     onSave: () async {
                       final token = ref.read(authProvider).user?.token;
                       if (token == null || entry.job.id == null) return;
@@ -1443,17 +1419,12 @@ class _CompanyChip extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (company.logoUrl != null && company.logoUrl!.isNotEmpty)
-            ClipRRect(
+            AppCachedImage(
+              url: company.logoUrl,
+              width: 56,
+              height: 56,
               borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: ApiClient.resolveUrl(company.logoUrl!),
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-                memCacheWidth: 40,
-                memCacheHeight: 40,
-                errorWidget: (_, __, ___) => _companyFallback(),
-              ),
+              errorWidget: (_, __, ___) => _companyFallback(),
             )
           else
             _companyFallback(),

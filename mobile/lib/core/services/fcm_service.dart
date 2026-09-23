@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
 import 'chat_socket_service.dart';
@@ -41,9 +42,11 @@ class FcmService {
         await _register(apiToken, token);
         _registeredApiToken = apiToken;
       }
-    } catch (_) {
+    } catch (e) {
       // Firebase indisponible (émulateur sans services, clé absente…)
-      // : jamais bloquant pour l'application.
+      // : jamais bloquant pour l'application, mais on garde une trace
+      // pour le diagnostic en développement.
+      debugPrint('[FcmService] initAndRegister : $e');
     }
   }
 
@@ -55,7 +58,9 @@ class FcmService {
     try {
       await ApiClient()
           .post('/devices/unregister', {'token': fcmToken}, token: apiToken);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[FcmService] unregister : $e');
+    }
     _registeredApiToken = null;
   }
 
@@ -67,8 +72,9 @@ class FcmService {
         {'token': fcmToken, 'platform': platform},
         token: apiToken,
       );
-    } catch (_) {
-      // Retenté au prochain onTokenRefresh / login.
+    } catch (e) {
+      // Retenté au prochain onTokenRefresh / login ; tracé en dev.
+      debugPrint('[FcmService] _register : $e');
     }
   }
 

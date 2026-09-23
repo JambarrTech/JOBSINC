@@ -12,7 +12,7 @@ function fail(res, result) {
 
 exports.list = async (req, res) => {
   try {
-    res.json(await service.listForUser(req.user));
+    res.json(await service.listForUser(req.user, req.query));
   } catch (error) {
     console.error('Erreur conversations.list:', error);
     res.status(500).json({ error: 'Impossible de charger les conversations.' });

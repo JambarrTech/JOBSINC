@@ -47,11 +47,12 @@ entreprise/
 
 Palette de couleurs JOBSINC :
 
-- **Bleu principal** : `#0A4F9E`
-- **Bleu foncé** : `#082B52`
-- **Vert** : `#00A878`
-- **Gris clair** : `#F5F8FA`
+- **Bleu principal** : `#0B5FE0`
+- **Bleu nuit (navy)** : `#071D3A`
+- **Bleu clair (accent)** : `#3B8BFF`
+- **Fond** : `#F4F7FB`
 - **Blanc** : `#FFFFFF`
+- **Sémantique conservée** : rouge (`#E74C3C`) erreurs/rejets, ambre (`#F7B731`) alertes/avertissements.
 
 ## 🏠 Sections de la Page d'Accueil
 

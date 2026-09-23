@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const pushService = require('../services/pushService');
 const socketService = require('../services/socketService');
 const videoProvider = require('../services/videoProviderService');
+const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 // ============================================================
 // ENTRETIENS — cycle de vie complet
@@ -359,14 +360,12 @@ exports.listCompany = async (req, res) => {
     }
     const company = await prisma.company.findUnique({ where: { userId: req.user.userId } });
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(req.query);
     const [rows, total] = await Promise.all([
       prisma.interview.findMany({ where: { application: { job: { companyId: company.id } } }, include: interviewInclude, orderBy: [{ status: 'asc' }, { scheduledAt: 'desc' }], skip, take: limit }),
       prisma.interview.count({ where: { application: { job: { companyId: company.id } } } }),
     ]);
-    res.json({ data: rows.map((item) => interviewDto(item)), pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
+    res.json(buildPaginationResponse(rows.map((item) => interviewDto(item)), total, page, limit));
   } catch (error) {
     console.error('Erreur liste entretiens entreprise:', error);
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });
@@ -378,14 +377,12 @@ exports.listCandidate = async (req, res) => {
     if (req.user.role !== 'CANDIDATE' && req.user.role !== 'EMPLOYEE') {
       return res.status(403).json({ error: 'Accès réservé aux candidats.' });
     }
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(req.query);
     const [rows, total] = await Promise.all([
       prisma.interview.findMany({ where: { application: { candidate: { userId: req.user.userId } } }, include: interviewInclude, orderBy: [{ status: 'asc' }, { scheduledAt: 'desc' }], skip, take: limit }),
       prisma.interview.count({ where: { application: { candidate: { userId: req.user.userId } } } }),
     ]);
-    res.json({ data: rows.map((item) => interviewDto(item)), pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
+    res.json(buildPaginationResponse(rows.map((item) => interviewDto(item)), total, page, limit));
   } catch (error) {
     console.error('Erreur liste entretiens candidat:', error);
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });

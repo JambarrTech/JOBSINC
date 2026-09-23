@@ -65,6 +65,7 @@ export async function getConversationPage(conversationId: string | number, param
 export const isApiConfigured = () => Boolean(API_URL);
 export async function getCompanies() { return list(await apiRequest<Company[] | { data?: Company[]; results?: Company[] }>(process.env.NEXT_PUBLIC_COMPANIES_ENDPOINT || '/companies')).map(normalizeCompany); }
 export async function getJobs() { return list(await apiRequest<any[] | { data?: any[]; results?: any[] }>(process.env.NEXT_PUBLIC_JOBS_ENDPOINT || '/jobs')).map((job: any) => ({ ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company })); }
+export async function getJob(id: string | number) { const job = await apiRequest<any>(`/jobs/${id}`); return { ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company }; }
 export async function getStats(): Promise<Record<string, number>> { const response = await apiRequest<Record<string, number> | { data?: Record<string, number> }>(process.env.NEXT_PUBLIC_STATS_ENDPOINT || '/stats'); return typeof response === 'object' && response !== null && 'data' in response && response.data ? response.data as Record<string, number> : response as Record<string, number>; }
 export type OverviewCandidate = { initials: string; name: string; detail: string };
 export type OverviewData = { talents: number; growth: number; activeJobs: number; applicationsToday: number; candidates: OverviewCandidate[]; activity: number[] };
