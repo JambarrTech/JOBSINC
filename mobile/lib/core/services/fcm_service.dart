@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -15,10 +16,12 @@ class FcmService {
 
   static String? _registeredApiToken;
   static String? _lastToken;
+  static StreamSubscription<String>? _tokenSub;
 
   /// À appeler à chaque session authentifiée (idempotent).
   static Future<void> initAndRegister(String apiToken) async {
     if (apiToken.isEmpty) return;
+    if (kIsWeb) return;
     try {
       final messaging = FirebaseMessaging.instance;
       await messaging.requestPermission(
@@ -34,7 +37,8 @@ class FcmService {
         sound: true,
       );
 
-      messaging.onTokenRefresh.listen((token) => _register(apiToken, token));
+      await _tokenSub?.cancel();
+      _tokenSub = messaging.onTokenRefresh.listen((token) => _register(apiToken, token));
 
       final token = await messaging.getToken();
       if (token != null) {
@@ -52,26 +56,36 @@ class FcmService {
 
   /// Désenregistre l'appareil à la déconnexion (best effort).
   static Future<void> unregister() async {
+    await _tokenSub?.cancel();
+    _tokenSub = null;
     final apiToken = _registeredApiToken;
     final fcmToken = _lastToken;
     if (apiToken == null || fcmToken == null) return;
+    final client = ApiClient();
     try {
-      await ApiClient()
-          .post('/devices/unregister', {'token': fcmToken}, token: apiToken);
+      await client.post('/devices/unregister', {'token': fcmToken}, token: apiToken);
     } catch (e) {
       debugPrint('[FcmService] unregister : $e');
+    } finally {
+      client.close();
     }
     _registeredApiToken = null;
   }
 
   static Future<void> _register(String apiToken, String fcmToken) async {
+    if (kIsWeb) return;
     try {
       final platform = Platform.isIOS ? 'ios' : 'android';
-      await ApiClient().post(
-        '/devices/register',
-        {'token': fcmToken, 'platform': platform},
-        token: apiToken,
-      );
+      final client = ApiClient();
+      try {
+        await client.post(
+          '/devices/register',
+          {'token': fcmToken, 'platform': platform},
+          token: apiToken,
+        );
+      } finally {
+        client.close();
+      }
     } catch (e) {
       // Retenté au prochain onTokenRefresh / login ; tracé en dev.
       debugPrint('[FcmService] _register : $e');

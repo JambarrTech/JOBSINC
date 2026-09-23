@@ -535,22 +535,25 @@ async function loadPool(companyId) {
  */
 async function getCompanyMatches(companyId, filters = {}, company = null) {
   const { jobs, applications } = await loadPool(companyId);
-  const recommendations = [];
+  const byJob = new Map();
+  for (const a of applications) {
+    if (!byJob.has(a.jobId)) byJob.set(a.jobId, []);
+    byJob.get(a.jobId).push(a);
+  }
+  const tasks = [];
   const seen = new Set();
-
   for (const job of jobs) {
     if (filters.jobId && job.id !== filters.jobId) continue;
-    for (const application of applications) {
-      if (application.jobId !== job.id) continue;
+    const apps = byJob.get(job.id) || [];
+    for (const application of apps) {
       const profile = application.candidate;
       if (!profile || seen.has(`${job.id}:${profile.id}`)) continue;
       seen.add(`${job.id}:${profile.id}`);
-      // eslint-disable-next-line no-await-in-loop -- le cache L1 rend ce coût négligeable
-      const recommendation = await toRecommendation(job, profile, application, company);
-      if (passesFilters(recommendation, filters)) recommendations.push(recommendation);
+      tasks.push(toRecommendation(job, profile, application, company));
     }
   }
-
+  const all = await Promise.all(tasks);
+  const recommendations = all.filter((r) => passesFilters(r, filters));
   recommendations.sort((a, b) => b.score - a.score);
   return recommendations.slice(0, 50);
 }
@@ -564,13 +567,9 @@ async function getJobMatches(companyId, jobId, filters = {}, company = null) {
     include: { candidate: true },
     orderBy: { createdAt: 'desc' },
   });
-  const recommendations = [];
-  for (const application of applications) {
-    if (!application.candidate) continue;
-    // eslint-disable-next-line no-await-in-loop -- le cache L1 rend ce coût négligeable
-    const recommendation = await toRecommendation(job, application.candidate, application, company);
-    if (passesFilters(recommendation, filters)) recommendations.push(recommendation);
-  }
+  const tasks = applications.filter((a) => a.candidate).map((a) => toRecommendation(job, a.candidate, a, company));
+  const all = await Promise.all(tasks);
+  const recommendations = all.filter((r) => passesFilters(r, filters));
   recommendations.sort((a, b) => b.score - a.score);
   return recommendations;
 }
