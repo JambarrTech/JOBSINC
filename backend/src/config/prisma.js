@@ -16,6 +16,8 @@ async function safeReconnect() {
   if (reconnecting) return reconnecting;
   reconnecting = (async () => {
     try { await base.$disconnect(); } catch {}
+    // Attente avant reconnect pour laisser Neon sortir du suspend
+    await sleep(3000);
     try { await base.$connect(); } catch {}
   })().finally(() => { reconnecting = null; });
   return reconnecting;
@@ -25,7 +27,7 @@ const prisma = base.$extends({
   query: {
     $allModels: {
       async $allOperations({ args, query }) {
-        const MAX_ATTEMPTS = 3;
+        const MAX_ATTEMPTS = 4;
         for (let attempt = 1; ; attempt++) {
           try {
             return await query(args);
@@ -34,7 +36,7 @@ const prisma = base.$extends({
             if (!retriable) throw err;
             if (attempt === MAX_ATTEMPTS) throw err;
             await safeReconnect();
-            await sleep(2000 * attempt);
+            await sleep(3000 * attempt);
           }
         }
       },
