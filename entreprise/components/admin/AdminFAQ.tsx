@@ -69,7 +69,7 @@ export default function AdminFAQ() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                  <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '9px', fontWeight: 700, background: item.isPublished ? '#e9f8f3' : '#fff6e7', color: item.isPublished ? 'var(--green)' : '#a66b0b' }}>
+                  <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '9px', fontWeight: 700, background: item.isPublished ? '#e9f2fe' : '#fff6e7', color: item.isPublished ? 'var(--accent)' : '#a66b0b' }}>
                     {item.isPublished ? 'Publié' : 'En attente'}
                   </span>
                   <button onClick={() => handleDelete(item.id)} style={{ padding: '3px 8px', border: '1px solid #f2d7d5', borderRadius: '6px', background: '#fff8f7', color: '#a53d38', fontSize: '9px', fontWeight: 700, cursor: 'pointer' }}>Supprimer</button>
@@ -77,8 +77,8 @@ export default function AdminFAQ() {
               </div>
 
               {item.answer ? (
-                <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#f0faf6', borderLeft: '3px solid var(--teal)', marginTop: '8px' }}>
-                  <span style={{ display: 'block', color: 'var(--teal)', fontSize: '10px', fontWeight: 800, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Réponse</span>
+                <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#eef4fe', borderLeft: '3px solid var(--accent)', marginTop: '8px' }}>
+                  <span style={{ display: 'block', color: 'var(--accent)', fontSize: '10px', fontWeight: 800, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Réponse</span>
                   <p style={{ margin: 0, color: 'var(--ink)', fontSize: '12px', lineHeight: 1.6 }}>{item.answer}</p>
                 </div>
               ) : (

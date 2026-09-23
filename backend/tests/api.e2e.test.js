@@ -2,6 +2,8 @@
  * Crée ses propres comptes de test (suffixe @e2e-test.local), vérifie les
  * parcours critiques et les permissions, puis nettoie la base via Prisma. */
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const prisma = require('../src/config/prisma');
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:5000/api';
@@ -50,6 +52,25 @@ async function main() {
   const tokenA = candA.json.token;
   const tokenB = candB.json.token;
   const candidateAUserId = candA.json.user?.id;
+
+  // Depuis la mise en place de la modération, les actions métier (offres,
+  // candidatures, matching, dashboard…) sont bloquées tant que
+  // Company.isApproved est false. On approuve via la base (le flux
+  // d'approbation admin a ses propres tests) pour exercer le parcours.
+  await check('Entreprise approuvée pour le test (modération)', async () => {
+    const updated = await prisma.company.update({
+      where: { userId: companyReg.json.user.id },
+      data: { isApproved: true },
+    });
+    assert.strictEqual(updated.isApproved, true);
+  });
+
+  // Le dépôt de candidature vérifie désormais que le fichier CV existe
+  // physiquement sur disque : on pose deux fichiers factices.
+  const cvsDir = path.join(__dirname, '..', 'uploads', 'cvs');
+  fs.mkdirSync(cvsDir, { recursive: true });
+  const cvFiles = [path.join(cvsDir, 'e2e-a.pdf'), path.join(cvsDir, 'e2e-b.pdf')];
+  cvFiles.forEach((file, index) => fs.writeFileSync(file, `cv-factice-${index}`));
 
   await check('Login refusé avec mauvais mot de passe (401)', async () => {
     const login = await api('/auth/login/company', { method: 'POST', body: { email: `rec-${SUFFIX}`, password: 'wrong' } });
@@ -201,6 +222,9 @@ async function cleanup() {
   await prisma.companyImage.deleteMany({ where: { companyId: { in: companyIds } } }).catch(() => {});
   await prisma.company.deleteMany({ where: { id: { in: companyIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  // Supprime les fichiers CV factices créés pour le parcours candidature.
+  try { fs.unlinkSync(path.join(__dirname, '..', 'uploads', 'cvs', 'e2e-a.pdf')); } catch {}
+  try { fs.unlinkSync(path.join(__dirname, '..', 'uploads', 'cvs', 'e2e-b.pdf')); } catch {}
   console.log(`\nNettoyage : ${userIds.length} compte(s) de test supprimé(s).`);
 }
 

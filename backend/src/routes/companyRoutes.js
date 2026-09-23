@@ -1,5 +1,6 @@
 const express = require('express');
 const auth = require('../middlewares/authMiddleware');
+const companyApproval = require('../middlewares/companyApproval');
 const companyUpload = require('../middlewares/companyUpload');
 const controller = require('../controllers/companyController');
 const faqController = require('../controllers/faqController');
@@ -9,12 +10,17 @@ const messageController = require('../controllers/messageController');
 const router = express.Router();
 router.use(auth);
 
-router.get('/dashboard', controller.dashboard);
+// Complétion du profil autorisée avant approbation (dossier de modération).
 router.get('/profile', controller.profile);
 router.put('/profile', controller.updateProfile);
 router.post('/images', companyUpload, controller.uploadImage);
 router.post('/logo', companyUpload, controller.uploadLogo);
 router.delete('/images/:id', controller.deleteImage);
+
+// Actions métier réservées aux entreprises approuvées par un admin.
+router.use(companyApproval);
+
+router.get('/dashboard', controller.dashboard);
 router.get('/jobs', controller.jobs);
 router.post('/jobs', controller.createJob);
 router.get('/jobs/:id', controller.getJob);

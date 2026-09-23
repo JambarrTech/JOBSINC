@@ -20,7 +20,7 @@ const STATUS_LABELS: Record<string, string> = {
   RECEIVED: 'Reçue', UNDER_REVIEW: 'En cours d\'examen', INTERVIEW: 'Entretien', ACCEPTED: 'Acceptée', REJECTED: 'Refusée',
 };
 const STATUS_COLORS: Record<string, string> = {
-  RECEIVED: '#f59e0b', UNDER_REVIEW: '#3b82f6', INTERVIEW: '#8b5cf6', ACCEPTED: '#10b981', REJECTED: '#ef4444',
+  RECEIVED: '#f59e0b', UNDER_REVIEW: '#3b82f6', INTERVIEW: '#3b8bff', ACCEPTED: '#0b5fe0', REJECTED: '#ef4444',
 };
 
 function candidateName(application: Application) { return application.candidateName || application.name || 'Candidat'; }
@@ -117,7 +117,7 @@ export default function ApplicationsOverview() {
                     </div>
                     <span className="application-date">{formatDate(application.date)}</span>
                     {typeof application.matchScore === 'number' && (
-                      <span className="level-badge" title={application.matchLevelLabel || 'Score de correspondance'} style={{ background: '#e6f4f1', color: '#0c6e63' }}>
+                      <span className="level-badge" title={application.matchLevelLabel || 'Score de correspondance'} style={{ background: '#e6f0fc', color: '#0a4fb0' }}>
                         {application.matchScore} %
                       </span>
                     )}

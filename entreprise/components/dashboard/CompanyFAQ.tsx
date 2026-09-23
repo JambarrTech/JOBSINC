@@ -60,7 +60,7 @@ export default function CompanyFAQ() {
                 <button type="submit" className="button button-primary button-small" disabled={submitting || !question.trim()}>
                   {submitting ? 'Envoi...' : 'Envoyer'}
                 </button>
-                {message && <span style={{ color: 'var(--green)', fontSize: '12px' }}>{message}</span>}
+                {message && <span style={{ color: 'var(--accent)', fontSize: '12px' }}>{message}</span>}
               </div>
             </div>
           </form>
@@ -83,8 +83,8 @@ export default function CompanyFAQ() {
                     </span>
                   </div>
                   {item.answer ? (
-                    <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#f0faf6', borderLeft: '3px solid var(--teal)', marginTop: '8px' }}>
-                      <span style={{ display: 'block', color: 'var(--teal)', fontSize: '10px', fontWeight: 800, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Réponse</span>
+                    <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#eef4fe', borderLeft: '3px solid var(--accent)', marginTop: '8px' }}>
+                      <span style={{ display: 'block', color: 'var(--accent)', fontSize: '10px', fontWeight: 800, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Réponse</span>
                       <p style={{ margin: 0, color: 'var(--ink)', fontSize: '12px', lineHeight: 1.6 }}>{item.answer}</p>
                     </div>
                   ) : (

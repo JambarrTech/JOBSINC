@@ -301,8 +301,8 @@ class _TypeIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icon, color) = switch (type) {
       NotificationType.application => (Icons.description_outlined, AppColors.primary),
-      NotificationType.interview => (Icons.videocam_outlined, AppColors.green),
-      NotificationType.message => (Icons.chat_bubble_outline_rounded, AppColors.turquoise),
+      NotificationType.interview => (Icons.videocam_outlined, AppColors.accent),
+      NotificationType.message => (Icons.chat_bubble_outline_rounded, AppColors.accent),
       NotificationType.general => (Icons.info_outline_rounded, AppColors.warning),
     };
 

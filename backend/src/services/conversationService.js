@@ -178,17 +178,34 @@ async function lastMessagesFor(conversationIds) {
 // LISTE DES CONVERSATIONS DE L'UTILISATEUR CONNECTÉ
 // ============================================================
 
-exports.listForUser = async (user) => {
-  const conversations = await prisma.conversation.findMany({
-    where: membershipWhere(user),
-    include: conversationInclude,
-    orderBy: { lastMessageAt: 'desc' },
-  });
+exports.listForUser = async (user, query = {}) => {
+  let limit = parseInt(query.limit, 10);
+  if (Number.isNaN(limit)) limit = DEFAULT_PAGE_LIMIT;
+  limit = Math.max(1, Math.min(limit, MAX_PAGE_LIMIT));
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const skip = (page - 1) * limit;
+
+  const where = membershipWhere(user);
+  const [conversations, total] = await Promise.all([
+    prisma.conversation.findMany({
+      where,
+      include: conversationInclude,
+      orderBy: { lastMessageAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.conversation.count({ where }),
+  ]);
 
   const ids = conversations.map((conversation) => conversation.id);
-  const [unreadMap, lastMap] = await Promise.all([
+  const [unreadMap, lastMap, unreadTotal] = await Promise.all([
     unreadCountsFor(ids, user.userId),
     lastMessagesFor(ids),
+    // Comptage global (toutes conversations de l'utilisateur), indépendant
+    // de la page courante : le badge ne doit jamais sous-compter.
+    prisma.message.count({
+      where: { receiverId: user.userId, isRead: false, conversation: where },
+    }),
   ]);
 
   const items = conversations.map((conversation) =>
@@ -200,7 +217,14 @@ exports.listForUser = async (user) => {
     ),
   );
 
-  return { data: items, unreadTotal: items.reduce((total, item) => total + item.unreadCount, 0) };
+  return {
+    data: items,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+    unreadTotal,
+  };
 };
 
 // ============================================================

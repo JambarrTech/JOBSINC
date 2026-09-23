@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -9,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/storage/local_storage.dart';
 import '../models/auth_user.dart';
+import '../services/auth_session_service.dart';
+import '../services/auth_token_refresher.dart';
 
 enum AuthStatus {
   loading,
@@ -46,17 +47,88 @@ class AuthState {
 }
 
 class AuthController extends Notifier<AuthState> {
-  LocalStorage? _storage;
+  // L'instance auth est branchée sur le refresh automatique : login,
+  // logout, /auth/me et le refresh lui-même en bénéficient.
+  late final ApiClient _api = ApiClient(onTokenRefresh: _refreshAccessToken);
 
-  final ApiClient _api = ApiClient();
+  LocalStorage? _storage;
+  AuthSessionService? _session;
+  AuthTokenRefresher? _refresher;
+
+  // Empêche les déconnexions réentrantes (ex. signOut qui reçoit un 401
+  // sur /auth/logout pendant la déconnexion en cours).
+  bool _handlingSessionExpired = false;
 
   @override
-  AuthState build() => const AuthState.loading();
+  AuthState build() {
+    // Point de branchement UNIQUE : toutes les instances ApiClient des
+    // repositories rafraîchissent le token sur 401 via ce callback.
+    ApiClient.onTokenRefreshGlobal = _refreshAccessToken;
+    return const AuthState.loading();
+  }
+
+  Future<AuthSessionService> _sessionService() async {
+    _storage ??= await LocalStorage.create();
+    return _session ??= AuthSessionService(_storage!);
+  }
+
+  Future<AuthTokenRefresher> _tokenRefresher() async {
+    final session = await _sessionService();
+    return _refresher ??= AuthTokenRefresher(
+      api: _api,
+      storage: _storage!,
+      fetchRefreshToken: () async =>
+          await _storage!.refreshToken ?? state.user?.refreshToken,
+      onRefreshed: (accessToken, refreshToken) async {
+        final current = state.user;
+        if (current == null) return;
+        final patched = current.copyWith(
+          token: accessToken,
+          refreshToken: refreshToken,
+        );
+        await session.saveSession(patched);
+        state = AuthState.authenticated(patched);
+      },
+      onRefreshFailed: handleSessionExpired,
+    );
+  }
+
+  Future<String?> _refreshAccessToken() =>
+      _tokenRefresher().then((refresher) => refresher.refresh());
+
+  /// Rejet de session par le serveur (token expiré / révoqué) :
+  /// on vide la session locale et on repasse non authentifié. Le router
+  /// redirige alors automatiquement vers /login.
+  Future<void> handleSessionExpired() async {
+    if (_handlingSessionExpired) return;
+    if (state.status != AuthStatus.authenticated) return;
+
+    _handlingSessionExpired = true;
+    try {
+      final session = await _sessionService();
+      await session.clearSession();
+      // L'état est réécrit APRÈS le nettoyage pour éviter une fenêtre où
+      // l'app considérerait l'utilisateur connecté sans token.
+      state = const AuthState.unauthenticated();
+    } finally {
+      _handlingSessionExpired = false;
+    }
+  }
+
+  /// Met à jour les champs du profil LOCAL (après édition/upload) sans
+  /// nouvel appel réseau. Les autres features doivent passer par cette
+  /// méthode pour synchroniser l'état auth au lieu d'écrire directement
+  /// dans `state` (anti-pattern).
+  void patchUser(AuthUser Function(AuthUser user) patch) {
+    final current = state.user;
+    if (current == null) return;
+    state = AuthState.authenticated(patch(current));
+  }
 
   Future<void> initialize() async {
-    _storage ??= await LocalStorage.create();
+    final session = await _sessionService();
 
-    final token = await _storage!.authToken;
+    final token = await session.authToken;
 
     // Aucune session locale : l'utilisateur n'a jamais de compte
     // sur cet appareil (première installation ou réinstallation).
@@ -68,7 +140,7 @@ class AuthController extends Notifier<AuthState> {
     // Session sauvegardée localement : on la restaure d'office
     // pour que l'utilisateur reste connecté même si le serveur
     // est momentanément injoignable.
-    final localUser = _localUserFromStorage(token);
+    final localUser = await session.localUserFromStorage(token);
 
     try {
       final response = await _api.get(
@@ -85,19 +157,24 @@ class AuthController extends Notifier<AuthState> {
         );
       }
 
-      final user = _userFromApi(
+      // Si un refresh a eu lieu pendant cet appel (401 → retry), le token
+      // actuel est déjà persisté en storage : on le réutilise tel quel pour
+      // ne pas réécrire un token périmé dans la session locale.
+      final effectiveToken = await session.authToken ?? token;
+
+      final user = session.userFromApi(
         rawUser,
-        token,
+        effectiveToken,
       );
 
-      await _saveSession(user);
+      await session.saveSession(user);
 
       state = AuthState.authenticated(user);
     } on ApiException catch (error) {
       // Le serveur a répondu : seule une session explicitement
       // rejetée (token expiré/révoqué) déconnecte l'utilisateur.
-      if (_isUnauthorized(error.statusCode)) {
-        await _storage!.clearSession();
+      if (AuthSessionService.isUnauthorized(error.statusCode)) {
+        await session.clearSession();
 
         state = const AuthState.unauthenticated();
         return;
@@ -114,34 +191,6 @@ class AuthController extends Notifier<AuthState> {
           ? AuthState.authenticated(localUser)
           : const AuthState.unauthenticated();
     }
-  }
-
-  bool _isUnauthorized(int? statusCode) =>
-      statusCode == HttpStatus.unauthorized ||
-      statusCode == HttpStatus.forbidden;
-
-  AuthUser? _localUserFromStorage(String token) {
-    final id = _storage?.userId;
-    final status = accountStatusFromStorage(_storage?.accountStatus);
-
-    if (id == null || id.isEmpty || status == null) {
-      return null;
-    }
-
-    return AuthUser(
-      id: id,
-      firstName: _storage!.firstName ?? '',
-      lastName: _storage!.lastName ?? '',
-      email: _storage!.email ?? '',
-      status: status,
-      phone: _storage!.phone,
-      birthDate: _storage!.birthDate,
-      country: _storage!.country,
-      city: _storage!.city,
-      token: token,
-      photoUrl: _storage!.photoUrl,
-      cvUrl: _storage!.cvUrl,
-    );
   }
 
   Future<bool> signIn({
@@ -162,6 +211,7 @@ class AuthController extends Notifier<AuthState> {
       final rawUser = response['user'] as Map<String, dynamic>?;
 
       final token = response['token']?.toString();
+      final refreshToken = response['refreshToken']?.toString();
 
       if (rawUser == null || token == null || token.isEmpty) {
         throw const ApiException(
@@ -169,19 +219,21 @@ class AuthController extends Notifier<AuthState> {
         );
       }
 
-      final user = _userFromApi(
+      final session = await _sessionService();
+      final user = session.userFromApi(
         rawUser,
         token,
+        refreshToken: refreshToken,
       );
 
-      await _saveSession(user);
+      await session.saveSession(user);
 
       state = AuthState.authenticated(user);
 
       return true;
     } catch (error) {
       state = AuthState.error(
-        _messageFor(error),
+        AuthSessionService.messageFor(error),
       );
 
       return false;
@@ -242,6 +294,7 @@ class AuthController extends Notifier<AuthState> {
       final rawUser = response['user'] as Map<String, dynamic>?;
 
       final token = response['token']?.toString();
+      final refreshToken = response['refreshToken']?.toString();
 
       if (rawUser == null || token == null || token.isEmpty) {
         throw const ApiException(
@@ -249,19 +302,21 @@ class AuthController extends Notifier<AuthState> {
         );
       }
 
-      final user = _userFromApi(
+      final session = await _sessionService();
+      final user = session.userFromApi(
         rawUser,
         token,
+        refreshToken: refreshToken,
       );
 
-      await _saveSession(user);
+      await session.saveSession(user);
 
       state = AuthState.authenticated(user);
 
       return true;
     } catch (error) {
       state = AuthState.error(
-        _messageFor(error),
+        AuthSessionService.messageFor(error),
       );
 
       return false;
@@ -287,98 +342,53 @@ class AuthController extends Notifier<AuthState> {
 
       final rawUser = response['user'] as Map<String, dynamic>?;
       final token = response['token']?.toString();
+      final refreshToken = response['refreshToken']?.toString();
 
       if (rawUser == null || token == null || token.isEmpty) {
         throw const ApiException('Réponse d\'inscription invalide.');
       }
 
-      final user = _userFromApi(rawUser, token);
-      await _saveSession(user);
+      final session = await _sessionService();
+      final user = session.userFromApi(rawUser, token, refreshToken: refreshToken);
+      await session.saveSession(user);
       state = AuthState.authenticated(user);
       return true;
     } catch (error) {
-      state = AuthState.error(_messageFor(error));
+      state = AuthState.error(AuthSessionService.messageFor(error));
       return false;
     }
   }
 
   Future<void> signOut() async {
-    _storage ??= await LocalStorage.create();
+    final session = await _sessionService();
 
-    final token = await _storage!.authToken;
+    final token = await session.authToken;
+    final refreshToken = await session.refreshToken;
     if (token != null && token.isNotEmpty) {
       try {
-        await _api.post('/auth/logout', {}, token: token);
+        await _api.post('/auth/logout', {'refreshToken': refreshToken}, token: token);
       } catch (_) {}
     }
 
-    await _storage!.clearSession();
+    await session.clearSession();
 
     state = const AuthState.unauthenticated();
   }
 
-  AuthUser _userFromApi(
-    Map<String, dynamic> rawUser,
-    String token,
-  ) {
-    final role = rawUser['role']?.toString();
-
-    final profile = rawUser['candidate'] as Map<String, dynamic>?;
-
-    return AuthUser(
-      id: rawUser['id']?.toString() ?? '',
-      firstName: profile?['firstName']?.toString() ?? '',
-      lastName: profile?['lastName']?.toString() ?? '',
-      email: rawUser['email']?.toString() ?? '',
-      phone: profile?['phone']?.toString(),
-      birthDate: DateTime.tryParse(
-        profile?['birthDate']?.toString() ?? '',
-      ),
-      country: profile?['country']?.toString(),
-      city: profile?['city']?.toString(),
-      status:
-          role == 'EMPLOYEE' ? AccountStatus.employee : role == 'RECRUITER' ? AccountStatus.recruiter : AccountStatus.candidate,
-      token: token,
-      companyId: rawUser['companyId']?.toString() ?? rawUser['company']?['id']?.toString(),
-      photoUrl: profile?['photoUrl']?.toString() ?? profile?['avatar']?.toString() ?? profile?['avatarUrl']?.toString(),
-      cvUrl: profile?['cvUrl']?.toString(),
-      skills: profile?['skills']?.toString(),
-    );
-  }
-
-  Future<void> _saveSession(
-    AuthUser user,
-  ) async {
-    _storage ??= await LocalStorage.create();
-
-    await _storage!.saveSession(
-      token: user.token!,
-      id: user.id,
-      status: user.status.storageValue,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone,
-      birthDate: user.birthDate,
-      country: user.country,
-      city: user.city,
-      photoUrl: user.photoUrl,
-      cvUrl: user.cvUrl,
-    );
-  }
-
-  String _messageFor(Object error) {
-    if (error is ApiException) {
-      return error.message;
+  /// Demande l'envoi d'un lien de réinitialisation de mot de passe.
+  /// Retourne `null` en cas de succès, sinon un message d'erreur.
+  Future<String?> forgotPassword(String email) async {
+    try {
+      await _api.post(
+        '/auth/forgot-password',
+        {'email': email.trim()},
+      );
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (error) {
+      return AuthSessionService.messageFor(error);
     }
-
-    if (error is SocketException || error is TimeoutException) {
-      return 'La connexion au serveur est indisponible. '
-          'Vérifiez votre réseau puis réessayez.';
-    }
-
-    return 'Une erreur inattendue est survenue. '
-        'Veuillez réessayer.';
   }
 }
 

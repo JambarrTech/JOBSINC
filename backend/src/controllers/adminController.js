@@ -2,18 +2,16 @@ const prisma = require('../config/prisma');
 const fs = require('fs/promises');
 const path = require('path');
 const { getCached, setCache } = require('../utils/cache');
+const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const DAY_MS = 86400000;
 
 function paginate(req) {
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-  const skip = (page - 1) * limit;
-  return { page, limit, skip };
+  return parsePagination(req.query);
 }
 
 function paginated(data, total, page, limit) {
-  return { data, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  return buildPaginationResponse(data, total, page, limit);
 }
 
 function dayKey(date) {
@@ -377,21 +375,17 @@ exports.recruitments = async (req, res) => {
   }
 };
 
-const sectionsWithoutSource = [
-  'logins', 'securityAlerts', 'content', 'reports', 'sessions', 'maintenance',
-];
-
+// Sections Admin sans source de données métier : réservées, retournées
+// vides volontairement dans adminRoutes (aucune donnée inventée côté API).
 exports.emptyResource = (req, res) => {
   res.json([]);
 };
-
-exports.isSectionWithoutSource = (section) => sectionsWithoutSource.includes(section);
 
 exports.search = async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     if (q.length < 2) return res.json({ users: [], companies: [], jobs: [], applications: [] });
-    const contains = { contains: q };
+    const contains = { contains: q, mode: 'insensitive' };
 
     const [users, companies, jobs, applications] = await Promise.all([
       prisma.user.findMany({

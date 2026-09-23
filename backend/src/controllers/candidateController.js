@@ -23,6 +23,7 @@ exports.getProfile = async (req, res) => {
       cvUrl: candidate.cvUrl,
       skills: candidate.skills,
       experienceYears: candidate.experienceYears,
+      educationLevel: candidate.educationLevel,
       educationField: candidate.educationField,
       desiredContracts: candidate.desiredContracts,
       availableFrom: candidate.availableFrom,
@@ -43,7 +44,7 @@ exports.updateProfile = async (req, res) => {
       return res.status(404).json({ error: 'Profil candidat introuvable.' });
     }
 
-    const { firstName, lastName, phone, country, city, skills, experienceYears, educationField, desiredContracts, availableFrom } = req.body;
+    const { firstName, lastName, phone, country, city, skills, experienceYears, educationLevel, educationField, desiredContracts, availableFrom } = req.body;
 
     const experience = experienceYears === undefined ? undefined
       : experienceYears === null || experienceYears === '' ? null : Math.max(0, Math.min(45, Number(experienceYears)));
@@ -61,6 +62,7 @@ exports.updateProfile = async (req, res) => {
         ...(city !== undefined && { city }),
         ...(skills !== undefined && { skills }),
         ...(experience !== undefined && { experienceYears: experience }),
+        ...(educationLevel !== undefined && { educationLevel }),
         ...(educationField !== undefined && { educationField }),
         ...(desiredContracts !== undefined && { desiredContracts }),
         ...(availability !== undefined && { availableFrom: availability }),
@@ -80,6 +82,7 @@ exports.updateProfile = async (req, res) => {
       cvUrl: updated.cvUrl,
       skills: updated.skills,
       experienceYears: updated.experienceYears,
+      educationLevel: updated.educationLevel,
       educationField: updated.educationField,
       desiredContracts: updated.desiredContracts,
       availableFrom: updated.availableFrom,
@@ -121,7 +124,7 @@ exports.uploadCv = async (req, res) => {
 
 exports.uploadAvatar = async (req, res) => {
   try {
-    if (!req.candidateImage) {
+    if (!req.avatarFile) {
       return res.status(400).json({ error: 'Aucune image fournie.' });
     }
 
@@ -139,7 +142,7 @@ exports.uploadAvatar = async (req, res) => {
 
     const updated = await prisma.candidateProfile.update({
       where: { id: candidate.id },
-      data: { avatarUrl: req.candidateImage.url },
+      data: { avatarUrl: req.avatarFile.url },
     });
 
     res.json({
@@ -171,7 +174,7 @@ exports.getStats = async (req, res) => {
         prisma.candidateProfile.findUnique({ where: { id: candidate.id } }),
       ]);
 
-    const fields = ['firstName', 'lastName', 'phone', 'city', 'country', 'skills', 'experienceYears', 'educationField', 'cvUrl'];
+    const fields = ['firstName', 'lastName', 'phone', 'city', 'country', 'skills', 'experienceYears', 'educationLevel', 'educationField', 'cvUrl'];
     const filled = fields.filter((f) => profile[f] != null && profile[f] !== '').length;
     const completion = Math.round((filled / fields.length) * 100);
 

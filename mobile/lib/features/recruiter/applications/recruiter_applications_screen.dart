@@ -26,8 +26,8 @@ class _RecruiterApplicationsScreenState extends ConsumerState<RecruiterApplicati
   static const _statusColors = <String, Color>{
     'RECEIVED': AppColors.warning,
     'UNDER_REVIEW': AppColors.primary,
-    'INTERVIEW': AppColors.turquoise,
-    'ACCEPTED': AppColors.green,
+    'INTERVIEW': AppColors.accent,
+    'ACCEPTED': AppColors.accent,
     'REJECTED': AppColors.error,
   };
 

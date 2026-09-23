@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../core/services/api_client.dart';
 import '../../../core/storage/local_storage.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
@@ -777,7 +776,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          value: country,
+          initialValue: country,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Pays *',
@@ -1161,14 +1160,15 @@ class _InlineAuthError extends StatelessWidget {
 // MOT DE PASSE OUBLIE
 // ============================================================
 
-class ForgotPasswordScreen extends StatefulWidget {
+class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  ConsumerState<ForgotPasswordScreen> createState() =>
+      _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   final formKey = GlobalKey<FormState>();
 
   final email = TextEditingController();
@@ -1193,26 +1193,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       error = null;
     });
 
-    try {
-      final api = ApiClient();
-      await api.post('/auth/forgot-password', {
-        'email': email.text.trim(),
-      });
-      setState(() {
+    // L'appel réseau est porté par AuthController (pas de ApiClient() créé
+    // dans un widget) pour centraliser la couche d'accès.
+    final result = await ref.read(authProvider.notifier).forgotPassword(
+          email.text.trim(),
+        );
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = false;
+      if (result == null) {
         submitted = true;
-        isLoading = false;
-      });
-    } on ApiException catch (e) {
-      setState(() {
-        error = e.message;
-        isLoading = false;
-      });
-    } catch (_) {
-      setState(() {
-        error = 'La connexion au serveur est indisponible.';
-        isLoading = false;
-      });
-    }
+      } else {
+        error = result;
+      }
+    });
   }
 
   @override

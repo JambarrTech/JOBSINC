@@ -1,4 +1,4 @@
-type IconName = 'arrow' | 'briefcase' | 'chart' | 'check' | 'grid' | 'kanban' | 'lock' | 'mail' | 'pin' | 'search' | 'spark' | 'users' | 'target';
+export type IconName = 'arrow' | 'briefcase' | 'chart' | 'check' | 'grid' | 'kanban' | 'lock' | 'mail' | 'pin' | 'search' | 'spark' | 'users' | 'target';
 
 const paths: Record<IconName, string> = {
   arrow: 'M5 12h14m-6-6 6 6-6 6',

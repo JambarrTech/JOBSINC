@@ -8,10 +8,15 @@ import '../features/auth/presentation/auth_screens.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/candidate/home/candidate_home_screen.dart';
 import '../features/employee/dashboard/employee_dashboard_screen.dart';
+import '../features/jobs/models/job_offer.dart';
+import '../features/jobs/presentation/job_detail_screen.dart';
+import '../features/jobs/presentation/offers_screen.dart';
+import '../features/jobs/presentation/saved_jobs_screen.dart';
 import '../features/messages/models/conversation.dart';
 import '../features/messages/presentation/chat_screen.dart';
 import '../features/messages/presentation/messages_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
+import '../features/profile/presentation/settings_screen.dart';
 import '../features/recruiter/dashboard/recruiter_dashboard_screen.dart';
 
 /// Permet à GoRouter de se rafraîchir lorsque l'état
@@ -218,6 +223,42 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/candidate/notifications',
         builder: (_, __) => const NotificationsScreen(),
+      ),
+
+      GoRoute(
+        path: '/candidate/saved-jobs',
+        builder: (_, __) => const SavedJobsScreen(),
+      ),
+
+      // ---------------------------------------------------------
+      // OFFRES (recherche + détail, via la carte du fil d'accueil)
+      // ---------------------------------------------------------
+      GoRoute(
+        path: '/jobs',
+        builder: (_, state) => OffersScreen(
+          initialQuery: state.uri.queryParameters['q'] ?? '',
+          initialLocation: state.uri.queryParameters['loc'] ?? '',
+        ),
+      ),
+
+      GoRoute(
+        path: '/jobs/:id',
+        builder: (_, state) {
+          final extra = state.extra;
+          if (extra is JobOffer) {
+            return JobDetailScreen(offer: extra);
+          }
+          // Deep-link sans objet (ex. notification) : bascule sur la liste.
+          return const OffersScreen();
+        },
+      ),
+
+      // ---------------------------------------------------------
+      // PARAMÈTRES (déconnexion, réinitialisation mot de passe)
+      // ---------------------------------------------------------
+      GoRoute(
+        path: '/settings',
+        builder: (_, __) => const SettingsScreen(),
       ),
 
       // ---------------------------------------------------------

@@ -1,10 +1,8 @@
 const prisma = require('../config/prisma');
+const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 function paginate(req) {
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-  const skip = (page - 1) * limit;
-  return { page, limit, skip };
+  return parsePagination(req.query);
 }
 
 exports.listSkills = async (req, res) => {
@@ -16,7 +14,7 @@ exports.listSkills = async (req, res) => {
       prisma.skill.findMany({ where, orderBy: { name: 'asc' }, skip, take: limit }),
       prisma.skill.count({ where }),
     ]);
-    res.json({ data: rows, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
+    res.json(buildPaginationResponse(rows, total, page, limit));
   } catch (error) {
     console.error('Erreur listSkills:', error);
     res.status(500).json({ error: 'Impossible de charger les compétences.' });

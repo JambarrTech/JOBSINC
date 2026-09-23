@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
-
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_cached_image.dart';
 import '../../applications/presentation/application_flow_screen.dart';
 import '../../applications/providers/applications_provider.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -249,21 +248,13 @@ class _CompanyProfileHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
       child: Column(
         children: [
-          if (offer.companyLogo != null && offer.companyLogo!.isNotEmpty)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: CachedNetworkImage(
-                imageUrl: ApiClient.resolveUrl(offer.companyLogo!),
-                width: 80,
-                height: 80,
-                fit: BoxFit.cover,
-                memCacheWidth: 80,
-                memCacheHeight: 80,
-                errorWidget: (_, __, ___) => _logoFallback(),
-              ),
-            )
-          else
-            _logoFallback(),
+          AppCachedImage(
+            url: offer.companyLogo,
+            width: 80,
+            height: 80,
+            borderRadius: BorderRadius.circular(20),
+            errorWidget: (_, __, ___) => _logoFallback(),
+          ),
 
           const SizedBox(height: 16),
 

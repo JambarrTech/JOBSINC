@@ -1,5 +1,6 @@
 abstract final class StorageKeys {
   static const authToken = 'auth_token';
+  static const refreshToken = 'refresh_token';
   static const userId = 'user_id';
   static const accountStatus = 'account_status';
   // Ancienne clé conservée pour lire les sessions locales déjà installées.

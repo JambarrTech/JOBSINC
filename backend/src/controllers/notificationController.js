@@ -1,10 +1,9 @@
 const prisma = require('../config/prisma');
+const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 exports.getNotifications = async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(req.query);
 
     const [notifications, total, unreadCount] = await Promise.all([
       prisma.notification.findMany({

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import Icon from '@/components/ui/Icon';
 import { apiRequest } from '@/lib/api';
 
+const searchEndpoint = process.env.NEXT_PUBLIC_ADMIN_SEARCH_ENDPOINT || '/admin/search';
+
 type SearchResultItem = { id: string; label: string; sub: string; href: string };
 type SearchResult = {
   users: SearchResultItem[];
@@ -50,7 +52,7 @@ export default function AdminGlobalSearch() {
         return;
       }
       setLoading(true);
-      apiRequest<SearchResult>(`/admin/search?q=${encodeURIComponent(trimmed)}`)
+      apiRequest<SearchResult>(`${searchEndpoint}?q=${encodeURIComponent(trimmed)}`)
         .then((data) => { if (active) setResults(data); })
         .catch(() => { if (active) setResults(emptyResult); })
         .finally(() => { if (active) setLoading(false); });

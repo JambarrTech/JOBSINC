@@ -195,13 +195,13 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          color: AppColors.turquoise.withValues(alpha: .1),
+                          color: AppColors.accent.withValues(alpha: .1),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.chat_bubble_outline_rounded,
                           size: 36,
-                          color: AppColors.turquoise,
+                          color: AppColors.accent,
                         ),
                       ),
                       const SizedBox(height: 20),

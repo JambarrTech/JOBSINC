@@ -1,5 +1,13 @@
 const prisma = require('../config/prisma');
+const fs = require('fs');
+const path = require('path');
 const conversationService = require('../services/conversationService');
+const { invalidate } = require('../utils/cache');
+const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+
+const CV_PATH_PREFIX = '/uploads/cvs/';
+// Racine du backend pour vérifier l'existence physique du fichier CV.
+const BACKEND_ROOT = path.join(__dirname, '..', '..');
 
 const labels = { RECEIVED: 'Reçue', UNDER_REVIEW: 'En cours d\'examen', INTERVIEW: 'Entretien', ACCEPTED: 'Acceptée', REJECTED: 'Refusée' };
 const transitions = {
@@ -37,11 +45,18 @@ exports.create = async (req, res) => {
   try {
     if (req.user.role !== 'CANDIDATE') return res.status(403).json({ error: 'Seuls les candidats peuvent postuler.' });
     const candidate = await candidateFor(req.user.userId); if (!candidate) return res.status(409).json({ error: 'Profil candidat incomplet.' });
-    const job = await prisma.job.findFirst({ where: { id: req.params.jobId, isOpen: true, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] }, include: { company: true } }); if (!job) return res.status(404).json({ error: 'Offre introuvable ou fermée.' });
+    const job = await prisma.job.findFirst({ where: { id: req.params.jobId, isOpen: true, company: { isApproved: true }, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] }, include: { company: true } }); if (!job) return res.status(404).json({ error: 'Offre introuvable ou fermée.' });
     const { cvUrl, coverLetter } = req.body;
     const cvUrlStr = String(cvUrl || '').trim();
     const coverLetterStr = String(coverLetter || '').trim();
     if (!cvUrlStr) return res.status(400).json({ error: 'Le lien du CV est obligatoire.' });
+    if (!cvUrlStr.startsWith(CV_PATH_PREFIX)) return res.status(400).json({ error: 'Le lien du CV est invalide. Rechargez votre CV.' });
+    // Vérifie que le fichier existe réellement sur disque (pas seulement l'URL).
+    try {
+      fs.accessSync(path.join(BACKEND_ROOT, cvUrlStr));
+    } catch {
+      return res.status(400).json({ error: 'Le fichier CV est introuvable. Rechargez votre CV.' });
+    }
     if (!coverLetterStr) return res.status(400).json({ error: 'La lettre de motivation est obligatoire.' });
     const application = await prisma.application.create({
       data: { jobId: job.id, candidateProfileId: candidate.id, cvUrl: cvUrlStr, coverLetter: coverLetterStr },
@@ -61,18 +76,17 @@ exports.create = async (req, res) => {
       });
     }
 
+    invalidate(`company:dashboard:${job.companyId}`);
     res.status(201).json(dto(application));
-  } catch (error) { if (error.code === 'P2002') return res.status(409).json({ error: 'Vous avez déjà postulé à cette offre.' }); res.status(500).json({ error: 'Impossible d\'envoyer la candidature.' }); }
+  } catch (error) { if (error.code === 'P2002') return res.status(409).json({ error: 'Vous avez déjà postulé à cette offre.' }); console.error('Erreur create application:', error); res.status(500).json({ error: 'Impossible d\'envoyer la candidature.' }); }
 };
 
 exports.mine = async (req, res) => {
   try {
     const candidate = await candidateFor(req.user.userId);
-    if (!candidate) return res.json({ data: [] });
+    if (!candidate) return res.json({ data: [], pagination: { total: 0, page: 1, limit: 20, totalPages: 0 } });
 
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(req.query);
 
     const where = { candidateProfileId: candidate.id };
     const [values, total] = await Promise.all([
@@ -86,11 +100,8 @@ exports.mine = async (req, res) => {
       prisma.application.count({ where }),
     ]);
 
-    res.json({
-      data: values.map(dto),
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    });
-  } catch (_) { res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
+    res.json(buildPaginationResponse(values.map(dto), total, page, limit));
+  } catch (error) { console.error('Erreur mine applications:', error); res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
 };
 
 exports.updateStatus = async (req, res) => {
@@ -162,8 +173,10 @@ exports.updateStatus = async (req, res) => {
       return updated;
     });
 
+    // Le dashboard recruteur (jobs, candidatures, stats) dépend du statut.
+    invalidate(`company:dashboard:${company.id}`);
     res.json(dto(result));
-  } catch (_) { res.status(500).json({ error: 'Impossible de mettre à jour la candidature.' }); }
+  } catch (error) { console.error('Erreur updateStatus application:', error); res.status(500).json({ error: 'Impossible de mettre à jour la candidature.' }); }
 };
 
 // Ouvre (ou récupère) la conversation autorisée associée à une candidature.

@@ -167,8 +167,8 @@ class _ApplicationCard extends StatelessWidget {
   static const _statusColors = <String, Color>{
     'RECEIVED': AppColors.warning,
     'UNDER_REVIEW': AppColors.primary,
-    'INTERVIEW': AppColors.turquoise,
-    'ACCEPTED': AppColors.green,
+    'INTERVIEW': AppColors.accent,
+    'ACCEPTED': AppColors.accent,
     'REJECTED': AppColors.error,
   };
 
@@ -677,17 +677,17 @@ class _InterviewDetailCard extends ConsumerWidget {
       borderColor = const Color(0xFFFDA4AF);
       accentColor = const Color(0xFFE11D48);
     } else if (isFinished) {
-      bgColor = const Color(0xFFF0FDF4);
-      borderColor = const Color(0xFFBBF7D0);
-      accentColor = const Color(0xFF059669);
+      bgColor = const Color(0xFFEFF6FF);
+      borderColor = const Color(0xFFBFDBFE);
+      accentColor = const Color(0xFF0B5FE0);
     } else if (!isOnline) {
       bgColor = const Color(0xFFFFFDF5);
       borderColor = const Color(0xFFFDE68A);
       accentColor = AppColors.warning;
     } else {
-      bgColor = const Color(0xFFF5F3FF);
-      borderColor = const Color(0xFFDDD6FE);
-      accentColor = AppColors.turquoise;
+      bgColor = const Color(0xFFEFF6FF);
+      borderColor = const Color(0xFFBFDBFE);
+      accentColor = AppColors.accent;
     }
 
     return Container(

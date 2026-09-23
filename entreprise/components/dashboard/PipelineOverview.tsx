@@ -12,8 +12,8 @@ type Stage = 'RECEIVED' | 'UNDER_REVIEW' | 'INTERVIEW' | 'ACCEPTED' | 'REJECTED'
 const STAGES: Array<[Stage, string, string, string]> = [
   ['RECEIVED', 'Reçue', 'Nouvelles candidatures à découvrir', '#f59e0b'],
   ['UNDER_REVIEW', 'En cours d\'examen', 'Profils actuellement évalués', '#3b82f6'],
-  ['INTERVIEW', 'Entretien', 'Candidats en échange', '#8b5cf6'],
-  ['ACCEPTED', 'Acceptée', 'Talents retenus par votre équipe', '#10b981'],
+  ['INTERVIEW', 'Entretien', 'Candidats en échange', '#3b8bff'],
+  ['ACCEPTED', 'Acceptée', 'Talents retenus par votre équipe', '#0b5fe0'],
   ['REJECTED', 'Refusée', 'Candidatures non retenues', '#6b7280'],
 ];
 

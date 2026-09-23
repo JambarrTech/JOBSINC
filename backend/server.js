@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const http = require('http');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 const path = require('path');
@@ -24,26 +25,21 @@ const feedbackRoutes = require('./src/routes/feedbackRoutes');
 const savedJobRoutes = require('./src/routes/savedJobRoutes');
 const skillRoutes = require('./src/routes/skillRoutes');
 const { globalLimiter, authLimiter } = require('./src/middlewares/rateLimit');
+const { connectRedis, closeRedis, isRedisAvailable } = require('./src/config/redis');
+const { cleanupExpiredRefreshTokens } = require('./src/utils/tokenUtils');
 
 const app = express();
 
-// Derrière un reverse-proxy (nginx, etc.), définir TRUST_PROXY=1 pour que
-// express-rate-limit et Express identifient la vraie adresse IP client.
 if (process.env.TRUST_PROXY) {
   app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
 }
 
-// Origines autorisées : liste séparée par des virgules dans CORS_ORIGINS.
-// En développement, on retombe sur les origines locales du frontend Next.js.
 const corsOrigins = (process.env.CORS_ORIGINS ||
   'http://localhost:3000,http://127.0.0.1:3000')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-// Headers de sécurité.
-// crossOriginResourcePolicy 'cross-origin' : indispensable pour que les
-// images /uploads restent chargeables par le web (localhost:3000) et le mobile.
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
@@ -55,34 +51,37 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 
-// Limiteur global appliqué à toute l'API (le limiter auth plus strict
-// reste en place sur /api/auth). Les fichiers statiques /uploads ne
-// passent pas par ce limiter pour ne pas pénaliser le chargement d'images.
 app.use('/api', globalLimiter);
 
-app.use('/uploads', async (req, res, next) => {
-  if (req.path.startsWith('/cvs/')) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'Accès non autorisé.' });
-    try {
-      const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
-      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-      if (!decoded?.userId) return res.status(401).json({ error: 'Token invalide.' });
-      const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { tokenVersion: true } });
-      if (!user || user.tokenVersion !== decoded.tokenVersion) {
-        return res.status(401).json({ error: 'Session révoquée.' });
-      }
-      return next();
-    } catch {
-      return res.status(401).json({ error: 'Token invalide.' });
+const PROTECTED_UPLOAD_PREFIXES = ['/cvs/', '/candidates/'];
+
+const uploadAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Accès non autorisé.' });
+  try {
+    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (!decoded?.userId) return res.status(401).json({ error: 'Token invalide.' });
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { tokenVersion: true } });
+    if (!user || user.tokenVersion !== decoded.tokenVersion) {
+      return res.status(401).json({ error: 'Session révoquée.' });
     }
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Token invalide.' });
+  }
+};
+
+app.use('/uploads', (req, res, next) => {
+  if (PROTECTED_UPLOAD_PREFIXES.some((prefix) => req.path.startsWith(prefix))) {
+    return uploadAuth(req, res, next);
   }
   next();
 }, express.static(path.join(__dirname, 'uploads')));
 
-// Routes API
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/companies', publicCompanyRoutes);
@@ -104,26 +103,104 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Route introuvable.' });
 });
 
+const { handleError } = require('./src/utils/errors');
+
 app.use((error, req, res, next) => {
-  if (error?.status === 400) return res.status(400).json({ error: error.message });
-  console.error('Erreur API:', error);
-  return res.status(500).json({ error: 'Erreur serveur.' });
+  handleError(error, res);
 });
 
 app.get('/', (req, res) => {
   res.send('🚀 Serveur JOBSINC opérationnel !');
 });
 
+// Health check endpoint for load balancers / monitoring
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 const PORT = process.env.PORT || 5000;
 
-// Socket.IO partage le même serveur HTTP qu'Express.
 const server = http.createServer(app);
 const socketService = require('./src/services/socketService');
 socketService.init(server, corsOrigins);
 
-// Push FCM (no-op si la clé de service est absente).
 require('./src/services/pushService').init();
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Serveur démarré sur http://0.0.0.0:${PORT} (Socket.IO actif)`);
-});
+async function connectWithRetry(attempts = 5, baseDelayMs = 5000) {
+  // Neon (serveurless) suspend la base après ~5 min d'inactivité.
+  // Le "cold start" peut prendre 5–30 s et échouer la 1re fois (P1001).
+  // On réessaie donc avec un backoff progressif avant d'abandonner.
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await prisma.$connect();
+      return;
+    } catch (err) {
+      const last = i === attempts;
+      console.warn(
+        `⚠️ Connexion BDD échouée (${i}/${attempts}) — ${err.message.split('\n')[0]}`
+      );
+      if (last) throw err;
+      const delay = baseDelayMs * i;
+      console.log(`↻ Nouvelle tentative dans ${delay / 1000}s...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
+async function startServer() {
+  try {
+    await connectRedis();
+    if (isRedisAvailable()) {
+      console.log('✅ Redis connecté');
+    } else {
+      console.warn('⚠️ Redis non disponible, utilisation du stockage en mémoire pour le rate-limiting');
+    }
+    await connectWithRetry();
+    
+    setInterval(() => cleanupExpiredRefreshTokens().catch(console.error), 60 * 60 * 1000);
+
+    // Anti scale-to-zero Neon : un ping toutes les 2 min garde le compute
+    // actif tant que le serveur tourne (seuil de suspension = 5 min).
+    // NB : on passe par une opération MODÈLE (prisma.user.count) et non
+    // $queryRaw : seul $allModels est couvert par le retry de prisma.js.
+    // En cas d'échec (connexion du pool devenue cassée après suspension),
+    // on répare le pool ($disconnect + $connect) pour forcer une
+    // reconnexion propre au ping suivant.
+    setInterval(async () => {
+      try {
+        await prisma.user.count();
+      } catch {
+        try {
+          await prisma.$disconnect();
+          await prisma.$connect();
+        } catch {
+          // Le compute est peut-être en réveil : le prochain ping réessaiera.
+        }
+      }
+    }, 2 * 60 * 1000);
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`✅ Serveur démarré sur http://0.0.0.0:${PORT} (Socket.IO actif)`);
+    });
+  } catch (err) {
+    console.error('❌ Erreur démarrage:', err);
+    process.exit(1);
+  }
+}
+
+async function shutdown() {
+  console.log('🛑 Arrêt en cours...');
+  try {
+    await closeRedis();
+  } catch (err) {
+    console.warn('⚠️ Erreur fermeture Redis:', err.message);
+  }
+  await prisma.$disconnect();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10000);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+startServer();

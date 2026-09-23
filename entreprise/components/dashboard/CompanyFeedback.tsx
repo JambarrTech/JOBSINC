@@ -81,7 +81,7 @@ export default function CompanyFeedback() {
                 <button type="submit" className="button button-primary button-small" disabled={submitting || !author.trim() || !text.trim()}>
                   {submitting ? 'Envoi...' : 'Envoyer'}
                 </button>
-                {message && <span style={{ color: 'var(--green)', fontSize: '12px' }}>{message}</span>}
+                {message && <span style={{ color: 'var(--accent)', fontSize: '12px' }}>{message}</span>}
               </div>
             </div>
           </form>
@@ -99,7 +99,7 @@ export default function CompanyFeedback() {
                 <div key={item.id} style={{ padding: '14px 0', borderBottom: '1px solid #edf2f5' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginBottom: '4px' }}>
                     <strong style={{ color: 'var(--navy)', fontSize: '13px' }}>{item.author}{item.role ? ` — ${item.role}` : ''}</strong>
-                    <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '9px', fontWeight: 700, background: item.isPublished ? '#e9f8f3' : '#fff6e7', color: item.isPublished ? 'var(--green)' : '#a66b0b' }}>
+                    <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '9px', fontWeight: 700, background: item.isPublished ? '#e9f2fe' : '#fff6e7', color: item.isPublished ? 'var(--accent)' : '#a66b0b' }}>
                       {item.isPublished ? 'Publié' : 'En attente'}
                     </span>
                   </div>

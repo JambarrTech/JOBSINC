@@ -14,7 +14,7 @@ export default function CompanyOverview() {
   const company = data?.company;
   const companyName = value(company?.name, 'Votre entreprise');
   const location = [company?.city, company?.country].filter(Boolean).join(', ');
-  const primaryImage = company?.image || company?.photos?.[0];
+  const primaryImage = assetUrl(company?.image || company?.photos?.[0]) || null;
   const logoImage = assetUrl(company?.logo) || null;
 
   if (error) return <section className="company-page"><div className="dashboard-state dashboard-error"><strong>Impossible de charger le profil de votre entreprise.</strong><button type="button" className="button button-outline button-small" onClick={reload}>Réessayer</button></div></section>;

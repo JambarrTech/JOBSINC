@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -49,24 +50,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     setState(() => _isUploadingCv = true);
 
-    final error =
-        await ref.read(candidateProfileControllerProvider.notifier).uploadCv(file);
+    final uploadResult = await ref
+        .read(candidateProfileControllerProvider.notifier)
+        .uploadCv(file);
 
     if (!mounted) return;
 
     setState(() => _isUploadingCv = false);
 
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: AppColors.error),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('CV mis à jour avec succès.'),
-          backgroundColor: AppColors.green,
-        ),
-      );
+    switch (uploadResult) {
+      case CvUploadSuccess():
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('CV mis à jour avec succès.'),
+            backgroundColor: AppColors.accent,
+          ),
+        );
+      case CvUploadFailure(:final message):
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: AppColors.error),
+        );
     }
   }
 
@@ -94,8 +97,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     setState(() => _isUploadingAvatar = true);
 
-    final error =
-        await ref.read(candidateProfileControllerProvider.notifier).uploadAvatar(file);
+    final error = await ref
+        .read(candidateProfileControllerProvider.notifier)
+        .uploadAvatar(file);
 
     if (!mounted) return;
 
@@ -109,7 +113,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Photo de profil mise à jour.'),
-          backgroundColor: AppColors.green,
+          backgroundColor: AppColors.accent,
         ),
       );
     }
@@ -136,8 +140,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         initialCountry: pick(profile?.country, user?.country),
         initialCity: pick(profile?.city, user?.city),
         initialSkills: pick(profile?.skills, user?.skills),
-        initialExperienceYears:
-            profile?.experienceYears?.toString() ?? '',
+        initialExperienceYears: profile?.experienceYears?.toString() ?? '',
         initialEducationLevel: profile?.educationLevel ?? '',
         initialEducationField: profile?.educationField ?? '',
         initialDesiredContracts: profile?.desiredContracts ?? '',
@@ -164,7 +167,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final country = pick(profile?.country, user?.country);
     final city = pick(profile?.city, user?.city);
 
-    final name = [firstName, lastName].where((value) => value.isNotEmpty).join(' ');
+    final name =
+        [firstName, lastName].where((value) => value.isNotEmpty).join(' ');
     final displayName = name.isEmpty ? 'Utilisateur JOBSINC' : name;
     final initials = displayName
         .split(' ')
@@ -231,14 +235,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   children: [
                     CircleAvatar(
                       radius: 32,
-                      backgroundColor:
-                          AppColors.primary.withValues(alpha: .12),
-                      backgroundImage: user?.photoUrl != null &&
-                              user!.photoUrl!.isNotEmpty
-                          ? CachedNetworkImageProvider(ApiClient.resolveUrl(user.photoUrl!))
-                          : null,
-                      child: (user?.photoUrl == null ||
-                              user!.photoUrl!.isEmpty)
+                      backgroundColor: AppColors.primary.withValues(alpha: .12),
+                      backgroundImage:
+                          user?.photoUrl != null && user!.photoUrl!.isNotEmpty
+                              ? CachedNetworkImageProvider(
+                                  ApiClient.resolveUrl(user.photoUrl!))
+                              : null,
+                      child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
                           ? Text(
                               initials,
                               style: const TextStyle(
@@ -293,7 +296,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
                           color: widget.employee
-                              ? AppColors.turquoise.withValues(alpha: .14)
+                              ? AppColors.accent.withValues(alpha: .14)
                               : AppColors.primary.withValues(alpha: .10),
                           borderRadius: BorderRadius.circular(999),
                         ),
@@ -305,7 +308,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             color: widget.employee
-                                ? AppColors.turquoise
+                                ? AppColors.accent
                                 : AppColors.primary,
                           ),
                         ),
@@ -335,8 +338,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 IconButton(
                   tooltip: 'Modifier le profil',
                   onPressed: _openEditSheet,
-                  icon: const Icon(Icons.edit_outlined,
-                      color: AppColors.primary),
+                  icon:
+                      const Icon(Icons.edit_outlined, color: AppColors.primary),
+                ),
+                IconButton(
+                  tooltip: 'Paramètres',
+                  onPressed: () => context.push('/settings'),
+                  icon: const Icon(Icons.settings_outlined,
+                      color: AppColors.secondaryText),
                 ),
               ],
             ),
@@ -454,8 +463,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: skills.isEmpty
               ? const Text(
                   'Aucune compétence renseignée.',
-                  style: TextStyle(
-                      fontSize: 13, color: AppColors.secondaryText),
+                  style:
+                      TextStyle(fontSize: 13, color: AppColors.secondaryText),
                 )
               : Wrap(
                   spacing: 8,
@@ -492,8 +501,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Text(
                       'Upload en cours...',
                       style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.secondaryText),
+                          fontSize: 13, color: AppColors.secondaryText),
                     ),
                   ],
                 )
@@ -504,8 +512,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       color: AppColors.error),
                   title: Text(
                     _extractFileName(cvUrl) ?? 'CV',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: const Text('CV actuel'),
                   trailing: IconButton(
@@ -525,8 +532,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         fontWeight: FontWeight.w600,
                         color: AppColors.secondaryText),
                   ),
-                  subtitle:
-                      const Text('Ajoutez votre CV pour postuler'),
+                  subtitle: const Text('Ajoutez votre CV pour postuler'),
                   trailing: IconButton(
                     tooltip: 'Ajouter un CV',
                     onPressed: _pickCv,
@@ -590,8 +596,7 @@ class _InfoRow extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: hasValue
                           ? AppColors.text
-                          : AppColors.secondaryText
-                              .withValues(alpha: .7)),
+                          : AppColors.secondaryText.withValues(alpha: .7)),
                 ),
               ],
             ),
@@ -628,8 +633,7 @@ class _ProfileSection extends StatelessWidget {
               Expanded(
                 child: Text(title,
                     style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.text)),
+                        fontWeight: FontWeight.w700, color: AppColors.text)),
               ),
               if (action != null) action!,
             ]),
@@ -760,11 +764,10 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
 
     messenger.showSnackBar(
       error != null
-          ? SnackBar(
-              content: Text(error), backgroundColor: AppColors.error)
+          ? SnackBar(content: Text(error), backgroundColor: AppColors.error)
           : const SnackBar(
               content: Text('Profil mis à jour avec succès.'),
-              backgroundColor: AppColors.green,
+              backgroundColor: AppColors.accent,
             ),
     );
   }
@@ -779,160 +782,159 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
           top: 12,
           bottom: MediaQuery.of(context).viewInsets.bottom + 16,
         ),
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            shrinkWrap: true,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Modifier mon profil',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.text),
+              ),
+              const SizedBox(height: 18),
+              AppTextField(
+                label: 'Prénom',
+                controller: _firstName,
+                prefixIcon: Icons.badge_outlined,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                validator: (v) => Validators.name(v, label: 'Le prénom'),
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Nom',
+                controller: _lastName,
+                prefixIcon: Icons.badge_outlined,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                validator: (v) => Validators.name(v, label: 'Le nom'),
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Téléphone',
+                controller: _phone,
+                prefixIcon: Icons.phone_outlined,
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.next,
+                validator: Validators.phone,
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Pays',
+                controller: _country,
+                prefixIcon: Icons.public_outlined,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Ville',
+                controller: _city,
+                prefixIcon: Icons.location_city_outlined,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Compétences',
+                controller: _skills,
+                prefixIcon: Icons.auto_awesome_outlined,
+                hintText: 'Ex : Flutter, React, Figma',
+                textInputAction: TextInputAction.done,
+              ),
+              const SizedBox(height: 6),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Séparez vos compétences par des virgules.',
+                  style:
+                      TextStyle(fontSize: 11, color: AppColors.secondaryText),
+                ),
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Expérience (années)',
+                controller: _experienceYears,
+                prefixIcon: Icons.work_history_outlined,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+                hintText: 'Ex : 3',
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Niveau de formation',
+                controller: _educationLevel,
+                prefixIcon: Icons.school_outlined,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                hintText: 'Ex : Bac+2, Licence, Master…',
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Domaine de formation',
+                controller: _educationField,
+                prefixIcon: Icons.menu_book_outlined,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                hintText: 'Ex : Informatique, Génie logiciel…',
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Contrats recherchés',
+                controller: _desiredContracts,
+                prefixIcon: Icons.handshake_outlined,
+                textInputAction: TextInputAction.next,
+                hintText: 'Ex : CDI, CDD, Stage',
+              ),
+              const SizedBox(height: 12),
+              AppTextField(
+                label: 'Disponible à partir du',
+                controller: _availableFrom,
+                prefixIcon: Icons.event_outlined,
+                keyboardType: TextInputType.datetime,
+                textInputAction: TextInputAction.done,
+                hintText: 'AAAA-MM-JJ (vide = non précisé)',
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                height: 48,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.check_rounded, size: 20),
+                  label: Text(_saving ? 'Enregistrement...' : 'Enregistrer'),
                 ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Modifier mon profil',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.text),
-                ),
-                const SizedBox(height: 18),
-                AppTextField(
-                  label: 'Prénom',
-                  controller: _firstName,
-                  prefixIcon: Icons.badge_outlined,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  validator: (v) => Validators.name(v, label: 'Le prénom'),
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Nom',
-                  controller: _lastName,
-                  prefixIcon: Icons.badge_outlined,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  validator: (v) => Validators.name(v, label: 'Le nom'),
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Téléphone',
-                  controller: _phone,
-                  prefixIcon: Icons.phone_outlined,
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.next,
-                  validator: Validators.phone,
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Pays',
-                  controller: _country,
-                  prefixIcon: Icons.public_outlined,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Ville',
-                  controller: _city,
-                  prefixIcon: Icons.location_city_outlined,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Compétences',
-                  controller: _skills,
-                  prefixIcon: Icons.auto_awesome_outlined,
-                  hintText: 'Ex : Flutter, React, Figma',
-                  textInputAction: TextInputAction.done,
-                ),
-                const SizedBox(height: 6),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Séparez vos compétences par des virgules.',
-                    style: TextStyle(
-                        fontSize: 11, color: AppColors.secondaryText),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Expérience (années)',
-                  controller: _experienceYears,
-                  prefixIcon: Icons.work_history_outlined,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.next,
-                  hintText: 'Ex : 3',
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Niveau de formation',
-                  controller: _educationLevel,
-                  prefixIcon: Icons.school_outlined,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  hintText: 'Ex : Bac+2, Licence, Master…',
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Domaine de formation',
-                  controller: _educationField,
-                  prefixIcon: Icons.menu_book_outlined,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  hintText: 'Ex : Informatique, Génie logiciel…',
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Contrats recherchés',
-                  controller: _desiredContracts,
-                  prefixIcon: Icons.handshake_outlined,
-                  textInputAction: TextInputAction.next,
-                  hintText: 'Ex : CDI, CDD, Stage',
-                ),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: 'Disponible à partir du',
-                  controller: _availableFrom,
-                  prefixIcon: Icons.event_outlined,
-                  keyboardType: TextInputType.datetime,
-                  textInputAction: TextInputAction.done,
-                  hintText: 'AAAA-MM-JJ (vide = non précisé)',
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  height: 48,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: _saving ? null : _save,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.check_rounded, size: 20),
-                    label: Text(_saving ? 'Enregistrement...' : 'Enregistrer'),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

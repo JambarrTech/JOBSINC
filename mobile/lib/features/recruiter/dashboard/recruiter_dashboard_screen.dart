@@ -118,9 +118,9 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       (label: 'Offres actives', value: '${stats.activeJobs}', icon: Icons.work_outline_rounded, color: AppColors.primary),
-      (label: 'Candidatures', value: '${stats.applications}', icon: Icons.description_outlined, color: AppColors.turquoise),
+      (label: 'Candidatures', value: '${stats.applications}', icon: Icons.description_outlined, color: AppColors.accent),
       (label: 'Entretiens', value: '${stats.interviews}', icon: Icons.videocam_outlined, color: AppColors.warning),
-      (label: 'Recrutés', value: '${stats.hired}', icon: Icons.verified_outlined, color: AppColors.green),
+      (label: 'Recrutés', value: '${stats.hired}', icon: Icons.verified_outlined, color: AppColors.accent),
     ];
 
     return GridView.count(
@@ -260,12 +260,12 @@ class _JobMiniCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: job.status == 'active' ? AppColors.green.withValues(alpha: .1) : AppColors.secondaryText.withValues(alpha: .1),
+              color: job.status == 'active' ? AppColors.accent.withValues(alpha: .1) : AppColors.secondaryText.withValues(alpha: .1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               '${job.applicationsCount} postul.',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: job.status == 'active' ? AppColors.green : AppColors.secondaryText),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: job.status == 'active' ? AppColors.accent : AppColors.secondaryText),
             ),
           ),
         ],
@@ -286,7 +286,7 @@ class _ApplicationMiniCard extends StatelessWidget {
     'RECEIVED': AppColors.warning,
     'UNDER_REVIEW': AppColors.primary,
     'INTERVIEW': AppColors.primary,
-    'ACCEPTED': AppColors.green,
+    'ACCEPTED': AppColors.accent,
     'REJECTED': AppColors.error,
   };
 

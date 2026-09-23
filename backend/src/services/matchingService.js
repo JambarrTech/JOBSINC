@@ -1,4 +1,6 @@
 const prisma = require('../config/prisma');
+const { getCached, setCache } = require('../utils/cache');
+const { getRedis, isRedisAvailable } = require('../config/redis');
 const {
   weights,
   levelFor,
@@ -8,7 +10,6 @@ const {
   EXPERIENCE_RANGES,
   CONTRACT_GROUPS,
   REMOTE_MODES,
-  MIN_SCORE_DEFAULT,
   EXPERIENCE,
   EDUCATION,
   LOCATION,
@@ -27,15 +28,17 @@ const {
 // marqué « unknown » et EXCLU du calcul : les poids des critères
 // connus sont renormalisés pour que le score final reste fidèle.
 // Aucun score n'est stocké ni inventé : tout est recalculé depuis
-// les données réelles (cache mémoire invalidé par updatedAt).
+// les données réelles. Le cache est à deux niveaux — mémoire locale
+// (L1) + Redis (L2, multi-instance) — et la clé inclut updatedAt,
+// donc toute modification d'une offre ou d'un profil change la clé :
+// invalidation automatique sans TTL agressif.
 // ─────────────────────────────────────────────────────────────
 
 const CACHE_MAX = 800;
+const MATCH_REDIS_PREFIX = 'matching:match:';
+// 30 min : simple garde-fou, la clé (updatedAt) s'invalide déjà seule.
+const MATCH_REDIS_TTL_SECONDS = 30 * 60;
 const matchCache = new Map();
-
-function clearMatchCache() {
-  matchCache.clear();
-}
 
 function normalize(value) {
   return String(value || '')
@@ -392,11 +395,17 @@ function computeMatch(job, profile, context = {}) {
   };
 }
 
-function cacheGet(key) {
+// ── Cache de match (L1 mémoire + L2 Redis) ─────────────────
+
+function redisMatchKey(key) {
+  return `${MATCH_REDIS_PREFIX}${key}`;
+}
+
+function cacheLocalGet(key) {
   return matchCache.get(key);
 }
 
-function cacheSet(key, value) {
+function cacheLocalSet(key, value) {
   if (matchCache.size >= CACHE_MAX) {
     const oldest = matchCache.keys().next().value;
     matchCache.delete(oldest);
@@ -404,10 +413,49 @@ function cacheSet(key, value) {
   matchCache.set(key, value);
 }
 
+/**
+ * L1 (mémoire locale) puis L2 (Redis) si disponible. Un échec Redis est
+ * silencieux : le cache local reste fonctionnel et le calcul reprend.
+ */
+async function cacheGet(key) {
+  const local = cacheLocalGet(key);
+  if (local) return local;
+
+  if (!isRedisAvailable()) return null;
+  try {
+    const raw = await getRedis().get(redisMatchKey(key));
+    if (raw) {
+      const value = JSON.parse(raw);
+      cacheLocalSet(key, value);
+      return value;
+    }
+  } catch (_) {
+    // Redis intermittent : on calcule.
+  }
+  return null;
+}
+
+/**
+ * Écrit en L1 et propage vers Redis en fire-and-forget (ne bloque pas le
+ * calcul) : les autres instances récupèrent le match déjà calculé.
+ */
+function cacheSet(key, value) {
+  cacheLocalSet(key, value);
+
+  if (!isRedisAvailable()) return;
+  try {
+    getRedis()
+      .set(redisMatchKey(key), JSON.stringify(value), 'EX', MATCH_REDIS_TTL_SECONDS)
+      .catch(() => {});
+  } catch (_) {
+    // Redis intermittent : l'écriture L1 suffit.
+  }
+}
+
 /** Match mis en cache ; la clé inclut updatedAt → invalidation auto. */
-function matchFor(job, profile, application, company) {
+async function matchFor(job, profile, application, company) {
   const key = `${job.id}|${profile.id}|${new Date(job.updatedAt).getTime()}|${new Date(profile.updatedAt).getTime()}`;
-  const cached = cacheGet(key);
+  const cached = await cacheGet(key);
   if (cached) return cached;
   const computed = computeMatch(job, profile, { applicationId: application?.id ?? null, company });
   cacheSet(key, computed);
@@ -415,8 +463,8 @@ function matchFor(job, profile, application, company) {
 }
 
 /** Format « recommandation » consommé par le dashboard entreprise. */
-function toRecommendation(job, profile, application, company) {
-  const match = matchFor(job, profile, application, company);
+async function toRecommendation(job, profile, application, company) {
+  const match = await matchFor(job, profile, application, company);
   return {
     id: application ? application.id : `${job.id}-${profile.id}`,
     applicationId: application ? application.id : null,
@@ -450,7 +498,13 @@ function passesFilters(recommendation, filters = {}) {
   return true;
 }
 
+const POOL_CACHE_TTL = 30000; // 30 s : fenêtre courte, résultats frais à moindre coût.
+
 async function loadPool(companyId) {
+  const cacheKey = `matching:pool:${companyId}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
   // Confidentialité : seuls les candidats ayant postulé aux offres de
   // l'entreprise entrent dans le pool de recommandations — mêmes règles
   // de visibilité que la liste des candidats existante.
@@ -461,14 +515,18 @@ async function loadPool(companyId) {
       OR: [{ deadline: null }, { deadline: { gte: new Date() } }],
     },
     orderBy: { createdAt: 'desc' },
+    take: 100, // Plafond de sécurité : borne le pire cas d'un pool très actif.
   });
   if (jobs.length === 0) return { jobs: [], applications: [] };
 
   const applications = await prisma.application.findMany({
     where: { jobId: { in: jobs.map((job) => job.id) } },
     include: { candidate: true },
+    take: 500,
   });
-  return { jobs, applications };
+  const pool = { jobs, applications };
+  setCache(cacheKey, pool, POOL_CACHE_TTL);
+  return pool;
 }
 
 /**
@@ -487,7 +545,8 @@ async function getCompanyMatches(companyId, filters = {}, company = null) {
       const profile = application.candidate;
       if (!profile || seen.has(`${job.id}:${profile.id}`)) continue;
       seen.add(`${job.id}:${profile.id}`);
-      const recommendation = toRecommendation(job, profile, application, company);
+      // eslint-disable-next-line no-await-in-loop -- le cache L1 rend ce coût négligeable
+      const recommendation = await toRecommendation(job, profile, application, company);
       if (passesFilters(recommendation, filters)) recommendations.push(recommendation);
     }
   }
@@ -508,7 +567,8 @@ async function getJobMatches(companyId, jobId, filters = {}, company = null) {
   const recommendations = [];
   for (const application of applications) {
     if (!application.candidate) continue;
-    const recommendation = toRecommendation(job, application.candidate, application, company);
+    // eslint-disable-next-line no-await-in-loop -- le cache L1 rend ce coût négligeable
+    const recommendation = await toRecommendation(job, application.candidate, application, company);
     if (passesFilters(recommendation, filters)) recommendations.push(recommendation);
   }
   recommendations.sort((a, b) => b.score - a.score);
@@ -523,21 +583,9 @@ async function getMatches(companyId, filters = {}, company = null) {
   return getCompanyMatches(companyId, filters, company);
 }
 
-/**
- * Emplacement réservé — extraction de signaux depuis le texte d'un CV.
- * Le projet n'a pas encore d'analyseur de CV : retourner null laisse le
- * moteur fonctionner uniquement sur les champs structurés du profil.
- * Brancher ici un futur parseur (compétences/expériences/formation…).
- */
-async function extractCvSignals(/* cvText */) {
-  return null;
-}
-
 module.exports = {
   getMatches,
   getCompanyMatches,
   getJobMatches,
   computeMatch,
-  clearMatchCache,
-  extractCvSignals,
 };

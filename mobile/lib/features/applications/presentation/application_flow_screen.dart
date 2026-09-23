@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../applications/presentation/applications_screen.dart';
 import '../../applications/providers/applications_provider.dart';
 import '../../jobs/models/job_offer.dart';
 import '../../profile/providers/candidate_provider.dart';
@@ -72,19 +72,19 @@ class _ApplicationFlowScreenState
     });
 
     try {
-      final cvUrl =
-          await ref.read(candidateProfileControllerProvider.notifier).uploadCv(file);
-      if (cvUrl == null || cvUrl.startsWith('Erreur') || cvUrl.startsWith('Le serveur') || cvUrl.startsWith('Non connecté')) {
-        setState(() {
-          _error = cvUrl ?? 'Erreur lors de l\'upload.';
-          _isUploadingCv = false;
-        });
-        return;
-      }
-
+      final result = await ref
+          .read(candidateProfileControllerProvider.notifier)
+          .uploadCv(file);
+      if (!mounted) return;
       setState(() {
-        _cvUrl = cvUrl;
         _isUploadingCv = false;
+        switch (result) {
+          case CvUploadSuccess(:final url):
+            _cvUrl = url;
+            _error = null;
+          case CvUploadFailure(:final message):
+            _error = message;
+        }
       });
     } on TimeoutException catch (_) {
       setState(() {
@@ -126,11 +126,9 @@ class _ApplicationFlowScreenState
       if (!mounted) return;
 
       if (success) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => const ApplicationSuccessScreen(),
-          ),
-        );
+        // Navigation gérée par GoRouter : l'écran de succès est une vraie
+        // route (/application/success), pas une page poussée à la main.
+        context.pushReplacement('/application/success');
       } else {
         final applyState = ref.read(applyProvider);
         setState(() {
@@ -279,7 +277,7 @@ class _ApplicationFlowScreenState
                               'CV actuel',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.green,
+                                color: AppColors.accent,
                               ),
                             ),
                           ],
@@ -380,7 +378,7 @@ class _ApplicationFlowScreenState
                       style: TextStyle(
                         fontSize: 12,
                         color: coverLetterLength >= 100
-                            ? AppColors.green
+                            ? AppColors.accent
                             : AppColors.secondaryText,
                         fontWeight: FontWeight.w600,
                       ),
