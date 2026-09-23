@@ -151,6 +151,10 @@ exports.schedule = async (req, res) => {
       return res.status(409).json({ error: 'Cet entretien est déjà terminé : il ne peut plus être replanifié.' });
     }
 
+    // Si un entretien est déjà EN_COURS, ne pas le réinitialiser en PLANIFIE
+    if (existingInterview?.status === 'EN_COURS') {
+      return res.status(409).json({ error: 'Cet entretien est déjà en cours.' });
+    }
     const interview = await prisma.interview.upsert({
       where: { applicationId: id },
       update: {
@@ -161,8 +165,8 @@ exports.schedule = async (req, res) => {
         streamingUrl: streamingUrl || null,
         location: location || null,
         notes: notes || null,
-        startedAt: null,
-        finishedAt: null,
+        // Ne réinitialise startedAt/finishedAt que si on replanifie depuis PLANIFIE/ANNULE
+        ...(existingInterview?.status === 'PLANIFIE' ? { startedAt: null, finishedAt: null } : {}),
       },
       create: {
         applicationId: id,
@@ -278,9 +282,12 @@ exports.finish = async (req, res) => {
     }
     if (interview.status === 'ANNULE') return res.status(409).json({ error: 'Cet entretien a été annulé.' });
 
+    if (interview.status !== 'EN_COURS') {
+      return res.status(400).json({ error: 'L\'entretien doit être en cours pour être terminé.' });
+    }
     const updated = await prisma.interview.update({
       where: { id: interview.id },
-      data: { status: 'TERMINE', finishedAt: new Date(), ...(interview.status === 'PLANIFIE' ? { startedAt: new Date() } : {}) },
+      data: { status: 'TERMINE', finishedAt: new Date() },
       include: interviewInclude,
     });
 
@@ -416,7 +423,7 @@ exports.getByApplication = async (req, res) => {
 exports.getByApplicationPublic = async (req, res) => {
   try {
     const { id } = req.params;
-    if (req.user.role !== 'CANDIDATE') return res.status(403).json({ error: 'Accès refusé.' });
+    if (req.user.role !== 'CANDIDATE' && req.user.role !== 'EMPLOYEE') return res.status(403).json({ error: 'Accès refusé.' });
 
     const application = await prisma.application.findFirst({
       where: { id, candidate: { userId: req.user.userId } },

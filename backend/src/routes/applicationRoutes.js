@@ -1,9 +1,10 @@
 const router = require('express').Router();
 const auth = require('../middlewares/authMiddleware');
+const companyApproval = require('../middlewares/companyApproval');
 const controller = require('../controllers/applicationController');
 router.use(auth);
 router.get('/me', controller.mine);
 router.post('/jobs/:jobId', controller.create);
-router.patch('/:id/status', controller.updateStatus);
-router.post('/:id/conversation', controller.ensureConversation);
+router.patch('/:id/status', companyApproval, controller.updateStatus);
+router.post('/:id/conversation', companyApproval, controller.ensureConversation);
 module.exports = router;

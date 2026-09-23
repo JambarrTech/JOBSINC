@@ -1,5 +1,5 @@
 const prisma = require('../config/prisma');
-const fs = require('fs');
+const fs = require('fs/promises');
 const path = require('path');
 const conversationService = require('../services/conversationService');
 const { invalidate } = require('../utils/cache');
@@ -51,9 +51,9 @@ exports.create = async (req, res) => {
     const coverLetterStr = String(coverLetter || '').trim();
     if (!cvUrlStr) return res.status(400).json({ error: 'Le lien du CV est obligatoire.' });
     if (!cvUrlStr.startsWith(CV_PATH_PREFIX)) return res.status(400).json({ error: 'Le lien du CV est invalide. Rechargez votre CV.' });
-    // Vérifie que le fichier existe réellement sur disque (pas seulement l'URL).
+    // Vérifie que le fichier existe réellement sur disque (non-bloquant).
     try {
-      fs.accessSync(path.join(BACKEND_ROOT, cvUrlStr));
+      await fs.promises.access(path.join(BACKEND_ROOT, '.' + cvUrlStr));
     } catch {
       return res.status(400).json({ error: 'Le fichier CV est introuvable. Rechargez votre CV.' });
     }

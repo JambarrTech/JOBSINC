@@ -63,6 +63,7 @@ class ChatSocketService {
     if (_connectedToken != null && _connectedToken != token) disconnect();
 
     _connectedToken = token;
+    // Recrée si nécessaire avec le nouveau token (l'ancien socket garde l'ancien auth)
     _socket ??= sio.io(
       socketUrl,
       sio.OptionBuilder()
@@ -74,10 +75,16 @@ class ChatSocketService {
 
     final socket = _socket!;
 
+    // Évite les listeners dupliqués à chaque connect()
+    socket.off('connect');
+    socket.off('message:new');
+    socket.off('typing');
+    socket.off('interview:update');
+
     socket.onConnect((_) {
       // Ré-tablit les rooms après une (re)connexion.
       for (final conversationId in List<String>.from(_joinedConversations)) {
-        socket.emit('conversation:join', [conversationId]);
+        socket.emit('conversation:join', conversationId);
       }
     });
 
@@ -115,7 +122,7 @@ class ChatSocketService {
     if (conversationId.isEmpty) return;
     _joinedConversations.add(conversationId);
     if (_socket?.connected ?? false) {
-      _socket!.emit('conversation:join', [conversationId]);
+      _socket!.emit('conversation:join', conversationId);
     }
   }
 
@@ -123,7 +130,7 @@ class ChatSocketService {
   void leaveConversation(String conversationId) {
     _joinedConversations.remove(conversationId);
     if (_socket?.connected ?? false) {
-      _socket!.emit('conversation:leave', [conversationId]);
+      _socket!.emit('conversation:leave', conversationId);
     }
   }
 

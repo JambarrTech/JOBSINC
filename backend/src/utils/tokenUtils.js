@@ -48,11 +48,15 @@ async function verifyRefreshToken(userId, rawToken) {
 }
 
 async function rotateRefreshToken(userId, oldRawToken) {
-  await prisma.refreshToken.deleteMany({
-    where: { userId, tokenHash: crypto.createHash('sha256').update(oldRawToken).digest('hex') },
-  });
-  
-  return hashAndStoreRefreshToken(userId, generateRefreshToken());
+  const newToken = generateRefreshToken();
+  const oldHash = crypto.createHash('sha256').update(oldRawToken).digest('hex');
+  const newHash = crypto.createHash('sha256').update(newToken).digest('hex');
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  await prisma.$transaction([
+    prisma.refreshToken.deleteMany({ where: { userId, tokenHash: oldHash } }),
+    prisma.refreshToken.create({ data: { userId, tokenHash: newHash, expiresAt } }),
+  ]);
+  return newToken;
 }
 
 async function revokeAllRefreshTokens(userId) {

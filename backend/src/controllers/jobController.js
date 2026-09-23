@@ -3,7 +3,10 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 
 const companyImagesInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
 // Les offres visibles publiquement proviennent uniquement d'entreprises approuvées.
-const publicJobWhere = { isOpen: true, company: { isApproved: true }, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] };
+// Fonction (pas constante) pour éviter Date figée au boot.
+function getPublicJobWhere() {
+  return { isOpen: true, company: { isApproved: true }, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] };
+}
 
 function absoluteUrl(req, value) {
   if (!value) return null;
@@ -32,7 +35,7 @@ function paginated(data, total, page, limit) {
 exports.listPublic = async (req, res) => {
   try {
     const { page, limit, skip } = paginate(req);
-    const where = publicJobWhere;
+    const where = getPublicJobWhere();
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({ where, include: { company: { include: companyImagesInclude } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
       prisma.job.count({ where }),

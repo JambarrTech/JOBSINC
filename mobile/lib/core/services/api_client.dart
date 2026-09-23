@@ -59,18 +59,18 @@ class ApiClient {
     final response = await _requestWithTokenRefresh(
       (t) => _client
           .get(_uri(path), headers: _headers(t))
-          .timeout(const Duration(seconds: 45)),
+          .timeout(const Duration(seconds: 15)),
       token,
     );
     if (response.body.isEmpty) return <String, dynamic>{};
-    return jsonDecode(response.body);
+    try { return jsonDecode(response.body); } catch (_) { return <String, dynamic>{'data': response.body}; }
   }
 
   Future<Map<String, dynamic>> get(String path, {String? token}) async {
     final response = await _requestWithTokenRefresh(
       (t) => _client
           .get(_uri(path), headers: _headers(t))
-          .timeout(const Duration(seconds: 45)),
+          .timeout(const Duration(seconds: 15)),
       token,
     );
     return _decodeResponse(response);
@@ -88,7 +88,7 @@ class ApiClient {
             headers: {'Content-Type': 'application/json', ..._headers(t)},
             body: jsonEncode(data),
           )
-          .timeout(const Duration(seconds: 45)),
+          .timeout(const Duration(seconds: 15)),
       token,
     );
     return _decodeResponse(response);
@@ -106,7 +106,7 @@ class ApiClient {
             headers: {'Content-Type': 'application/json', ..._headers(t)},
             body: jsonEncode(data),
           )
-          .timeout(const Duration(seconds: 45)),
+          .timeout(const Duration(seconds: 15)),
       token,
     );
     return _decodeResponse(response);
@@ -124,7 +124,7 @@ class ApiClient {
             headers: {'Content-Type': 'application/json', ..._headers(t)},
             body: jsonEncode(data),
           )
-          .timeout(const Duration(seconds: 45)),
+          .timeout(const Duration(seconds: 15)),
       token,
     );
     return _decodeResponse(response);
@@ -134,7 +134,7 @@ class ApiClient {
     final response = await _requestWithTokenRefresh(
       (t) => _client
           .delete(_uri(path), headers: _headers(t))
-          .timeout(const Duration(seconds: 45)),
+          .timeout(const Duration(seconds: 15)),
       token,
     );
     return _decodeResponse(response);
@@ -183,11 +183,13 @@ class ApiClient {
   }
 
   Map<String, dynamic> _decodeResponse(http.Response response) {
-    final decoded = response.body.isEmpty
-        ? null
-        : jsonDecode(response.body);
-    // Le backend renvoie parfois des tableaux (ex. /company/matching) :
-    // on les expose sous la clé `data` pour ne pas casser le cast Map.
+    dynamic decoded;
+    try {
+      decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+    } catch (_) {
+      // Réponse non-JSON (ex. 502 HTML) → expose brut
+      decoded = {'error': response.body.isEmpty ? 'Erreur serveur.' : response.body};
+    }
     final body = decoded is Map<String, dynamic>
         ? decoded
         : <String, dynamic>{if (decoded != null) 'data': decoded};
@@ -199,6 +201,8 @@ class ApiClient {
     }
     return body;
   }
+
+  void close() => _client.close();
 
   /// Refresh access token using refresh token (appel direct, sans retry).
   /// Returns new {'accessToken', 'refreshToken'} or throws.

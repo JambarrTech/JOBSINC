@@ -62,9 +62,15 @@ class _ApplicationFlowScreenState
       allowedExtensions: ['pdf', 'doc', 'docx'],
     );
 
-    if (result.isEmpty) return;
-
-    final file = File(result.first.path!);
+    // ignore: unnecessary_null_comparison
+    if (result == null) return;
+    // FilePicker 12: FilePickerResult? avec .files ; fallback List pour compat
+    final dynamic dyn = result;
+    final files = dyn.files ?? dyn;
+    if (files is List && files.isEmpty) return;
+    final pickedPath = files.first.path as String?;
+    if (pickedPath == null) return;
+    final file = File(pickedPath);
 
     setState(() {
       _isUploadingCv = true;

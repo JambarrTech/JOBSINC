@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_cached_image.dart';
-import '../../applications/presentation/application_flow_screen.dart';
 import '../../applications/providers/applications_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/job_offer.dart';
@@ -59,11 +59,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
   }
 
   void _confirmApply() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ApplicationFlowScreen(offer: widget.offer),
-      ),
-    );
+    context.push('/application/flow', extra: widget.offer);
   }
 
   @override
@@ -520,13 +516,7 @@ class _SimilarJobsSection extends ConsumerWidget {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: JobFeedCard(
                         offer: offer,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => JobDetailScreen(offer: offer),
-                            ),
-                          );
-                        },
+                        onTap: () => context.push('/jobs/${offer.id}', extra: offer),
                       ),
                     ),
                   ),

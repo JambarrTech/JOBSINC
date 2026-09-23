@@ -41,6 +41,10 @@ module.exports = async (req, res, next) => {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Votre session a expiré.' });
     }
+    if (error.code === 'P1001' || error.code === 'P2024' || error.code === 'P1000') {
+      console.error('Auth middleware DB unreachable:', error.message);
+      return res.status(503).json({ error: 'Service temporairement indisponible, réessayez.' });
+    }
     return res.status(401).json({ error: 'Votre session n\'est pas valide.' });
   }
 };

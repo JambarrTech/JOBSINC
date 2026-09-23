@@ -8,15 +8,19 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => p === '/' ? pathname === '/' : pathname.startsWith(p));
 }
 
-async function verifyToken(token: string): Promise<boolean> {
+async function verifyToken(token: string): Promise<{ valid: boolean; role?: string }> {
   try {
     const res = await fetch(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
+      signal: AbortSignal.timeout(2000),
     });
-    return res.ok;
+    if (!res.ok) return { valid: false };
+    const data = await res.json().catch(() => null);
+    const role = data?.user?.role || data?.role;
+    return { valid: true, role };
   } catch {
-    return false;
+    return { valid: false };
   }
 }
 
@@ -32,7 +36,7 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/admin')) {
     if (pathname === '/admin/login') {
       if (token) {
-        const valid = await verifyToken(token);
+        const { valid } = await verifyToken(token);
         if (valid) return NextResponse.redirect(new URL('/admin', request.url));
       }
       return NextResponse.next();
@@ -42,11 +46,14 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/admin/login', request.url));
     }
 
-    const valid = await verifyToken(token);
+    const { valid, role } = await verifyToken(token);
     if (!valid) {
       const response = NextResponse.redirect(new URL('/admin/login', request.url));
       response.cookies.delete('jobsinc_token');
       return response;
+    }
+    if (role !== 'ADMIN') {
+      return NextResponse.redirect(new URL('/login', request.url));
     }
 
     const storedUser = request.cookies.get('jobsinc_admin_user')?.value;
@@ -62,11 +69,14 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    const valid = await verifyToken(token);
+    const { valid, role } = await verifyToken(token);
     if (!valid) {
       const response = NextResponse.redirect(new URL('/login', request.url));
       response.cookies.delete('jobsinc_token');
       return response;
+    }
+    if (role !== 'RECRUITER' && role !== 'ADMIN') {
+      return NextResponse.redirect(new URL('/', request.url));
     }
 
     return NextResponse.next();
