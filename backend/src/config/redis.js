@@ -12,8 +12,8 @@ function getRedis() {
       tls: REDIS_TLS ? {} : undefined,
       maxRetriesPerRequest: 1,
       retryStrategy(times) {
-        if (times > 2) return null;
-        return Math.min(times * 100, 500);
+        if (times > 10) return null;
+        return Math.min(times * 200, 3000);
       },
       lazyConnect: true,
       connectTimeout: 2000,
@@ -38,7 +38,7 @@ function getRedis() {
 
 async function connectRedis() {
   const client = getRedis();
-  if (client.status === 'wait') {
+  if (['wait', 'close', 'end'].includes(client.status)) {
     try {
       await client.connect();
       redisAvailable = true;

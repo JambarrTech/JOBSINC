@@ -25,15 +25,19 @@ const prisma = require('../config/prisma');
 let io = null;
 
 function membershipFieldFor(role) {
-  // Même règle que messagingSide() du conversationService.
-  return role === 'RECRUITER' ? 'companyUserId' : 'candidateUserId';
+  if (role === 'RECRUITER') return 'companyUserId';
+  if (role === 'CANDIDATE' || role === 'EMPLOYEE') return 'candidateUserId';
+  // ADMIN n'a pas de côté fixe — on vérifie les deux champs côté appelant.
+  return null;
 }
 
 function init(httpServer, corsOrigins) {
+  if (!corsOrigins.length) {
+    console.warn('⚠️ CORS origins vide — Socket.IO autorise toute origine (dev mobile). Restreindre CORS_ORIGINS en prod.');
+  }
   io = new Server(httpServer, {
     path: '/socket.io',
     cors: {
-      // Aucune origine configurée (dev mobile natif) : on n'applique pas CORS.
       origin: corsOrigins.length ? corsOrigins : true,
       credentials: true,
       methods: ['GET', 'POST'],
@@ -70,14 +74,18 @@ function init(httpServer, corsOrigins) {
       }
       try {
         const field = membershipFieldFor(socket.data.role);
-        if (!field) {
-          if (typeof ack === 'function') ack({ ok: false });
-          return;
+        let membership = null;
+        if (field) {
+          membership = await prisma.conversation.findFirst({
+            where: { id: conversationId, [field]: socket.data.userId },
+            select: { id: true },
+          });
+        } else {
+          membership = await prisma.conversation.findFirst({
+            where: { id: conversationId, OR: [{ companyUserId: socket.data.userId }, { candidateUserId: socket.data.userId }] },
+            select: { id: true },
+          });
         }
-        const membership = await prisma.conversation.findFirst({
-          where: { id: conversationId, [field]: socket.data.userId },
-          select: { id: true },
-        });
         if (!membership) {
           if (typeof ack === 'function') ack({ ok: false });
           return;
@@ -96,12 +104,24 @@ function init(httpServer, corsOrigins) {
       }
     });
 
-    // Relais « en train d'écrire » : uniquement vers les AUTRES membres
-    // de la room (socket.to exclut l'émetteur). L'appartenance est déjà
-    // garantie par le join.
-    socket.on('conversation:typing', (payload) => {
+    // Relais « en train d'écrire » : vérifie l'appartenance (contrairement
+    // au join, le client pourrait émettre sans avoir rejoint).
+    socket.on('conversation:typing', async (payload) => {
       const conversationId = payload?.conversationId;
       if (typeof conversationId !== 'string' || !conversationId) return;
+      try {
+        const field = membershipFieldFor(socket.data.role);
+        let isMember = false;
+        if (field) {
+          const m = await prisma.conversation.findFirst({ where: { id: conversationId, [field]: socket.data.userId }, select: { id: true } });
+          isMember = Boolean(m);
+        } else {
+          // ADMIN : vérifie les deux côtés
+          const m = await prisma.conversation.findFirst({ where: { id: conversationId, OR: [{ companyUserId: socket.data.userId }, { candidateUserId: socket.data.userId }] }, select: { id: true } });
+          isMember = Boolean(m);
+        }
+        if (!isMember) return;
+      } catch { return; }
       socket.to(`conversation:${conversationId}`).emit('typing', {
         conversationId,
         userId: socket.data.userId,

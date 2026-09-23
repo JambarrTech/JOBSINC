@@ -466,12 +466,17 @@ exports.audit = exports.activity;
 
 exports.notifications = async (req, res) => {
   try {
-    const rows = await prisma.notification.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: { user: { select: { email: true, role: true } } },
-    });
-    res.json(rows.map((n) => ({
+    const { page, limit, skip } = paginate(req);
+    const [rows, total] = await Promise.all([
+      prisma.notification.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: { user: { select: { email: true, role: true } } },
+      }),
+      prisma.notification.count(),
+    ]);
+    res.json(paginated(rows.map((n) => ({
       id: n.id,
       title: n.title,
       message: n.body,
@@ -479,7 +484,7 @@ exports.notifications = async (req, res) => {
       read: n.isRead,
       recipient: n.user?.email || null,
       createdAt: n.createdAt,
-    })));
+    })), total, page, limit));
   } catch (error) {
     console.error('Erreur admin notifications:', error);
     res.status(500).json({ error: 'Impossible de charger les notifications.' });

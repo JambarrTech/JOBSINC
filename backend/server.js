@@ -30,8 +30,9 @@ const { cleanupExpiredRefreshTokens } = require('./src/utils/tokenUtils');
 
 const app = express();
 
-if (process.env.TRUST_PROXY) {
-  app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+if (process.env.TRUST_PROXY && process.env.TRUST_PROXY !== '0') {
+  const parsed = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isFinite(parsed) && parsed >= 0 ? parsed : 1);
 }
 
 const corsOrigins = (process.env.CORS_ORIGINS ||

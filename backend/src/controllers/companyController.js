@@ -31,7 +31,9 @@ async function getCompany(userId) {
 function absoluteUrl(req, value) {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
-  const host = req?.get?.('host') || 'localhost:5000';
+  // Host header injection guard : n'accepte que host connu ou localhost
+  const rawHost = req?.get?.('host') || 'localhost:5000';
+  const host = /^[a-zA-Z0-9.-]+(?::\d+)?$/.test(rawHost) ? rawHost : 'localhost:5000';
   const proto = req?.protocol || 'http';
   return `${proto}://${host}${value.startsWith('/') ? '' : '/'}${value}`;
 }
@@ -270,11 +272,19 @@ exports.createJob = async (req, res) => {
     if (!isRecruiter(req, res)) return;
     const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
     if (!title?.trim() || !description?.trim() || !location?.trim() || !contractType || !skills?.trim()) return res.status(400).json({ error: 'Les champs obligatoires de l’offre sont manquants.' });
+    if (title.trim().length > 150 || description.trim().length > 10000 || skills.trim().length > 5000) return res.status(400).json({ error: 'Titre/description/skills trop longs.' });
+    if (deadline && new Date(deadline) < new Date()) return res.status(400).json({ error: 'La date limite ne peut pas être dans le passé.' });
+    if (salaryMin !== null && salaryMin !== '' && salaryMin !== undefined && Number.isNaN(Number(salaryMin))) return res.status(400).json({ error: 'salaryMin invalide.' });
+    if (salaryMax !== null && salaryMax !== '' && salaryMax !== undefined && Number.isNaN(Number(salaryMax))) return res.status(400).json({ error: 'salaryMax invalide.' });
+    const validContractTypes = ['Temps plein','Temps partiel','Stage','Freelance','CDD','CDI','FULL_TIME','PART_TIME','INTERNSHIP','FREELANCE'];
+    if (!validContractTypes.includes(contractType)) return res.status(400).json({ error: `contractType invalide: ${contractType}` });
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
     const job = await prisma.job.create({ data: { companyId: company.id, title: title.trim(), description: description.trim(), location: location.trim(), jobType: types[contractType] || 'FULL_TIME', contractType, department: department || null, workMode: workMode || null, experience: experience || null, salaryMin: salaryMin === null || salaryMin === '' ? null : Number(salaryMin), salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax), currency: currency || null, deadline: deadline ? new Date(deadline) : null, startsAt: startsAt ? new Date(startsAt) : null, responsibilities: responsibilities || null, skills: skills.trim(), educationLevel: educationLevel || null, minExperienceYears: minExperienceYears == null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)), maxExperienceYears: maxExperienceYears == null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }, include: jobInclude });
     invalidate(`company:dashboard:${company.id}`);
+    invalidate(`matching:pool:`);
+    invalidate(`matching:match:`);
     res.status(201).json(jobDto(job));
   } catch (error) {
     console.error('Erreur createJob:', error);
@@ -350,6 +360,8 @@ exports.uploadImage = async (req, res) => {
     }
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+    const existingCount = await prisma.companyImage.count({ where: { companyId: company.id } });
+    if (existingCount + req.companyImages.length > 20) return res.status(400).json({ error: 'Limite de 20 images atteinte.' });
     const images = await prisma.$transaction(
       req.companyImages.map((img) =>
         prisma.companyImage.create({
@@ -372,7 +384,7 @@ exports.uploadLogo = async (req, res) => {
     const company = await getCompany(req.user.userId, req.user.role);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     if (company.logo) {
-      const oldPath = path.join(__dirname, '../..', company.logo);
+      const oldPath = path.join(__dirname, '../..', '.' + company.logo);
       await fs.unlink(oldPath).catch(() => {});
     }
     const updated = await prisma.company.update({ where: { id: company.id }, data: { logo: req.companyLogo.url }, include: companyInclude });
@@ -391,7 +403,12 @@ exports.deleteImage = async (req, res) => {
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const image = await prisma.companyImage.findFirst({ where: { id: req.params.id, companyId: company.id } });
     if (!image) return res.status(404).json({ error: 'Image introuvable.' });
-    const filePath = path.join(__dirname, '../..', image.url);
+    // Ne pas supprimer la primary sans réassignation : si c'est la primary et qu'il reste d'autres images, promouvoir la suivante
+    if (image.isPrimary) {
+      const other = await prisma.companyImage.findFirst({ where: { companyId: company.id, id: { not: image.id } }, orderBy: { sortOrder: 'asc' } });
+      if (other) await prisma.companyImage.update({ where: { id: other.id }, data: { isPrimary: true } });
+    }
+    const filePath = path.join(__dirname, '../..', '.' + image.url);
     await fs.unlink(filePath).catch(() => {});
     await prisma.companyImage.delete({ where: { id: image.id } });
     invalidate(`company:dashboard:${company.id}`);
@@ -424,6 +441,9 @@ exports.updateJob = async (req, res) => {
     const job = await prisma.job.findFirst({ where: { id: req.params.id, companyId: company.id } });
     if (!job) return res.status(404).json({ error: 'Offre introuvable.' });
     const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
+    if (salaryMin !== undefined && salaryMin !== null && salaryMin !== '' && Number.isNaN(Number(salaryMin))) return res.status(400).json({ error: 'salaryMin invalide.' });
+    if (salaryMax !== undefined && salaryMax !== null && salaryMax !== '' && Number.isNaN(Number(salaryMax))) return res.status(400).json({ error: 'salaryMax invalide.' });
+    if (deadline && new Date(deadline) < new Date()) return res.status(400).json({ error: 'La date limite ne peut pas être dans le passé.' });
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
     const updated = await prisma.job.update({
       where: { id: job.id },
@@ -450,6 +470,8 @@ exports.updateJob = async (req, res) => {
       include: jobInclude,
     });
     invalidate(`company:dashboard:${company.id}`);
+    invalidate(`matching:pool:`);
+    invalidate(`matching:match:`);
     res.json(jobDto(updated));
   } catch (error) {
     console.error('Erreur updateJob:', error);
@@ -469,6 +491,8 @@ exports.deleteJob = async (req, res) => {
     }
     await prisma.job.delete({ where: { id: job.id } });
     invalidate(`company:dashboard:${company.id}`);
+    invalidate(`matching:pool:`);
+    invalidate(`matching:match:`);
     res.json({ message: 'Offre supprimée.' });
   } catch (error) {
     console.error('Erreur deleteJob:', error);

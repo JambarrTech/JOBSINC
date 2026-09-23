@@ -137,13 +137,14 @@ async function requestPasswordReset(email) {
   const user = await prisma.user.findUnique({ where: { email: sanitizeEmail(email) } });
   if (!user) return { success: true };
 
-  const token = crypto.randomBytes(32).toString('hex');
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
   const expiresAt = new Date(Date.now() + 3600000);
 
   await prisma.passwordReset.deleteMany({ where: { userId: user.id, used: false } });
-  await prisma.passwordReset.create({ data: { userId: user.id, token, expiresAt } });
+  await prisma.passwordReset.create({ data: { userId: user.id, token: tokenHash, expiresAt } });
 
-  await emailService.sendPasswordReset(user.email, token).catch(
+  await emailService.sendPasswordReset(user.email, rawToken).catch(
     (cause) => console.error('Erreur envoi email reset:', cause.message),
   );
 
@@ -155,7 +156,8 @@ async function resetPassword(token, newPassword) {
   validateRequired(newPassword, 'Nouveau mot de passe');
   if (!validatePassword(newPassword)) throw new ValidationError('Le mot de passe doit contenir au moins 8 caractères.');
 
-  const reset = await prisma.passwordReset.findUnique({ where: { token } });
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const reset = await prisma.passwordReset.findUnique({ where: { token: tokenHash } });
   if (!reset || reset.used || reset.expiresAt < new Date()) {
     throw new ValidationError('Token invalide ou expiré.');
   }
@@ -175,12 +177,13 @@ async function requestEmailVerification(userId) {
 
   await prisma.emailVerification.deleteMany({ where: { userId: user.id, used: false } });
 
-  const token = crypto.randomBytes(32).toString('hex');
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
   const expiresAt = new Date(Date.now() + 24 * 3600000);
 
-  await prisma.emailVerification.create({ data: { userId: user.id, token, expiresAt } });
+  await prisma.emailVerification.create({ data: { userId: user.id, token: tokenHash, expiresAt } });
 
-  await emailService.sendEmailVerification(user.email, token).catch(
+  await emailService.sendEmailVerification(user.email, rawToken).catch(
     (cause) => console.error('Erreur envoi email vérification:', cause.message),
   );
 
@@ -190,7 +193,8 @@ async function requestEmailVerification(userId) {
 async function verifyEmail(token) {
   validateRequired(token, 'Token');
 
-  const verification = await prisma.emailVerification.findUnique({ where: { token } });
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const verification = await prisma.emailVerification.findUnique({ where: { token: tokenHash } });
   if (!verification || verification.used) throw new ValidationError('Token invalide ou déjà utilisé.');
   if (new Date() > verification.expiresAt) throw new ValidationError('Token expiré.');
 

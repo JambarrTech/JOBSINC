@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/services/api_client.dart';
+import '../features/applications/presentation/application_flow_screen.dart';
 import '../features/applications/presentation/applications_screen.dart';
 import '../features/auth/models/auth_user.dart';
 import '../features/auth/presentation/auth_screens.dart';
@@ -248,7 +250,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           if (extra is JobOffer) {
             return JobDetailScreen(offer: extra);
           }
-          // Deep-link sans objet (ex. notification) : bascule sur la liste.
+          // Deep-link sans objet (notification/partage) : charge par ID
+          final jobId = state.pathParameters['id'] ?? '';
+          return _JobDetailByIdScreen(jobId: jobId);
+        },
+      ),
+      GoRoute(
+        path: '/application/flow',
+        builder: (_, state) {
+          final extra = state.extra;
+          if (extra is JobOffer) return ApplicationFlowScreen(offer: extra);
           return const OffersScreen();
         },
       ),
@@ -322,3 +333,61 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+class _JobDetailByIdScreen extends StatelessWidget {
+  const _JobDetailByIdScreen({required this.jobId});
+  final String jobId;
+  @override
+  Widget build(BuildContext context) {
+    // Charge l'offre par ID puis affiche le détail ; fallback sur la liste si échec.
+    return FutureBuilder(
+      future: _fetchJob(jobId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final offer = snapshot.data;
+        if (offer != null) return JobDetailScreen(offer: offer);
+        return const OffersScreen();
+      },
+    );
+  }
+
+  Future<JobOffer?> _fetchJob(String id) async {
+    try {
+      // Lecture sans token pour les offres publiques ; token optionnel si disponible
+      final data = await _fetchPublicJob(id);
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<JobOffer?> _fetchPublicJob(String id) async {
+    // Appel direct sans dépendance Riverpod pour rester léger côté router
+    try {
+      const api = _SimpleApi();
+      final json = await api.get('/jobs/$id');
+      // Réponse { ...job } ou { data: ... } selon DTO
+      final map = json is Map<String, dynamic> ? (json['data'] is Map ? json['data'] as Map<String, dynamic> : json) : null;
+      if (map == null) return null;
+      return JobOffer.fromJson(map);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+// Minimal Api helper sans http.Client leak (utilise ApiClient partagé brièvement)
+class _SimpleApi {
+  const _SimpleApi();
+  Future<dynamic> get(String path) async {
+    // ignore: avoid-creation via ApiClient temporaire fermé immédiatement
+    final client = ApiClient();
+    try {
+      return await client.getRaw(path);
+    } finally {
+      client.close();
+    }
+  }
+}

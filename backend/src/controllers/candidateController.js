@@ -46,25 +46,55 @@ exports.updateProfile = async (req, res) => {
 
     const { firstName, lastName, phone, country, city, skills, experienceYears, educationLevel, educationField, desiredContracts, availableFrom } = req.body;
 
-    const experience = experienceYears === undefined ? undefined
-      : experienceYears === null || experienceYears === '' ? null : Math.max(0, Math.min(45, Number(experienceYears)));
+    // Validation / sanitization
+    const sanitized = {};
+    if (firstName !== undefined) {
+      if (typeof firstName !== 'string' || firstName.trim().length > 50) return res.status(400).json({ error: 'Prénom invalide (max 50).' });
+      sanitized.firstName = firstName.trim();
+    }
+    if (lastName !== undefined) {
+      if (typeof lastName !== 'string' || lastName.trim().length > 50) return res.status(400).json({ error: 'Nom invalide (max 50).' });
+      sanitized.lastName = lastName.trim();
+    }
+    if (phone !== undefined) sanitized.phone = typeof phone === 'string' ? phone.trim().slice(0, 30) : phone;
+    if (country !== undefined) sanitized.country = typeof country === 'string' ? country.trim().slice(0, 60) : country;
+    if (city !== undefined) sanitized.city = typeof city === 'string' ? city.trim().slice(0, 60) : city;
+    if (skills !== undefined) sanitized.skills = typeof skills === 'string' ? skills.slice(0, 5000) : skills;
+    if (educationLevel !== undefined) sanitized.educationLevel = educationLevel;
+    if (educationField !== undefined) sanitized.educationField = educationField;
+    if (desiredContracts !== undefined) sanitized.desiredContracts = desiredContracts;
 
-    const availability = availableFrom === undefined ? undefined
-      : availableFrom === null || availableFrom === '' ? null : new Date(availableFrom);
+    let experience;
+    if (experienceYears === undefined) experience = undefined;
+    else if (experienceYears === null || experienceYears === '') experience = null;
+    else {
+      const num = Number(experienceYears);
+      if (Number.isNaN(num)) return res.status(400).json({ error: 'experienceYears doit être un nombre.' });
+      experience = Math.max(0, Math.min(45, num));
+    }
+
+    let availability;
+    if (availableFrom === undefined) availability = undefined;
+    else if (availableFrom === null || availableFrom === '') availability = null;
+    else {
+      const d = new Date(availableFrom);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ error: 'availableFrom invalide.' });
+      availability = d;
+    }
 
     const updated = await prisma.candidateProfile.update({
       where: { id: candidate.id },
       data: {
-        ...(firstName !== undefined && { firstName }),
-        ...(lastName !== undefined && { lastName }),
-        ...(phone !== undefined && { phone }),
-        ...(country !== undefined && { country }),
-        ...(city !== undefined && { city }),
-        ...(skills !== undefined && { skills }),
+        ...(sanitized.firstName !== undefined && { firstName: sanitized.firstName }),
+        ...(sanitized.lastName !== undefined && { lastName: sanitized.lastName }),
+        ...(sanitized.phone !== undefined && { phone: sanitized.phone }),
+        ...(sanitized.country !== undefined && { country: sanitized.country }),
+        ...(sanitized.city !== undefined && { city: sanitized.city }),
+        ...(sanitized.skills !== undefined && { skills: sanitized.skills }),
         ...(experience !== undefined && { experienceYears: experience }),
-        ...(educationLevel !== undefined && { educationLevel }),
-        ...(educationField !== undefined && { educationField }),
-        ...(desiredContracts !== undefined && { desiredContracts }),
+        ...(sanitized.educationLevel !== undefined && { educationLevel: sanitized.educationLevel }),
+        ...(sanitized.educationField !== undefined && { educationField: sanitized.educationField }),
+        ...(sanitized.desiredContracts !== undefined && { desiredContracts: sanitized.desiredContracts }),
         ...(availability !== undefined && { availableFrom: availability }),
       },
       include: { user: { select: { email: true } } },
@@ -136,7 +166,7 @@ exports.uploadAvatar = async (req, res) => {
     }
 
     if (candidate.avatarUrl) {
-      const oldPath = path.join(__dirname, '../..', candidate.avatarUrl);
+      const oldPath = path.join(__dirname, '../..', '.' + candidate.avatarUrl);
       await fs.unlink(oldPath).catch(() => {});
     }
 

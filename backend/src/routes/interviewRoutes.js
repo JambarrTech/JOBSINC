@@ -8,6 +8,6 @@ router.post('/applications/:id/finish', controller.finish);
 router.post('/applications/:id/cancel', controller.cancel);
 router.get('/company', controller.listCompany);
 router.get('/candidate', controller.listCandidate);
-router.get('/applications/:id/interview', controller.getByApplicationPublic);
 router.get('/applications/:id/interview/recruiter', controller.getByApplication);
+router.get('/applications/:id/interview', controller.getByApplicationPublic);
 module.exports = router;

@@ -40,7 +40,8 @@ function validateAge(birthDate, minAge = 16, maxAge = 100) {
   const now = new Date();
   let age = now.getUTCFullYear() - date.getUTCFullYear();
   const birthdayThisYear = new Date(Date.UTC(now.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  if (now < birthdayThisYear) age -= 1;
+  const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (nowUtc < birthdayThisYear) age -= 1;
   
   if (age < minAge || age > maxAge) {
     throw new ValidationError(`Vous devez avoir entre ${minAge} et ${maxAge} ans.`);

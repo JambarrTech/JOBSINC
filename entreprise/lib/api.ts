@@ -13,7 +13,19 @@ export type InterviewItem = { id?: string; applicationId?: string; status?: stri
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
 const API_ORIGIN = new URL(API_URL).origin;
 const endpoint = (path: string) => `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
-export const assetUrl = (value?: string | null) => !value ? null : /^https?:\/\//i.test(value) ? value : new URL(value, API_ORIGIN).toString();
+export const assetUrl = (value?: string | null) => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) {
+    try { const u = new URL(value); if (u.origin !== API_ORIGIN) return null; return u.toString(); } catch { return null; }
+  }
+  if (!value.startsWith('/uploads/')) return null;
+  if (value.includes('..')) return null;
+  try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
+};
+export const cvHref = (value?: string | null) => {
+  if (!value || !value.startsWith('/uploads/cvs/') || value.includes('..')) return null;
+  try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
+};
 
 export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const token = typeof window === 'undefined' ? null : localStorage.getItem('jobsinc_token');

@@ -106,7 +106,7 @@ exports.loginCandidate = async (req, res) => {
     if (await isLocked(email, ip)) {
       const sec = remainingSeconds(email, ip);
       const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
-      return handleError(new Error(`Trop de tentatives. Réessayez dans ${minutes} minute(s).`), res);
+      return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
     }
     
     const user = await authService.authenticateUser(email, password, ['CANDIDATE']);
@@ -114,7 +114,7 @@ exports.loginCandidate = async (req, res) => {
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {
       const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      recordFailedAttempt(req.body?.email, ip);
+      await recordFailedAttempt(req.body?.email, ip);
     }
     return handleError(cause, res);
   }
@@ -132,7 +132,7 @@ exports.login = async (req, res) => {
     if (await isLocked(email, ip)) {
       const sec = remainingSeconds(email, ip);
       const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
-      return handleError(new Error(`Trop de tentatives. Réessayez dans ${minutes} minute(s).`), res);
+      return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
     }
     
     const user = await authService.authenticateUser(email, password);
@@ -140,7 +140,7 @@ exports.login = async (req, res) => {
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {
       const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      recordFailedAttempt(req.body?.email, ip);
+      await recordFailedAttempt(req.body?.email, ip);
     }
     return handleError(cause, res);
   }
@@ -178,7 +178,7 @@ exports.loginCompany = async (req, res) => {
     if (await isLocked(email, ip)) {
       const sec = remainingSeconds(email, ip);
       const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
-      return handleError(new Error(`Trop de tentatives. Réessayez dans ${minutes} minute(s).`), res);
+      return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
     }
     
     const user = await authService.authenticateUser(email, password, ['RECRUITER', 'ADMIN']);
@@ -186,7 +186,7 @@ exports.loginCompany = async (req, res) => {
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {
       const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      recordFailedAttempt(req.body?.email, ip);
+      await recordFailedAttempt(req.body?.email, ip);
     }
     return handleError(cause, res);
   }
@@ -200,7 +200,7 @@ exports.getMe = async (req, res) => {
     const prisma = require('../config/prisma');
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { candidate: true, company: true } });
     if (!user) return handleError(new Error('Utilisateur introuvable.'), res);
-    if (!user.company && (user.role === 'RECRUITER' || user.role === 'ADMIN')) {
+    if (!user.company && user.role === 'RECRUITER') {
       return handleError(new Error('Aucune entreprise associée à ce compte. Contactez le support.'), res);
     }
     // Format cohérent avec l'attente mobile : { user: {...} } sans wrapper success
