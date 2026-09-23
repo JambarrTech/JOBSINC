@@ -19,9 +19,13 @@ function getRedis() {
       connectTimeout: 2000,
     });
 
+    let hasLoggedError = false;
     redis.on('error', (err) => {
       redisAvailable = false;
-      console.warn('[Redis] Not available:', err.message);
+      if (!hasLoggedError) {
+        console.warn('[Redis] Not available:', err.message, '(suite en silencieux)');
+        hasLoggedError = true;
+      }
     });
 
     redis.on('connect', () => {
