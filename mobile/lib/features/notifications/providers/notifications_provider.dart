@@ -22,12 +22,13 @@ class NotificationsState {
     int? unreadCount,
     bool? isLoading,
     String? error,
+    bool clearError = false,
   }) {
     return NotificationsState(
       notifications: notifications ?? this.notifications,
       unreadCount: unreadCount ?? this.unreadCount,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 }
@@ -47,7 +48,7 @@ class NotificationsController extends Notifier<NotificationsState> {
       return;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
 
     try {
       final (notifications, unreadCount) = await _repo.fetchAll(token);

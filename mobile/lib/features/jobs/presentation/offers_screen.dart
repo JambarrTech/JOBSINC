@@ -46,12 +46,23 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
     final query = _searchController.text.trim().toLowerCase();
     final location = _locationController.text.trim().toLowerCase();
 
+    // Normalise les types backend variés vers les filtres UI
+    String normalizeType(String t) {
+      final v = t.toLowerCase();
+      if (v.contains('temps plein') || v == 'full_time' || v == 'cdi') return 'cdi';
+      if (v.contains('temps partiel') || v == 'part_time') return 'cdi';
+      if (v.contains('cdd')) return 'cdd';
+      if (v.contains('stage') || v == 'internship') return 'stage';
+      if (v.contains('freelance') || v == 'freelance') return 'freelance';
+      return v;
+    }
+
     return offers.where((offer) {
       final text = '${offer.title} ${offer.company} ${offer.category}'.toLowerCase();
       final matchQuery = query.isEmpty || text.contains(query);
       final matchLocation = location.isEmpty || offer.location.toLowerCase().contains(location);
       final matchContract = _selectedContract == 'Tous' ||
-          offer.type.toLowerCase() == _selectedContract.toLowerCase();
+          normalizeType(offer.type) == _selectedContract.toLowerCase();
       return matchQuery && matchLocation && matchContract;
     }).toList(growable: false);
   }

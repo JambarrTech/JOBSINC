@@ -52,6 +52,7 @@ async function createDailyRoom({ applicationId, scheduledAt, durationMinutes = 6
     },
   };
 
+  if (!apiKey) { console.warn('[Daily.co] DAILY_API_KEY manquant'); return null; }
   try {
     const response = await fetch(`https://api.daily.co/v1/rooms`, {
       method: 'POST',
@@ -60,6 +61,7 @@ async function createDailyRoom({ applicationId, scheduledAt, durationMinutes = 6
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!response.ok) {
@@ -91,6 +93,7 @@ async function createWherebyRoom({ applicationId, scheduledAt, durationMinutes =
     fields: ['roomUrl', 'roomName'],
   };
 
+  if (!apiKey) { console.warn('[Whereby] WHEREBY_API_KEY manquant'); return null; }
   try {
     const response = await fetch(`https://api.whereby.dev/v1/meetings`, {
       method: 'POST',
@@ -99,6 +102,7 @@ async function createWherebyRoom({ applicationId, scheduledAt, durationMinutes =
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!response.ok) {

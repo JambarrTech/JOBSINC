@@ -5,8 +5,10 @@ const MAX_LIMIT = 100;
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || DEFAULT_PAGE);
   const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(query.limit, 10) || DEFAULT_LIMIT));
-  const skip = (page - 1) * limit;
-  return { page, limit, skip };
+  // Guard against huge offset full-scan DoS
+  const safePage = Math.min(page, 1000);
+  const skip = (safePage - 1) * limit;
+  return { page: safePage, limit, skip };
 }
 
 function buildPaginationResponse(data, total, page, limit) {
