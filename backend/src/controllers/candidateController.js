@@ -137,6 +137,10 @@ exports.uploadCv = async (req, res) => {
       return res.status(404).json({ error: 'Profil candidat introuvable.' });
     }
 
+    if (candidate.cvUrl) {
+      const oldPath = path.join(__dirname, '../..', '.' + candidate.cvUrl);
+      await fs.unlink(oldPath).catch(() => {});
+    }
     const updated = await prisma.candidateProfile.update({
       where: { id: candidate.id },
       data: { cvUrl: req.cvFile.url },

@@ -29,7 +29,7 @@ exports.syncCandidateSkills = async (req, res) => {
     if (!Array.isArray(skillIds)) return res.status(400).json({ error: 'skillIds doit être un tableau.' });
 
     const uniqueIds = [...new Set(skillIds)];
-    if (uniqueIds.length === 0) return res.status(400).json({ error: 'Aucune compétence fournie.' });
+    if (uniqueIds.length > 500) return res.status(400).json({ error: 'Trop de compétences (max 500).' });
 
     const existingSkills = await prisma.skill.findMany({ where: { id: { in: uniqueIds } }, select: { id: true } });
     const existingIds = new Set(existingSkills.map((s) => s.id));
@@ -39,12 +39,12 @@ exports.syncCandidateSkills = async (req, res) => {
     const candidate = await prisma.candidateProfile.findUnique({ where: { userId: req.user.userId } });
     if (!candidate) return res.status(404).json({ error: 'Profil candidat introuvable.' });
 
-    await prisma.$transaction([
-      prisma.candidateSkill.deleteMany({ where: { candidateId: candidate.id } }),
-      ...uniqueIds.map((skillId) =>
-        prisma.candidateSkill.create({ data: { candidateId: candidate.id, skillId } })
-      ),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.candidateSkill.deleteMany({ where: { candidateId: candidate.id } });
+      if (uniqueIds.length > 0) {
+        await tx.candidateSkill.createMany({ data: uniqueIds.map((skillId) => ({ candidateId: candidate.id, skillId })) });
+      }
+    });
 
     res.json({ message: 'Compétences mises à jour.', count: uniqueIds.length });
   } catch (error) {
@@ -67,19 +67,19 @@ exports.syncJobSkills = async (req, res) => {
     if (!Array.isArray(skillIds)) return res.status(400).json({ error: 'skillIds doit être un tableau.' });
 
     const uniqueIds = [...new Set(skillIds)];
-    if (uniqueIds.length === 0) return res.status(400).json({ error: 'Aucune compétence fournie.' });
+    if (uniqueIds.length > 500) return res.status(400).json({ error: 'Trop de compétences (max 500).' });
 
     const existingSkills = await prisma.skill.findMany({ where: { id: { in: uniqueIds } }, select: { id: true } });
     const existingIds = new Set(existingSkills.map((s) => s.id));
     const invalidIds = uniqueIds.filter((id) => !existingIds.has(id));
     if (invalidIds.length > 0) return res.status(400).json({ error: `Compétences introuvables: ${invalidIds.join(', ')}` });
 
-    await prisma.$transaction([
-      prisma.jobSkill.deleteMany({ where: { jobId: job.id } }),
-      ...uniqueIds.map((skillId) =>
-        prisma.jobSkill.create({ data: { jobId: job.id, skillId, required: true } })
-      ),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.jobSkill.deleteMany({ where: { jobId: job.id } });
+      if (uniqueIds.length > 0) {
+        await tx.jobSkill.createMany({ data: uniqueIds.map((skillId) => ({ jobId: job.id, skillId, required: true })) });
+      }
+    });
 
     res.json({ message: 'Compétences de l\'offre mises à jour.', count: uniqueIds.length });
   } catch (error) {

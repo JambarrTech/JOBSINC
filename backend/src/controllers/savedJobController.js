@@ -74,7 +74,12 @@ exports.toggle = async (req, res) => {
     const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (!job) return res.status(404).json({ error: 'Offre introuvable.' });
 
-    await prisma.savedJob.create({ data: { userId, jobId } });
+    try {
+      await prisma.savedJob.create({ data: { userId, jobId } });
+    } catch (e) {
+      if (e.code === 'P2002') return res.json({ saved: true });
+      throw e;
+    }
     res.json({ saved: true });
   } catch (error) {
     console.error('Erreur savedJobs.toggle:', error);

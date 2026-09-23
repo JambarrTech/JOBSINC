@@ -7,6 +7,7 @@ exports.create = async (req, res) => {
     if (!question || !question.trim()) {
       return res.status(400).json({ error: 'La question est requise.' });
     }
+    if (question.trim().length > 2000) return res.status(400).json({ error: 'Question trop longue (max 2000).' });
     const company = await prisma.company.findUnique({ where: { userId: req.user.userId } });
     if (!company) {
       return res.status(404).json({ error: 'Entreprise non trouvée.' });
@@ -77,6 +78,7 @@ exports.answer = async (req, res) => {
     if (!answer || !answer.trim()) {
       return res.status(400).json({ error: 'La réponse est requise.' });
     }
+    if (answer.trim().length > 5000) return res.status(400).json({ error: 'Réponse trop longue (max 5000).' });
     const faq = await prisma.faq.update({
       where: { id },
       data: {
