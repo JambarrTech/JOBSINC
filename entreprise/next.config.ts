@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
-// Origine du backend (uploads, avatars, CV…) servis par Express sur :5000.
-const API_ORIGIN = new URL(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').origin;
+// Origine du backend — prod Render par défaut, local via .env ou dart-define
+const API_ORIGIN = new URL(process.env.NEXT_PUBLIC_API_URL || 'https://jobsinc.onrender.com/api').origin;
 
 const nextConfig: NextConfig = {
   async rewrites() {
@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'http', hostname: 'localhost', port: '5000', pathname: '/uploads/**' },
+      { protocol: 'https', hostname: 'jobsinc.onrender.com', pathname: '/uploads/**' },
       { protocol: 'https', hostname: 'jobsinc.com', pathname: '/uploads/**' },
       { protocol: 'https', hostname: '*.jobsinc.com', pathname: '/uploads/**' },
     ],
@@ -29,7 +30,7 @@ const nextConfig: NextConfig = {
     ];
   },
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://jobsinc.onrender.com/api',
     NEXT_PUBLIC_SESSION_ENDPOINT: process.env.NEXT_PUBLIC_SESSION_ENDPOINT || '/auth/me',
     NEXT_PUBLIC_DASHBOARD_ENDPOINT: process.env.NEXT_PUBLIC_DASHBOARD_ENDPOINT || '/company/dashboard',
     NEXT_PUBLIC_COMPANY_JOBS_ENDPOINT: process.env.NEXT_PUBLIC_COMPANY_JOBS_ENDPOINT || '/company/jobs',

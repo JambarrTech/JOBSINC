@@ -32,8 +32,10 @@ const skillRoutes = require('./routes/skillRoutes');
 const app = express();
 
 // Trust proxy : indispensable derrière Vercel / Render / reverse-proxy
-// Sur Vercel VERCEL=1 ou Render RENDER=1 => force trust proxy à 1
-if (process.env.VERCEL || process.env.RENDER || (process.env.TRUST_PROXY && process.env.TRUST_PROXY !== '0')) {
+// Render/Vercel sont toujours derrière proxy → par défaut trust proxy 1 sauf TRUST_PROXY=0 explicite
+if (process.env.TRUST_PROXY === '0') {
+  // Explicitement désactivé
+} else {
   const raw = String(process.env.TRUST_PROXY || '1').trim().toLowerCase();
   if (raw === 'true') app.set('trust proxy', true);
   else {

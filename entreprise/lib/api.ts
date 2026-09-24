@@ -10,7 +10,7 @@ export type ChatConversation = { id: string; participantName: string; avatar: st
 export type ChatResponse = { conversation: ChatConversation; messages: ChatMessage[]; hasMore?: boolean };
 export type InterviewItem = { id?: string; applicationId?: string; status?: string; mode?: string; scheduledAt?: string | null; duration?: number | null; meetUrl?: string | null; streamingUrl?: string | null; startedAt?: string | null; finishedAt?: string | null; jobTitle?: string | null; companyName?: string | null; candidateName?: string; applicationStatus?: string };
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://jobsinc.onrender.com/api').replace(/\/$/, '');
 const API_ORIGIN = new URL(API_URL).origin;
 const endpoint = (path: string) => `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
 export const assetUrl = (value?: string | null) => {
