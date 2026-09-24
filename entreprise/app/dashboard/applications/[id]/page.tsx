@@ -554,7 +554,7 @@ export default function ApplicationDetailsPage() {
   const cvUrl = application?.cvUrl;
   const coverLetter = application?.coverLetter;
   const interview = (application as any).interview;
-  const cvHref = cvUrl ? (cvUrl.startsWith('http') ? cvUrl : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${cvUrl}`) : null;
+  const cvHref = cvUrl ? (cvUrl.startsWith('http') ? cvUrl : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'https://jobsinc.onrender.com'}${cvUrl}`) : null;
   const currentStatus = application.status || 'RECEIVED';
   const allowedTransitions = TRANSITIONS[currentStatus] || [];
 

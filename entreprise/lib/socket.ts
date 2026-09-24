@@ -24,7 +24,7 @@ export function getMessagesSocket(): Socket | null {
 
   if (socket) return socket;
 
-  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://jobsinc.onrender.com/api').replace(/\/$/, '');
   const url = apiUrl.replace(/\/api$/, '');
 
   socket = io(url, {
