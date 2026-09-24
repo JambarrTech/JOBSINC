@@ -44,7 +44,19 @@ class ApiClient {
 
   static String resolveUrl(String? url) {
     if (url == null || url.isEmpty) return '';
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      // Anciennes données avec localhost/10.0.2.2/127.0.0.1 → réécrit vers backend prod actif
+      if (url.contains('localhost') || url.contains('127.0.0.1') || url.contains('10.0.2.2')) {
+        try {
+          final uri = Uri.parse(url);
+          final path = uri.path + (uri.query.isNotEmpty ? '?${uri.query}' : '');
+          return '$_serverBase$path';
+        } catch (_) {
+          return url;
+        }
+      }
+      return url;
+    }
     return '$_serverBase$url';
   }
 
