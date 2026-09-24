@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../../auth/models/auth_user.dart';
 import '../../auth/providers/auth_provider.dart';
 
@@ -54,15 +55,11 @@ class SettingsScreen extends ConsumerWidget {
         .forgotPassword(email);
 
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: error == null ? AppColors.success : AppColors.error,
-        content: Text(
-          error ??
-              'Un lien de réinitialisation a été envoyé à $email.',
-        ),
-      ),
-    );
+    if (error == null) {
+      AppFeedback.success(context, 'Un lien de réinitialisation a été envoyé à $email.');
+    } else {
+      AppFeedback.error(context, AppFeedback.humanizeError(error));
+    }
   }
 
   Future<void> _confirmSignOut(BuildContext context, WidgetRef ref) async {

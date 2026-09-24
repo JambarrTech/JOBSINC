@@ -50,12 +50,25 @@ exports.create = async (req, res) => {
     const cvUrlStr = String(cvUrl || '').trim();
     const coverLetterStr = String(coverLetter || '').trim();
     if (!cvUrlStr) return res.status(400).json({ error: 'Le lien du CV est obligatoire.' });
-    if (!cvUrlStr.startsWith(CV_PATH_PREFIX)) return res.status(400).json({ error: 'Le lien du CV est invalide. Rechargez votre CV.' });
-    // Vérifie que le fichier existe réellement sur disque (non-bloquant).
-    try {
-      await fs.promises.access(path.join(BACKEND_ROOT, '.' + cvUrlStr));
-    } catch {
-      return res.status(400).json({ error: 'Le fichier CV est introuvable. Rechargez votre CV.' });
+    const isS3 = (process.env.STORAGE_DRIVER || 'local') === 's3';
+    const isValidCvUrl = isS3
+      ? (cvUrlStr.startsWith(CV_PATH_PREFIX) || /^https?:\/\//i.test(cvUrlStr))
+      : cvUrlStr.startsWith(CV_PATH_PREFIX);
+    if (!isValidCvUrl) return res.status(400).json({ error: 'Le lien du CV est invalide. Rechargez votre CV.' });
+    // Vérifie que le fichier existe réellement sur disque (skip pour S3, car fichier sur S3).
+    if (!isS3 && cvUrlStr.startsWith(CV_PATH_PREFIX)) {
+      const isVercel = Boolean(process.env.VERCEL);
+      const candidates = [
+        path.join(BACKEND_ROOT, '.' + cvUrlStr),
+        path.join('/tmp', cvUrlStr.replace(/^\//, '')),
+      ];
+      let found = false;
+      for (const p of candidates) {
+        try { await fs.access(p); found = true; break; } catch {}
+      }
+      if (!found) {
+        return res.status(400).json({ error: 'Le fichier CV est introuvable. Rechargez votre CV.' });
+      }
     }
     if (!coverLetterStr) return res.status(400).json({ error: 'La lettre de motivation est obligatoire.' });
     const application = await prisma.application.create({

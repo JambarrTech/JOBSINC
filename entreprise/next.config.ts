@@ -8,6 +8,26 @@ const nextConfig: NextConfig = {
     // Proxie les fichiers uploadés du backend vers le front (logos, couvertures, CV…).
     return [{ source: '/uploads/:path*', destination: `${API_ORIGIN}/uploads/:path*` }];
   },
+  images: {
+    remotePatterns: [
+      { protocol: 'http', hostname: 'localhost', port: '5000', pathname: '/uploads/**' },
+      { protocol: 'https', hostname: 'jobsinc.com', pathname: '/uploads/**' },
+      { protocol: 'https', hostname: '*.jobsinc.com', pathname: '/uploads/**' },
+    ],
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ];
+  },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
     NEXT_PUBLIC_SESSION_ENDPOINT: process.env.NEXT_PUBLIC_SESSION_ENDPOINT || '/auth/me',

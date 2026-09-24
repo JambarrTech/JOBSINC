@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../models/app_notification.dart';
 import '../providers/notifications_provider.dart';
 
@@ -176,7 +177,20 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               }
             },
             onDismiss: () {
+              final deleted = notification;
+              final deletedIndex = index;
               ref.read(notificationsProvider.notifier).deleteNotification(notification.id);
+              AppFeedback.info(
+                context,
+                'Notification supprimée',
+                action: SnackBarAction(
+                  label: 'Annuler',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    ref.read(notificationsProvider.notifier).restoreNotification(deleted, index: deletedIndex);
+                  },
+                ),
+              );
             },
           );
         },
@@ -239,8 +253,8 @@ class _NotificationTile extends StatelessWidget {
                           ),
                           if (!notification.isRead)
                             Container(
-                              width: 8,
-                              height: 8,
+                              width: 10,
+                              height: 10,
                               margin: const EdgeInsets.only(left: 8),
                               decoration: const BoxDecoration(
                                 color: AppColors.primary,

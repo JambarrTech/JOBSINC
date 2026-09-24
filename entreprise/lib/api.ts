@@ -27,11 +27,39 @@ export const cvHref = (value?: string | null) => {
   try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
 };
 
-export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+export async function apiRequest<T>(path: string, options?: RequestInit & { retries?: number }): Promise<T> {
   const token = typeof window === 'undefined' ? null : localStorage.getItem('jobsinc_token');
-  const response = await fetch(endpoint(path), { ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers }, credentials: 'include', cache: 'no-store' });
-  if (!response.ok) { const body = await response.json().catch(() => null); const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number }; error.status = response.status; throw error; }
-  return response.json();
+  const retries = options?.retries ?? 0;
+  const doFetch = async (): Promise<Response> =>
+    fetch(endpoint(path), { ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers }, credentials: 'include', cache: 'no-store' });
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await doFetch();
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number };
+        error.status = response.status;
+        // Retry uniquement sur 503/429
+        if ((response.status === 503 || response.status === 429) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          continue;
+        }
+        throw error;
+      }
+      return response.json();
+    } catch (e) {
+      lastError = e;
+      const status = (e as { status?: number })?.status;
+      if (status !== 503 && status !== 429) throw e;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastError;
 }
 
 function list<T>(response: T[] | { data?: T[]; results?: T[] }) { return Array.isArray(response) ? response : response.data || response.results || []; }
@@ -76,7 +104,16 @@ export async function getConversationPage(conversationId: string | number, param
 }
 export const isApiConfigured = () => Boolean(API_URL);
 export async function getCompanies() { return list(await apiRequest<Company[] | { data?: Company[]; results?: Company[] }>(process.env.NEXT_PUBLIC_COMPANIES_ENDPOINT || '/companies')).map(normalizeCompany); }
-export async function getJobs() { return list(await apiRequest<any[] | { data?: any[]; results?: any[] }>(process.env.NEXT_PUBLIC_JOBS_ENDPOINT || '/jobs')).map((job: any) => ({ ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company })); }
+export async function getJobs(params?: { page?: number; limit?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.page) qs.set('page', String(params.page));
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const raw = await apiRequest<any[] | { data?: any[]; results?: any[] }>(`${process.env.NEXT_PUBLIC_JOBS_ENDPOINT || '/jobs'}${suffix}`);
+  // Support paginated {data, pagination} ou liste directe
+  const items = Array.isArray(raw) ? raw : (raw as { data?: any[] }).data || (raw as { results?: any[] }).results || [];
+  return list(items as any).map((job: any) => ({ ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company }));
+}
 export async function getJob(id: string | number) { const job = await apiRequest<any>(`/jobs/${id}`); return { ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company }; }
 export async function getStats(): Promise<Record<string, number>> { const response = await apiRequest<Record<string, number> | { data?: Record<string, number> }>(process.env.NEXT_PUBLIC_STATS_ENDPOINT || '/stats'); return typeof response === 'object' && response !== null && 'data' in response && response.data ? response.data as Record<string, number> : response as Record<string, number>; }
 export type OverviewCandidate = { initials: string; name: string; detail: string };

@@ -127,6 +127,20 @@ class NotificationsController extends Notifier<NotificationsState> {
       );
     } catch (_) {}
   }
+
+  void restoreNotification(AppNotification notification, {int? index}) {
+    if (state.notifications.any((n) => n.id == notification.id)) return;
+    final newList = List<AppNotification>.from(state.notifications);
+    if (index != null && index >= 0 && index <= newList.length) {
+      newList.insert(index, notification);
+    } else {
+      newList.insert(0, notification);
+    }
+    state = state.copyWith(
+      notifications: newList,
+      unreadCount: notification.isRead ? state.unreadCount : (state.unreadCount + 1).clamp(0, 999),
+    );
+  }
 }
 
 final notificationsProvider =

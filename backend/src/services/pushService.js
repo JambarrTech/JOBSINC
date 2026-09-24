@@ -16,21 +16,50 @@ const prisma = require('../config/prisma');
 let messaging = null;
 let initAttempted = false;
 
+function loadServiceAccount() {
+  // Priorité 1: JSON inline dans env (idéal Vercel : FCM_SERVICE_ACCOUNT_JSON)
+  const inline = process.env.FCM_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (inline) {
+    try {
+      // Supporte base64 (Vercel peut stocker le JSON en base64 pour éviter les problèmes d'échappement)
+      let jsonStr = inline;
+      if (!jsonStr.trim().startsWith('{')) {
+        // Tente base64 decode
+        try { jsonStr = Buffer.from(jsonStr, 'base64').toString('utf8'); } catch {}
+      }
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      console.warn(`Push: FCM_SERVICE_ACCOUNT_JSON invalide (${e.message})`);
+      return null;
+    }
+  }
+  // Priorité 2: FCM_SERVICE_ACCOUNT_PATH (fichier)
+  const keyPath = process.env.FCM_SERVICE_ACCOUNT_PATH ||
+    path.join(__dirname, '..', '..', 'serviceAccountKey.json');
+  if (!fs.existsSync(keyPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+  } catch (e) {
+    console.warn(`Push: lecture ${keyPath} impossible (${e.message})`);
+    return null;
+  }
+}
+
 function init() {
   if (initAttempted) return;
   initAttempted = true;
   try {
-    const keyPath = process.env.FCM_SERVICE_ACCOUNT_PATH ||
-      path.join(__dirname, '..', '..', 'serviceAccountKey.json');
-    if (!fs.existsSync(keyPath)) {
-      console.warn('Push: clé de service Firebase introuvable — push désactivé.');
+    const serviceAccount = loadServiceAccount();
+    if (!serviceAccount) {
+      console.warn('Push: clé de service Firebase introuvable — push désactivé. Définissez FCM_SERVICE_ACCOUNT_JSON sur Vercel ou fournissez serviceAccountKey.json.');
       return;
     }
     // Requires locaux : évite de charger Firebase quand il n'y a pas de clé.
     const { initializeApp, getApps, cert } = require('firebase-admin/app');
     const { getMessaging } = require('firebase-admin/messaging');
 
-    const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
     if (getApps().length === 0) {
       initializeApp({ credential: cert(serviceAccount) });
     }

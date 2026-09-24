@@ -68,5 +68,31 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>JOBSINC a besoin d'accéder à votre photothèque pour choisir une photo de profil.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>JOBSINC a besoin d'accéder à la caméra pour prendre une photo de profil.</string>
+		<key>NSDocumentsFolderUsageDescription</key>
+		<string>JOBSINC a besoin d'accéder à vos documents pour importer votre CV (PDF/DOC).</string>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+			<key>NSExceptionDomains</key>
+			<dict>
+				<key>localhost</key>
+				<dict>
+					<key>NSExceptionAllowsInsecureHTTPLoads</key>
+					<true/>
+					<key>NSIncludesSubdomains</key>
+					<true/>
+				</dict>
+			</dict>
+		</dict>
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>remote-notification</string>
+			<string>fetch</string>
+		</array>
 	</dict>
 </plist>

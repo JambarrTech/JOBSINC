@@ -14,6 +14,7 @@ class AppCachedImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.placeholder,
     this.errorWidget,
+    this.semanticLabel,
   });
 
   final String? url;
@@ -23,6 +24,7 @@ class AppCachedImage extends StatelessWidget {
   final BoxFit fit;
   final Widget Function(BuildContext, String)? placeholder;
   final Widget Function(BuildContext, String, Object)? errorWidget;
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +34,7 @@ class AppCachedImage extends StatelessWidget {
       return _fallback();
     }
 
+    final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
     final image = CachedNetworkImage(
       imageUrl: resolved,
       width: width,
@@ -39,8 +42,9 @@ class AppCachedImage extends StatelessWidget {
       fit: fit,
       placeholder: placeholder ?? (_, __) => _loading(),
       errorWidget: errorWidget ?? (_, __, ___) => _fallback(),
-      memCacheWidth: width?.toInt(),
-      memCacheHeight: height?.toInt(),
+      memCacheWidth: width != null ? (width! * dpr).toInt() : null,
+      memCacheHeight: height != null ? (height! * dpr).toInt() : null,
+      imageBuilder: semanticLabel != null ? (context, imageProvider) => Semantics(label: semanticLabel, image: true, child: Image(image: imageProvider, width: width, height: height, fit: fit)) : null,
     );
 
     if (borderRadius != null) {
