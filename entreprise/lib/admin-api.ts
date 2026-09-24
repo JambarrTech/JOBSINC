@@ -50,8 +50,7 @@ export async function adminLogin(payload: Record<string, unknown>) {
 }
 
 export async function verifyAdminSession() {
-  const sessionEndpoint = process.env.NEXT_PUBLIC_ADMIN_SESSION_ENDPOINT;
-  if (!sessionEndpoint) return null;
+  const sessionEndpoint = process.env.NEXT_PUBLIC_ADMIN_SESSION_ENDPOINT || process.env.NEXT_PUBLIC_SESSION_ENDPOINT || '/auth/me';
   return apiRequest<{ user?: AdminUser }>(sessionEndpoint);
 }
 
