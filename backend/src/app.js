@@ -44,11 +44,11 @@ if (process.env.TRUST_PROXY === '0') {
   }
 }
 
-const corsOrigins = (process.env.CORS_ORIGINS ||
-  'http://localhost:3000,http://127.0.0.1:3000')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const defaultOrigins = ['http://localhost:3000','http://localhost:3001','http://127.0.0.1:3000','http://127.0.0.1:3001'];
+const corsOrigins = [...new Set([
+  ...defaultOrigins,
+  ...(process.env.CORS_ORIGINS || '').split(',').map(o=>o.trim()).filter(Boolean)
+].filter(Boolean))];
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -99,9 +99,12 @@ const PROTECTED_UPLOAD_PREFIXES = ['/cvs/', '/candidates/'];
 
 const uploadAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'Accès non autorisé.' });
+  let token = null;
+  if (authHeader) token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
+  else if (req.cookies?.jobsinc_token) token = req.cookies.jobsinc_token;
+  else if (req.cookies?.accessToken) token = req.cookies.accessToken;
+  if (!token) return res.status(401).json({ error: 'Accès non autorisé.' });
   try {
-    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (!decoded?.userId) return res.status(401).json({ error: 'Token invalide.' });
     const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { tokenVersion: true } });
