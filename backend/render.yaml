@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: jobsinc-backend
+    runtime: node
+    plan: starter
+    region: frankfurt # ou oregon / singapore — choisir proche de Neon (eu-west / us-east)
+    branch: main
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: 1
+      - key: PORT
+        value: 10000 # Render injecte PORT, fallback 5000 dans server.js
+      # Variables à définir dans Dashboard Render (ne pas hardcoder ici) :
+      # - DATABASE_URL
+      # - JWT_SECRET
+      # - CORS_ORIGINS
+      # - REDIS_URL / REDIS_TLS
+      # - SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / MAIL_FROM
+      # - FCM_SERVICE_ACCOUNT_JSON (ou FCM_SERVICE_ACCOUNT_PATH si fichier monté)
+      # - STORAGE_DRIVER / AWS_S3_BUCKET / AWS_S3_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY

@@ -33,6 +33,7 @@
     "vercel-build": "prisma generate",
     "postinstall": "prisma generate",
     "build": "prisma generate",
+    "start:render": "npx prisma migrate deploy && node server.js",
     "test": "node tests/matching.test.js",
     "test:e2e": "node tests/api.e2e.test.js"
   }
