@@ -10,7 +10,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 
 const prisma = require('./config/prisma');
-const { globalLimiter, authLimiter } = require('./middlewares/rateLimit');
+const { globalLimiter, authLimiter, publicLimiter, candidateLimiter, recruiterLimiter, adminLimiter, messageLimiter } = require('./middlewares/rateLimit');
 
 const authRoutes = require('./routes/authRoutes');
 const companyRoutes = require('./routes/companyRoutes');
@@ -130,21 +130,27 @@ if (DRIVER === 'local') {
 }
 
 app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/company', companyRoutes);
-app.use('/api/companies', publicCompanyRoutes);
-app.use('/api/jobs', jobRoutes);
-app.use('/api/applications', applicationRoutes);
-app.use('/api/interviews', interviewRoutes);
-app.use('/api/candidate', candidateRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/stats', statsRoutes);
-app.use('/api/conversations', conversationRoutes);
-app.use('/api/devices', deviceRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/faq', faqRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.use('/api/saved-jobs', savedJobRoutes);
-app.use('/api/skills', skillRoutes);
+// Séparation rate limiting par app : quotas isolés (keyGenerator par userId)
+// Public (entreprise vitrine + mobile feed) — 120/min/IP
+app.use('/api/companies', publicLimiter, publicCompanyRoutes);
+app.use('/api/jobs', publicLimiter, jobRoutes);
+app.use('/api/faq', publicLimiter, faqRoutes);
+app.use('/api/feedback', publicLimiter, feedbackRoutes);
+app.use('/api/skills', publicLimiter, skillRoutes);
+// Recruteur (entreprise dashboard) — 200/min/user
+app.use('/api/company', recruiterLimiter, companyRoutes);
+app.use('/api/stats', recruiterLimiter, statsRoutes);
+// Candidat (mobile + entreprise candidat) — 200/min/user
+app.use('/api/candidate', candidateLimiter, candidateRoutes);
+app.use('/api/applications', candidateLimiter, applicationRoutes);
+app.use('/api/saved-jobs', candidateLimiter, savedJobRoutes);
+app.use('/api/devices', candidateLimiter, deviceRoutes);
+// Messagerie / entretiens — 60/min/user (anti-spam)
+app.use('/api/interviews', messageLimiter, interviewRoutes);
+app.use('/api/conversations', messageLimiter, conversationRoutes);
+app.use('/api/notifications', messageLimiter, notificationRoutes);
+// Admin — 60/min/user (strict)
+app.use('/api/admin', adminLimiter, adminRoutes);
 
 app.get('/', (req, res) => {
   res.send('🚀 Serveur JOBSINC opérationnel !');
