@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/cache_for_extension.dart';
 import '../../../core/services/api_client.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../jobs/models/job_offer.dart';
@@ -25,7 +26,8 @@ class SavedJobEntry {
   }
 }
 
-final savedJobsProvider = FutureProvider.autoDispose<List<SavedJobEntry>>((ref) async {
+final savedJobsProvider = FutureProvider<List<SavedJobEntry>>((ref) async {
+  ref.cacheFor(const Duration(minutes: 5));
   final token = ref.watch(authProvider).user?.token;
   if (token == null || token.isEmpty) return const [];
   // Aucun catch ici : une erreur réseau doit remonter comme AsyncError

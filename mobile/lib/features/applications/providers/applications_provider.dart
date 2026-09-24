@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/cache_for_extension.dart';
 import '../../../core/services/api_client.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../candidate/home/data/home_repository.dart';
 
-final applicationsProvider = FutureProvider.autoDispose<List<HomeApplication>>(
+final applicationsProvider = FutureProvider<List<HomeApplication>>(
   (ref) async {
+    ref.cacheFor(const Duration(minutes: 5));
     final token = ref.watch(authProvider).user?.token;
     if (token == null || token.isEmpty) return [];
     final api = ApiClient();
@@ -118,7 +120,8 @@ class ActiveInterview {
 }
 
 final activeInterviewProvider =
-    FutureProvider.autoDispose<ActiveInterview?>((ref) async {
+    FutureProvider<ActiveInterview?>((ref) async {
+  ref.cacheFor(const Duration(minutes: 5));
   final token = ref.watch(authProvider).user?.token;
   if (token == null || token.isEmpty) return null;
   try {

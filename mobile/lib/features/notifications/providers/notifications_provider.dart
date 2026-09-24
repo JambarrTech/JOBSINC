@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/cache_for_extension.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../data/notifications_repository.dart';
 import '../models/app_notification.dart';
@@ -37,7 +38,10 @@ class NotificationsController extends Notifier<NotificationsState> {
   final _repo = NotificationsRepository();
 
   @override
-  NotificationsState build() => const NotificationsState(isLoading: true);
+  NotificationsState build() {
+    ref.cacheFor(const Duration(minutes: 5));
+    return const NotificationsState(isLoading: true);
+  }
 
   String? get _token => ref.read(authProvider).user?.token;
 

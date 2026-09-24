@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/cache_for_extension.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/services/api_client.dart';
 import '../data/messages_repository.dart';
@@ -34,7 +35,10 @@ class MessagesController extends Notifier<MessagesState> {
   final _repo = MessagesRepository();
 
   @override
-  MessagesState build() => const MessagesState();
+  MessagesState build() {
+    ref.cacheFor(const Duration(minutes: 5));
+    return const MessagesState();
+  }
 
   String? get _token => ref.read(authProvider).user?.token;
 
@@ -155,7 +159,10 @@ class ChatController extends FamilyNotifier<ChatState, Conversation> {
   final _repo = MessagesRepository();
 
   @override
-  ChatState build(Conversation arg) => ChatState(conversation: arg);
+  ChatState build(Conversation arg) {
+    ref.cacheFor(const Duration(minutes: 5));
+    return ChatState(conversation: arg);
+  }
 
   String? get _token => ref.read(authProvider).user?.token;
 

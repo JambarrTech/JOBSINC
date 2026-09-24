@@ -28,6 +28,27 @@ import '../../profile/providers/candidate_stats_provider.dart';
 import 'data/home_repository.dart';
 import 'providers/home_provider.dart';
 
+class KeepAliveWrapper extends StatefulWidget {
+  const KeepAliveWrapper({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<KeepAliveWrapper> createState() => _KeepAliveWrapperState();
+}
+
+class _KeepAliveWrapperState extends State<KeepAliveWrapper>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+}
+
 class CandidateHomeScreen extends ConsumerStatefulWidget {
   const CandidateHomeScreen({super.key});
 
@@ -39,6 +60,7 @@ class CandidateHomeScreen extends ConsumerStatefulWidget {
 class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
   final _searchController = TextEditingController();
   final _locationController = TextEditingController();
+  final _bucket = PageStorageBucket();
 
   int _tab = 0;
   StreamSubscription<Map<String, dynamic>>? _interviewSub;
@@ -89,23 +111,56 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
       onDestinationSelected: (value) {
         setState(() => _tab = value);
       },
-      body: _buildBody(),
+      body: PageStorage(
+        bucket: _bucket,
+        child: IndexedStack(
+          index: _tab,
+          children: [
+            KeepAliveWrapper(
+              child: _HomeTab(
+                key: const PageStorageKey('candidate_home_tab'),
+                searchController: _searchController,
+                onSearchSubmit: _submitSearch,
+                onOpenProfile: () => setState(() => _tab = 3),
+              ),
+            ),
+            const KeepAliveWrapper(
+              child: ApplicationsScreen(
+                key: PageStorageKey('candidate_applications_tab'),
+              ),
+            ),
+            const KeepAliveWrapper(
+              child: MessagesScreen(
+                key: PageStorageKey('candidate_messages_tab'),
+                isCompanySide: false,
+              ),
+            ),
+            const KeepAliveWrapper(
+              child: ProfileScreen(
+                key: PageStorageKey('candidate_profile_tab'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _buildBody() {
-    if (_tab == 1) {
-      return const ApplicationsScreen();
-    }
+class _HomeTab extends ConsumerWidget {
+  const _HomeTab({
+    super.key,
+    required this.searchController,
+    required this.onSearchSubmit,
+    required this.onOpenProfile,
+  });
 
-    if (_tab == 2) {
-      return const MessagesScreen(isCompanySide: false);
-    }
+  final TextEditingController searchController;
+  final VoidCallback onSearchSubmit;
+  final VoidCallback onOpenProfile;
 
-    if (_tab == 3) {
-      return const ProfileScreen();
-    }
-
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
     final token = user?.token;
 
@@ -115,9 +170,7 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
       );
     }
 
-    final dashboard = ref.watch(
-      homeDashboardProvider(token),
-    );
+    final dashboard = ref.watch(homeDashboardProvider(token));
 
     return RefreshIndicator(
       onRefresh: () => ref.refresh(homeDashboardProvider(token).future),
@@ -134,9 +187,9 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
           photoUrl: user?.photoUrl,
           data: data,
           unreadCount: ref.watch(notificationsProvider).unreadCount,
-          searchController: _searchController,
-          onSearchSubmit: _submitSearch,
-          onOpenProfile: () => setState(() => _tab = 3),
+          searchController: searchController,
+          onSearchSubmit: onSearchSubmit,
+          onOpenProfile: onOpenProfile,
         ),
       ),
     );

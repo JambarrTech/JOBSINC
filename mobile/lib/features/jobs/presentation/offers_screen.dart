@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_skeleton.dart';
 import '../models/job_offer.dart';
 import '../providers/jobs_provider.dart';
 import '../widgets/job_feed_card.dart';
@@ -96,6 +97,8 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
   @override
   Widget build(BuildContext context) {
     final jobsAsync = ref.watch(jobsProvider);
+    // Cache : si données déjà présentes, reste affiché pendant reload.
+    final isRefreshing = jobsAsync.isLoading && jobsAsync.hasValue;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -105,6 +108,7 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
           await ref.read(jobsProvider.future);
         },
         child: CustomScrollView(
+          key: const PageStorageKey('offers_list'),
           slivers: [
             SliverAppBar(
               pinned: true,
@@ -128,6 +132,16 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
                     ),
                   ),
               ],
+              bottom: isRefreshing
+                  ? const PreferredSize(
+                      preferredSize: Size.fromHeight(2),
+                      child: LinearProgressIndicator(
+                        minHeight: 2,
+                        color: AppColors.primary,
+                        backgroundColor: Colors.transparent,
+                      ),
+                    )
+                  : null,
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
@@ -185,7 +199,10 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
                   ),
                   const SizedBox(height: 18),
                   jobsAsync.when(
-                    loading: () => const _SkeletonList(),
+                    skipLoadingOnReload: true,
+                    skipLoadingOnRefresh: true,
+                    skipError: true,
+                    loading: () => const JobCardSkeletonList(count: 3),
                     error: (_, __) => _ErrorState(
                       onRetry: () => ref.invalidate(jobsProvider),
                     ),
@@ -326,33 +343,6 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// SKELETON
-// ============================================================
-
-class _SkeletonList extends StatelessWidget {
-  const _SkeletonList();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(
-        4,
-        (_) => Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: Container(
-            height: 200,
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
-          ),
-        ),
       ),
     );
   }
