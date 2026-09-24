@@ -61,6 +61,11 @@ app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
     if (corsOrigins.includes(origin) || corsOrigins.includes('*')) return cb(null, true);
+    // Autorise par défaut les frontends déployés Render/Vercel même si CORS_ORIGINS non configuré (prod)
+    try {
+      const { hostname } = new URL(origin);
+      if (hostname.endsWith('.onrender.com') || hostname.endsWith('.vercel.app') || hostname === 'jobsinc.com' || hostname.endsWith('.jobsinc.com')) return cb(null, true);
+    } catch {}
     return cb(null, false);
   },
   credentials: true,
