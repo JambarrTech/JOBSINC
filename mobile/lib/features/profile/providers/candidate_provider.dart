@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import '../../../core/providers/cache_for_extension.dart';
 import '../../../core/services/api_client.dart';
 import '../../auth/providers/auth_provider.dart';
 
@@ -62,7 +63,8 @@ class CandidateProfile {
 }
 
 final candidateProfileProvider =
-    FutureProvider.autoDispose<CandidateProfile>((ref) async {
+    FutureProvider<CandidateProfile>((ref) async {
+  ref.cacheFor(const Duration(minutes: 5));
   final token = ref.watch(authProvider).user?.token;
   if (token == null || token.isEmpty) {
     return const CandidateProfile();
@@ -95,13 +97,13 @@ class CvUploadFailure extends CvUploadResult {
   final String message;
 }
 
-class CandidateProfileController
-    extends AutoDisposeNotifier<CandidateProfile> {
+class CandidateProfileController extends Notifier<CandidateProfile> {
 
   static const int maxImageSizeBytes = 15 * 1024 * 1024;
 
   @override
   CandidateProfile build() {
+    ref.cacheFor(const Duration(minutes: 5));
     final profile = ref.watch(candidateProfileProvider);
     return profile.maybeWhen(
       data: (data) => data,
@@ -262,6 +264,6 @@ class CandidateProfileController
 }
 
 final candidateProfileControllerProvider =
-    NotifierProvider.autoDispose<CandidateProfileController, CandidateProfile>(
+    NotifierProvider<CandidateProfileController, CandidateProfile>(
   CandidateProfileController.new,
 );

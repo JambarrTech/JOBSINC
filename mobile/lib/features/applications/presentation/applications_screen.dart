@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_feedback.dart';
+import '../../../core/widgets/app_skeleton.dart';
 import '../../../core/widgets/hero_banner.dart';
 import '../../candidate/home/data/home_repository.dart';
 import '../providers/applications_provider.dart';
@@ -26,6 +27,7 @@ class _ApplicationsScreenState extends ConsumerState<ApplicationsScreen> {
   @override
   Widget build(BuildContext context) {
     final applicationsAsync = ref.watch(applicationsProvider);
+    final isRefreshing = applicationsAsync.isLoading && applicationsAsync.hasValue;
 
     return RefreshIndicator(
       color: AppColors.primary,
@@ -34,6 +36,7 @@ class _ApplicationsScreenState extends ConsumerState<ApplicationsScreen> {
         await ref.read(applicationsProvider.future);
       },
       child: ListView(
+        key: const PageStorageKey('applications_list'),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
         children: [
@@ -50,9 +53,20 @@ class _ApplicationsScreenState extends ConsumerState<ApplicationsScreen> {
             'Suivez chaque étape de votre parcours professionnel.',
             style: TextStyle(color: AppColors.secondaryText),
           ),
+          if (isRefreshing) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(
+              minHeight: 2,
+              color: AppColors.primary,
+              backgroundColor: AppColors.background,
+            ),
+          ],
           const SizedBox(height: 18),
           applicationsAsync.when(
-            loading: () => const _SkeletonList(),
+            skipLoadingOnReload: true,
+            skipLoadingOnRefresh: true,
+            skipError: true,
+            loading: () => const JobCardSkeletonList(count: 3),
             error: (error, _) => _ErrorState(
               onRetry: () => ref.invalidate(applicationsProvider),
             ),
@@ -893,33 +907,6 @@ class _EmptyState extends StatelessWidget {
             style: TextStyle(color: AppColors.secondaryText, height: 1.4),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// SKELETON
-// ============================================================
-
-class _SkeletonList extends StatelessWidget {
-  const _SkeletonList();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(
-        3,
-        (_) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Container(
-            height: 140,
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
-          ),
-        ),
       ),
     );
   }

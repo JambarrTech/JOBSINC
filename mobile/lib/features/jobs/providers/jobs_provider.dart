@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/cache_for_extension.dart';
 import '../../../core/services/api_client.dart';
 import '../models/job_offer.dart';
 
@@ -7,8 +8,9 @@ final jobsRepositoryProvider = Provider<JobsRepository>(
   (ref) => JobsRepository(),
 );
 
-final jobsProvider = FutureProvider.autoDispose<List<JobOffer>>(
+final jobsProvider = FutureProvider<List<JobOffer>>(
   (ref) async {
+    ref.cacheFor(const Duration(minutes: 5));
     return ref.watch(jobsRepositoryProvider).loadJobs();
   },
 );
