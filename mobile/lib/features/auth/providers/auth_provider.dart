@@ -323,6 +323,7 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  @Deprecated('Inscription entreprise désactivée sur mobile — utiliser le web (entreprise). Conservé pour compat API.')
   Future<bool> registerCompany({
     required String companyName,
     required String email,
