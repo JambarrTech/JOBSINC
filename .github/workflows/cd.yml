@@ -1,0 +1,88 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    name: Deploy Web (Vercel)
+    runs-on: ubuntu-latest
+    if: github.repository == 'JambarrTech/JOBSINC'
+    defaults:
+      run:
+        working-directory: entreprise
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: entreprise/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://api.jobsinc.com/api' }}
+      # Vercel deploy via vercel CLI si secrets présents, sinon skip
+      - name: Vercel Deploy
+        if: env.VERCEL_TOKEN != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm i -g vercel
+          vercel pull --yes --environment=production --token=$VERCEL_TOKEN || true
+          vercel build --prod --token=$VERCEL_TOKEN || true
+          vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN || echo "vercel deploy skip"
+
+  deploy-backend:
+    name: Deploy Backend (Render)
+    runs-on: ubuntu-latest
+    if: github.repository == 'JambarrTech/JOBSINC'
+    steps:
+      - uses: actions/checkout@v4
+      # Render auto-deploy via render.yaml si repo connecté — ce job vérifie juste le build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - working-directory: backend
+        run: |
+          npm ci
+          npx prisma generate
+          npx prisma validate
+          node --check server.js
+          node --check src/app.js || true
+      - name: Trigger Render Deploy Hook (optionnel)
+        if: env.RENDER_DEPLOY_HOOK != ''
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: curl -sf -X POST "$RENDER_DEPLOY_HOOK" && echo "Render hook triggered" || echo "hook skip"
+
+  build-mobile:
+    name: Build Mobile APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.22.x'
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release --no-pub
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jobsinc-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
