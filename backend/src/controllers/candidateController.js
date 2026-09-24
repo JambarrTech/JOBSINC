@@ -138,8 +138,13 @@ exports.uploadCv = async (req, res) => {
     }
 
     if (candidate.cvUrl) {
-      const oldPath = path.join(__dirname, '../..', '.' + candidate.cvUrl);
-      await fs.unlink(oldPath).catch(() => {});
+      if (candidate.cvUrl.startsWith('/uploads/')) {
+        const { removeLocal } = require('../services/storageService');
+        await removeLocal(candidate.cvUrl).catch(() => {});
+      } else {
+        const oldPath = path.join(__dirname, '../..', '.' + candidate.cvUrl);
+        await fs.unlink(oldPath).catch(() => {});
+      }
     }
     const updated = await prisma.candidateProfile.update({
       where: { id: candidate.id },
@@ -170,8 +175,13 @@ exports.uploadAvatar = async (req, res) => {
     }
 
     if (candidate.avatarUrl) {
-      const oldPath = path.join(__dirname, '../..', '.' + candidate.avatarUrl);
-      await fs.unlink(oldPath).catch(() => {});
+      if (candidate.avatarUrl.startsWith('/uploads/')) {
+        const { removeLocal } = require('../services/storageService');
+        await removeLocal(candidate.avatarUrl).catch(() => {});
+      } else {
+        const oldPath = path.join(__dirname, '../..', '.' + candidate.avatarUrl);
+        await fs.unlink(oldPath).catch(() => {});
+      }
     }
 
     const updated = await prisma.candidateProfile.update({

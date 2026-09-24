@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../data/recruiter_provider.dart';
 
 class RecruiterJobsScreen extends ConsumerStatefulWidget {
@@ -368,11 +369,12 @@ class _CreateJobSheetState extends ConsumerState<_CreateJobSheet> {
     if (!mounted) return;
     setState(() => _submitting = false);
     if (error == null) {
+      AppFeedback.success(context, 'Offre publiée avec succès.');
       widget.onCreated();
+      if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offre publiée avec succès.'), backgroundColor: AppColors.accent));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: AppColors.error));
+      AppFeedback.error(context, AppFeedback.humanizeError(error));
     }
   }
 }

@@ -25,7 +25,7 @@ class MessagesScreen extends ConsumerStatefulWidget {
   ConsumerState<MessagesScreen> createState() => _MessagesScreenState();
 }
 
-class _MessagesScreenState extends ConsumerState<MessagesScreen> {
+class _MessagesScreenState extends ConsumerState<MessagesScreen> with WidgetsBindingObserver {
   String _query = '';
   Timer? _refreshTimer;
   StreamSubscription<String>? _socketSub;
@@ -33,15 +33,39 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Future.microtask(() => ref.read(messagesProvider.notifier).load());
     _connectSocket();
-    // Filet de sécurité : rafraîchissement léger des badges si le
-    // socket est indisponible.
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
       if (!ChatSocketService.instance.isConnected) {
         ref.read(messagesProvider.notifier).refreshQuietly();
       }
     });
+  }
+
+  void _stopPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+      if (!ChatSocketService.instance.isConnected) {
+        ref.read(messagesProvider.notifier).refreshQuietly();
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _stopPolling();
+    }
   }
 
   // ------------------------------------------------------------
@@ -63,7 +87,8 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopPolling();
     _socketSub?.cancel();
     super.dispose();
   }
@@ -71,6 +96,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(messagesProvider);
+    final filtered = _filtered(state.conversations);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -183,7 +209,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                   ),
                 ),
               )
-            else if (_filtered(state.conversations).isEmpty)
+            else if (filtered.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Padding(
@@ -234,10 +260,10 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
                 sliver: SliverList.separated(
-                  itemCount: _filtered(state.conversations).length,
+                  itemCount: filtered.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (_, index) {
-                    final conversation = _filtered(state.conversations)[index];
+                    final conversation = filtered[index];
                     return _ConversationTile(
                       conversation: conversation,
                       showContext: true,

@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
@@ -204,12 +205,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     if (!mounted) return;
 
     if (!sent) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Impossible d'envoyer le message."),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      AppFeedback.error(context, "Impossible d'envoyer le message.");
       _inputController.text = content;
     } else {
       _scrollToBottom(animated: true);
@@ -357,6 +353,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                         : Builder(builder: (context) {
                             final headerCount =
                                 (chat.isLoadingOlder || chat.hasMore) ? 1 : 0;
+                            final peerName =
+                                chat.conversation?.participantName ?? widget.conversation.participantName;
                             return GestureDetector(
                               onTap: () => _focusNode.unfocus(),
                               child: ListView.builder(
@@ -393,6 +391,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                     message: message,
                                     showDateSeparator: previous == null ||
                                         !_isSameDay(previous.createdAt, message.createdAt),
+                                    peerName: peerName,
                                   );
                                 },
                               ),
@@ -491,10 +490,11 @@ class _DateSeparator extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, required this.showDateSeparator});
+  const _MessageBubble({required this.message, required this.showDateSeparator, this.peerName = ''});
 
   final ChatMessage message;
   final bool showDateSeparator;
+  final String peerName;
 
   @override
   Widget build(BuildContext context) {
@@ -503,15 +503,19 @@ class _MessageBubble extends StatelessWidget {
     return Column(
       children: [
         if (showDateSeparator) _DateSeparator(date: message.createdAt),
-        Align(
-          alignment: message.isMine ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: EdgeInsets.only(
-              left: message.isMine ? 60 : 20,
-              right: message.isMine ? 20 : 60,
-              top: 3,
-              bottom: 3,
-            ),
+        Semantics(
+          label: message.isMine
+              ? 'Vous: ${message.content}'
+              : '${peerName.isNotEmpty ? peerName : 'Interlocuteur'}: ${message.content}',
+          child: Align(
+            alignment: message.isMine ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              margin: EdgeInsets.only(
+                left: message.isMine ? 60 : 20,
+                right: message.isMine ? 20 : 60,
+                top: 3,
+                bottom: 3,
+              ),
             constraints: BoxConstraints(maxWidth: maxWidth),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -566,6 +570,7 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ],

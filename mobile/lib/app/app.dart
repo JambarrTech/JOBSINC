@@ -92,6 +92,8 @@ class _JobsincAppState extends ConsumerState<JobsincApp> {
         title: 'JOBSINC',
         debugShowCheckedModeBanner: false,
         theme: JobsincTheme.light,
+        darkTheme: JobsincTheme.dark,
+        themeMode: ThemeMode.system,
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,

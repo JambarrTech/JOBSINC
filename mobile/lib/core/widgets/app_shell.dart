@@ -34,7 +34,13 @@ class AppShell extends StatelessWidget {
 
     return Scaffold(
       body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: body))),
-      bottomNavigationBar: NavigationBar(selectedIndex: currentIndex, onDestinationSelected: onDestinationSelected, backgroundColor: Colors.white, indicatorColor: AppColors.primary.withValues(alpha: .12), destinations: destinations),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: currentIndex,
+        onDestinationSelected: onDestinationSelected,
+        backgroundColor: AppColors.surface,
+        indicatorColor: AppColors.primary.withValues(alpha: .08),
+        destinations: destinations.map((d) => NavigationDestination(icon: Semantics(excludeSemantics: true, child: d.icon), selectedIcon: Semantics(excludeSemantics: true, child: d.selectedIcon), label: d.label, tooltip: d.label)).toList(),
+      ),
     );
   }
 }

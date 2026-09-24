@@ -78,7 +78,8 @@ function handleError(err, res) {
     return res.status(401).json({ error: 'Session expirée.', code: 'TOKEN_EXPIRED' });
   }
 
-  console.error('Erreur non gérée:', err);
+  const reqId = err.reqId || 'no-id';
+  console.error(`[ERR ${reqId}]`, err.stack || err.message, err.code || '');
   return res.status(500).json({ error: 'Erreur serveur interne.', code: 'INTERNAL_ERROR' });
 }
 

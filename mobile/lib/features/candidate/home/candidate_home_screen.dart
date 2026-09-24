@@ -11,7 +11,9 @@ import '../../../core/services/api_client.dart';
 import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_cached_image.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../../core/widgets/app_states.dart';
 import '../../../core/widgets/pressable_button.dart';
 import '../../applications/presentation/applications_screen.dart';
 import '../../applications/providers/applications_provider.dart';
@@ -284,9 +286,7 @@ class _LiveInterviewBanner extends ConsumerWidget {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible d\'ouvrir Google Meet.')),
-        );
+        AppFeedback.error(context, 'Impossible d\'ouvrir Google Meet.');
       }
     }
   }
@@ -349,7 +349,7 @@ class _LiveInterviewBanner extends ConsumerWidget {
             const SizedBox(height: 6),
             Text(
               'L\'entretien a commencé à ${DateFormat('HH:mm', 'fr').format(live.startedAt!)}',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFBE123C)),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF9B1230)),
             ),
           ] else if (live.scheduledAt != null) ...[
             const SizedBox(height: 6),
@@ -369,6 +369,7 @@ class _LiveInterviewBanner extends ConsumerWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFDC2626),
                   foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
@@ -386,12 +387,13 @@ class _LiveInterviewBanner extends ConsumerWidget {
                       final ok = await ref.read(interviewActionProvider.notifier).finish(live.applicationId);
                       if (!ok && context.mounted) {
                         final message = ref.read(interviewActionProvider).error ?? 'Erreur lors de la fin de l\'entretien.';
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                        AppFeedback.error(context, AppFeedback.humanizeError(message));
                       }
                     },
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.secondaryText,
                 side: const BorderSide(color: Color(0xFFFDA4AF)),
+                minimumSize: const Size.fromHeight(48),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -568,10 +570,15 @@ class _HomeHeaderState extends State<HomeHeader>
                                 ),
                                 suffixIcon: Semantics(
                                   label: 'Filtrer les résultats',
-                                  child: const Icon(
-                                    Icons.tune_rounded,
-                                    color: AppColors.secondaryText,
-                                    size: 18,
+                                  button: true,
+                                  child: IconButton(
+                                    tooltip: 'Filtrer',
+                                    onPressed: () => widget.onSearchSubmit?.call(),
+                                    icon: const Icon(
+                                      Icons.tune_rounded,
+                                      color: AppColors.secondaryText,
+                                      size: 18,
+                                    ),
                                   ),
                                 ),
                                 isDense: true,
@@ -1209,11 +1216,43 @@ class ProfileStatsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final stats = ref.watch(candidateStatsProvider);
     return stats.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      loading: () => const Padding(
+        padding: EdgeInsets.only(bottom: 16),
+        child: AppLoader(label: 'Chargement des statistiques'),
+      ),
+      error: (_, __) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: AppErrorState(
+          message: 'Aucune stats disponibles',
+          onRetry: () => ref.invalidate(candidateStatsProvider),
+        ),
+      ),
       data: (data) {
+        if (data.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: AppErrorState(
+              message: 'Aucune stats disponibles',
+              onRetry: () => ref.invalidate(candidateStatsProvider),
+            ),
+          );
+        }
         if (data.totalApplications == 0 && data.profileCompletion == 0) {
-          return const SizedBox.shrink();
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.background),
+            ),
+            child: const Center(
+              child: Text(
+                'Aucune stats',
+                style: TextStyle(color: AppColors.secondaryText, fontSize: 13),
+              ),
+            ),
+          );
         }
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
@@ -1407,14 +1446,20 @@ class _CompanyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 110,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.white,
+    return Semantics(
+      button: true,
+      label: company.name,
+      child: InkWell(
+        onTap: () => context.push('/jobs?q=${Uri.encodeQueryComponent(company.name)}'),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.background),
-      ),
+        child: Container(
+          width: 110,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.background),
+          ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1454,6 +1499,8 @@ class _CompanyChip extends StatelessWidget {
             ),
           ],
         ],
+          ),
+        ),
       ),
     );
   }

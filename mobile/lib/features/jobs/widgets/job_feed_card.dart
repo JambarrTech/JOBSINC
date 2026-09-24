@@ -209,16 +209,14 @@ class JobFeedCard extends StatelessWidget {
               // Action button
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                child: PressableButton(
-                  child: FilledButton.icon(
-                    onPressed: onTap,
-                    icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                    label: const Text('Voir l\'offre'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(40),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(11),
-                      ),
+                child: FilledButton.icon(
+                  onPressed: onTap,
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text('Voir l\'offre'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(40),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(11),
                     ),
                   ),
                 ),

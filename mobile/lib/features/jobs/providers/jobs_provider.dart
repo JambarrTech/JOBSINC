@@ -18,10 +18,12 @@ class JobsRepository {
 
   final ApiClient _api;
 
-  Future<List<JobOffer>> loadJobs() async {
-    final response = await _api.get('/jobs');
+  Future<List<JobOffer>> loadJobs({int page = 1, int limit = 20}) async {
+    final response = await _api.get('/jobs?page=$page&limit=$limit');
 
-    final data = response['data'] as List<dynamic>? ?? const [];
+    // Support paginated {data: [], total, page} ou legacy {data: []}
+    final raw = response['data'];
+    final data = raw is List ? raw : (response['results'] as List<dynamic>? ?? const []);
 
     return data
         .whereType<Map<String, dynamic>>()

@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.mobile"
+    namespace = "com.jobsinc.mobile"
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
@@ -18,8 +18,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.mobile"
+        applicationId = "com.jobsinc.mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -29,10 +28,18 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Debug: autorise le trafic HTTP clair pour 10.0.2.2 / 127.0.0.1 / LAN
+            manifestPlaceholders["usesCleartextTraffic"] = true
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Release: HTTPS obligatoire, signature à configurer via key.properties
+            // Voir https://docs.flutter.dev/deployment/android#create-a-keystore
+            manifestPlaceholders["usesCleartextTraffic"] = false
             signingConfig = signingConfigs.getByName("debug")
+            // TODO(prod): remplacer par signingConfigs.create("release") avec keystore
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

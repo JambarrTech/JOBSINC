@@ -4,6 +4,7 @@ const path = require('path');
 const { getMatches, getCompanyMatches, getJobMatches, computeMatch } = require('../services/matchingService');
 const { getCached, setCache, invalidate } = require('../utils/cache');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const { validate, jobCreateSchema } = require('../utils/zodSchemas');
 
 const jobInclude = { _count: { select: { applications: true } } };
 const companyInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
@@ -270,12 +271,25 @@ exports.jobs = async (req, res) => {
 exports.createJob = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
+    // Validation zod (garde compat contractType français)
+    const normalized = {
+      ...req.body,
+      contractType: req.body.contractType,
+      title: req.body.title?.trim(),
+      description: req.body.description?.trim(),
+      location: req.body.location?.trim(),
+      skills: req.body.skills?.trim(),
+    };
+    // Pre-validate zod puis mappe contractType legacy
+    const validContractTypesLegacy = ['Temps plein','Temps partiel','Stage','Freelance','CDD','CDI'];
+    let bodyForZod = { ...normalized };
+    if (validContractTypesLegacy.includes(bodyForZod.contractType)) {
+      bodyForZod.contractType = bodyForZod.contractType;
+    }
+    // Utilise zod pour les champs communs, puis vérif contractType élargie
+    try { validate(jobCreateSchema, { ...bodyForZod, jobType: undefined }); } catch (e) { return res.status(400).json({ error: e.message, details: e.details }); }
     const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
-    if (!title?.trim() || !description?.trim() || !location?.trim() || !contractType || !skills?.trim()) return res.status(400).json({ error: 'Les champs obligatoires de l’offre sont manquants.' });
-    if (title.trim().length > 150 || description.trim().length > 10000 || skills.trim().length > 5000) return res.status(400).json({ error: 'Titre/description/skills trop longs.' });
     if (deadline && new Date(deadline) < new Date()) return res.status(400).json({ error: 'La date limite ne peut pas être dans le passé.' });
-    if (salaryMin !== null && salaryMin !== '' && salaryMin !== undefined && Number.isNaN(Number(salaryMin))) return res.status(400).json({ error: 'salaryMin invalide.' });
-    if (salaryMax !== null && salaryMax !== '' && salaryMax !== undefined && Number.isNaN(Number(salaryMax))) return res.status(400).json({ error: 'salaryMax invalide.' });
     const validContractTypes = ['Temps plein','Temps partiel','Stage','Freelance','CDD','CDI','FULL_TIME','PART_TIME','INTERNSHIP','FREELANCE'];
     if (!validContractTypes.includes(contractType)) return res.status(400).json({ error: `contractType invalide: ${contractType}` });
     const company = await getCompany(req.user.userId);
@@ -384,8 +398,16 @@ exports.uploadLogo = async (req, res) => {
     const company = await getCompany(req.user.userId, req.user.role);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     if (company.logo) {
-      const oldPath = path.join(__dirname, '../..', '.' + company.logo);
-      await fs.unlink(oldPath).catch(() => {});
+      // Sur Vercel les fichiers sont dans /tmp/uploads, sur local dans ./uploads,
+      // et sur S3 l'URL est http : on utilise removeLocal qui gère les 3 cas.
+      const { removeLocal } = require('../services/storageService');
+      // Compat: ancien logo peut être /uploads/... ou https://...
+      if (company.logo.startsWith('/uploads/')) {
+        await removeLocal(company.logo).catch(() => {});
+      } else {
+        const oldPath = path.join(__dirname, '../..', '.' + company.logo);
+        await fs.unlink(oldPath).catch(() => {});
+      }
     }
     const updated = await prisma.company.update({ where: { id: company.id }, data: { logo: req.companyLogo.url }, include: companyInclude });
     invalidate(`company:dashboard:${company.id}`);
@@ -408,8 +430,14 @@ exports.deleteImage = async (req, res) => {
       const other = await prisma.companyImage.findFirst({ where: { companyId: company.id, id: { not: image.id } }, orderBy: { sortOrder: 'asc' } });
       if (other) await prisma.companyImage.update({ where: { id: other.id }, data: { isPrimary: true } });
     }
-    const filePath = path.join(__dirname, '../..', '.' + image.url);
-    await fs.unlink(filePath).catch(() => {});
+    // Suppression compatible Vercel (/tmp) + local + S3 (no-op)
+    if (image.url && image.url.startsWith('/uploads/')) {
+      const { removeLocal } = require('../services/storageService');
+      await removeLocal(image.url).catch(() => {});
+    } else {
+      const filePath = path.join(__dirname, '../..', '.' + image.url);
+      await fs.unlink(filePath).catch(() => {});
+    }
     await prisma.companyImage.delete({ where: { id: image.id } });
     invalidate(`company:dashboard:${company.id}`);
     res.json({ message: 'Image supprimée.' });

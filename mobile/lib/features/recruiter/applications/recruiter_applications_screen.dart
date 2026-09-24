@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../data/recruiter_provider.dart';
 
 class RecruiterApplicationsScreen extends ConsumerStatefulWidget {
@@ -152,10 +153,9 @@ class _RecruiterApplicationsScreenState extends ConsumerState<RecruiterApplicati
                         statusLabels: _statusLabels,
                         nextStatuses: _nextStatuses,
                         onStatusChanged: (newStatus) async {
-                          final messenger = ScaffoldMessenger.of(context);
                           final error = await ref.read(recruiterApplicationsControllerProvider.notifier).updateStatus(filtered[index].id, newStatus);
-                          if (error != null) {
-                            messenger.showSnackBar(SnackBar(content: Text(error), backgroundColor: AppColors.error));
+                          if (error != null && context.mounted) {
+                            AppFeedback.error(context, AppFeedback.humanizeError(error));
                           }
                         },
                       ),

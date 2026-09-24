@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../../../core/widgets/hero_banner.dart';
 import '../../candidate/home/data/home_repository.dart';
 import '../providers/applications_provider.dart';
@@ -196,9 +198,7 @@ class _ApplicationCard extends StatelessWidget {
     final dateLabel = date != null ? DateFormat('dd/MM/yyyy').format(date) : '';
 
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => _ApplicationDetailScreen(application: application)),
-      ),
+      onTap: () => context.push('/applications/${application.id}', extra: application),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -340,7 +340,7 @@ class _ApplicationTimeline extends StatelessWidget {
                     labels[index],
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 12,
                       color: isActive ? color : AppColors.secondaryText,
                       fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w400,
                     ),
@@ -393,8 +393,8 @@ class _StatusBadge extends StatelessWidget {
 // APPLICATION DETAIL SCREEN
 // ============================================================
 
-class _ApplicationDetailScreen extends StatelessWidget {
-  const _ApplicationDetailScreen({required this.application});
+class ApplicationDetailScreen extends StatelessWidget {
+  const ApplicationDetailScreen({super.key, required this.application});
   final HomeApplication application;
 
   int get _activeStep {
@@ -648,9 +648,7 @@ class _InterviewDetailCard extends ConsumerWidget {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible d\'ouvrir Google Meet.')),
-        );
+        AppFeedback.error(context, 'Impossible d\'ouvrir Google Meet.');
       }
     }
   }
@@ -659,7 +657,7 @@ class _InterviewDetailCard extends ConsumerWidget {
     final ok = await ref.read(interviewActionProvider.notifier).finish(applicationId);
     if (!ok && context.mounted) {
       final message = ref.read(interviewActionProvider).error ?? 'Erreur lors de la fin de l\'entretien.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      AppFeedback.error(context, AppFeedback.humanizeError(message));
     }
   }
 
@@ -1028,7 +1026,7 @@ class ApplicationSuccessScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => context.go('/candidate/home'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

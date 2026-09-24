@@ -57,18 +57,13 @@ class _ApplicationFlowScreenState
   }
 
   Future<void> _pickCv() async {
-    final result = await FilePicker.pickFiles(
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'doc', 'docx'],
     );
-
-    // ignore: unnecessary_null_comparison
-    if (result == null) return;
-    // FilePicker 12: FilePickerResult? avec .files ; fallback List pour compat
-    final dynamic dyn = result;
-    final files = dyn.files ?? dyn;
-    if (files is List && files.isEmpty) return;
-    final pickedPath = files.first.path as String?;
+    if (files.isEmpty) return;
+    final picked = files.first;
+    final pickedPath = picked.path;
     if (pickedPath == null) return;
     final file = File(pickedPath);
 
@@ -348,6 +343,8 @@ class _ApplicationFlowScreenState
                   controller: _coverLetterController,
                   maxLines: 6,
                   minLines: 4,
+                  maxLength: 2000,
+                  textInputAction: TextInputAction.done,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     hintText:

@@ -1,10 +1,16 @@
 node_modules
 # Keep environment variables out of version control
 .env
+.env.local
 
 /generated/prisma
 serviceAccountKey.json
+*.key.json
 
-# Données personnelles : jamais dans le dépôt
+# DonnÃ©es personnelles : jamais dans le dÃ©pÃ´t
 uploads/
 backups/
+
+# Vercel
+.vercel
+.tmp

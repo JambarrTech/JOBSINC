@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_cached_image.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../../applications/providers/applications_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/job_offer.dart';
@@ -55,6 +56,11 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
     if (mounted) {
       setState(() => _isSaved = result);
       ref.invalidate(savedJobsProvider);
+      if (result) {
+        AppFeedback.success(context, 'Offre sauvegardée');
+      } else {
+        AppFeedback.success(context, 'Offre retirée des favoris');
+      }
     }
   }
 
@@ -85,11 +91,17 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            onPressed: _toggleSave,
-            icon: Icon(
-              _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-              color: _isSaved ? AppColors.primary : AppColors.secondaryText,
+          Semantics(
+            label: _isSaved ? 'Retirer des favoris' : 'Sauvegarder cette offre',
+            button: true,
+            child: IconButton(
+              tooltip: _isSaved ? 'Retirer des favoris' : 'Sauvegarder cette offre',
+              onPressed: _toggleSave,
+              icon: Icon(
+                _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                color: _isSaved ? AppColors.primary : AppColors.secondaryText,
+                semanticLabel: _isSaved ? 'Retirer des favoris' : 'Sauvegarder cette offre',
+              ),
             ),
           ),
         ],
@@ -249,6 +261,7 @@ class _CompanyProfileHeader extends StatelessWidget {
             width: 80,
             height: 80,
             borderRadius: BorderRadius.circular(20),
+            semanticLabel: 'Logo de ${offer.company}',
             errorWidget: (_, __, ___) => _logoFallback(),
           ),
 

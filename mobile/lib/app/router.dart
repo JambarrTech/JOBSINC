@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../core/services/api_client.dart';
 import '../features/applications/presentation/application_flow_screen.dart';
 import '../features/applications/presentation/applications_screen.dart';
+import '../features/applications/providers/applications_provider.dart';
+import '../features/candidate/home/data/home_repository.dart';
 import '../features/auth/models/auth_user.dart';
 import '../features/auth/presentation/auth_screens.dart';
 import '../features/auth/providers/auth_provider.dart';
@@ -330,6 +332,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/recruitment/confirmed',
         builder: (_, __) => const RecruitmentConfirmedScreen(),
       ),
+
+      GoRoute(
+        path: '/applications/:id',
+        builder: (_, state) {
+          final extra = state.extra;
+          if (extra is HomeApplication) {
+            return ApplicationDetailScreen(application: extra);
+          }
+          final appId = state.pathParameters['id'] ?? '';
+          if (appId.isNotEmpty) {
+            return _ApplicationDetailByIdScreen(applicationId: appId);
+          }
+          return const Scaffold(
+            body: Center(child: Text('Candidature introuvable')),
+          );
+        },
+      ),
     ],
   );
 });
@@ -375,6 +394,32 @@ class _JobDetailByIdScreen extends StatelessWidget {
     } catch (_) {
       return null;
     }
+  }
+}
+
+class _ApplicationDetailByIdScreen extends ConsumerWidget {
+  const _ApplicationDetailByIdScreen({required this.applicationId});
+  final String applicationId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Charge la liste des candidatures puis retrouve celle demandée.
+    final asyncApps = ref.watch(applicationsProvider);
+    return asyncApps.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (_, __) => Scaffold(
+        appBar: AppBar(title: const Text('Détails')),
+        body: const Center(child: Text('Impossible de charger la candidature.')),
+      ),
+      data: (apps) {
+        final match = apps.where((a) => a.id == applicationId).toList();
+        if (match.isNotEmpty) return ApplicationDetailScreen(application: match.first);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Détails')),
+          body: Center(child: Text('Candidature $applicationId introuvable.')),
+        );
+      },
+    );
   }
 }
 

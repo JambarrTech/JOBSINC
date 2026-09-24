@@ -10,6 +10,7 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../../../core/widgets/app_password_field.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../models/auth_user.dart';
@@ -182,16 +183,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: List.generate(
                 pages.length,
                 (i) {
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                    ),
-                    width: i == index ? 24 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: i == index ? AppColors.primary : AppColors.border,
-                      borderRadius: BorderRadius.circular(8),
+                  return Semantics(
+                    selected: i == index,
+                    label: 'Page ${i + 1} sur 4',
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                      ),
+                      width: i == index ? 24 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: i == index ? AppColors.primary : AppColors.border,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   );
                 },
@@ -336,6 +341,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       subtitle: 'Retrouvez les opportunités qui vous correspondent.',
       child: Form(
         key: formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         child: Column(
           children: [
             AppTextField(
@@ -343,12 +349,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               controller: email,
               keyboardType: TextInputType.emailAddress,
               prefixIcon: Icons.email_outlined,
+              autofillHints: const [AutofillHints.email],
+              textInputAction: TextInputAction.next,
+              autocorrect: false,
               validator: Validators.email,
             ),
             const SizedBox(height: 16),
             AppPasswordField(
               label: 'Mot de passe',
               controller: password,
+              autofillHints: const [AutofillHints.password],
+              textInputAction: TextInputAction.done,
+              autocorrect: false,
               validator: Validators.password,
             ),
             Align(
@@ -481,12 +493,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final size = await file.length();
       if (size > 15 * 1024 * 1024) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('L\'image ne doit pas dépasser 15 Mo.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppFeedback.error(context, 'L\'image ne doit pas dépasser 15 Mo.');
         return;
       }
       setState(() {
@@ -694,6 +701,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           'Rejoignez JOBSINC et trouvez votre prochaine opportunité professionnelle.',
       child: Form(
         key: formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         child: step == 0 ? _buildPersonalStep() : _buildAccountStep(authState),
       ),
     );
@@ -726,13 +734,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
         const SizedBox(height: 22),
         Center(
-          child: GestureDetector(
-            onTap: _pickAvatar,
-            child: CircleAvatar(
-              radius: 40,
-              backgroundColor: AppColors.border,
-              backgroundImage: _avatar != null ? FileImage(_avatar!) : null,
-              child: _avatar == null ? const Icon(Icons.add_a_photo, size: 30, color: Colors.white70) : null,
+          child: Semantics(
+            label: 'Modifier la photo de profil',
+            button: true,
+            child: GestureDetector(
+              onTap: _pickAvatar,
+              child: CircleAvatar(
+                radius: 40,
+                backgroundColor: AppColors.border,
+                backgroundImage: _avatar != null ? FileImage(_avatar!) : null,
+                child: _avatar == null ? const Icon(Icons.add_a_photo, size: 30, color: Colors.white70) : null,
+              ),
             ),
           ),
         ),
@@ -875,6 +887,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           keyboardType: TextInputType.emailAddress,
           prefixIcon: Icons.email_outlined,
           textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.email],
+          autocorrect: false,
           validator: Validators.email,
         ),
         const SizedBox(height: 16),
@@ -892,6 +906,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           label: 'Mot de passe *',
           controller: password,
           textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.newPassword],
+          autocorrect: false,
           onChanged: (value) {
             setState(() {
               passwordStrength = _getPasswordStrength(value);
@@ -907,6 +923,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         AppPasswordField(
           label: 'Confirmation du mot de passe *',
           controller: confirmation,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.newPassword],
+          autocorrect: false,
           validator: (value) {
             return Validators.confirmation(
               value,
@@ -1124,35 +1143,7 @@ class _InlineAuthError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0x33FF5252),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0x99FFD1D1),
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.error_outline,
-            color: Color(0xFFFFD1D1),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return AppInlineMessage(message: message, type: FeedbackType.error);
   }
 }
 
@@ -1217,6 +1208,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       subtitle: 'Saisissez votre email pour récupérer votre compte.',
       child: Form(
         key: formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         child: Column(
           children: [
             AppTextField(
@@ -1224,6 +1216,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               controller: email,
               keyboardType: TextInputType.emailAddress,
               prefixIcon: Icons.email_outlined,
+              autofillHints: const [AutofillHints.email],
+              textInputAction: TextInputAction.done,
+              autocorrect: false,
               validator: Validators.email,
             ),
             const SizedBox(height: 24),
@@ -1294,10 +1289,10 @@ class AuthLayout extends StatelessWidget {
             fit: BoxFit.cover,
           ),
 
-          // Compatible avec les versions récentes de Flutter.
+          // Overlay navy 55% (0x8C082B52 ~ 140/255) pour contraste AA texte blanc sur image.
           ColoredBox(
             color: AppColors.navy.withValues(
-              alpha: 0.28,
+              alpha: 0.55, // 0x8C082B52
             ),
           ),
 
@@ -1444,81 +1439,71 @@ class _CompanyRegisterScreenState extends ConsumerState<CompanyRegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.primary,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.business_center_rounded, size: 56, color: Colors.white),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Inscription Entreprise',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Créez votre compte recruteur',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
-                  ),
-                  const SizedBox(height: 32),
-                  AppTextField(
-                    label: 'Nom de l\'entreprise *',
-                    controller: companyName,
-                    prefixIcon: Icons.business_rounded,
-                    textInputAction: TextInputAction.next,
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Le nom est obligatoire.' : null,
-                  ),
-                  const SizedBox(height: 14),
-                  AppTextField(
-                    label: 'Email *',
-                    controller: email,
-                    prefixIcon: Icons.email_outlined,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    validator: Validators.email,
-                  ),
-                  const SizedBox(height: 14),
-                  AppPasswordField(
-                    label: 'Mot de passe *',
-                    controller: password,
-                    textInputAction: TextInputAction.next,
-                    validator: (v) => v == null || v.length < 8 ? '8 caractères minimum.' : null,
-                  ),
-                  const SizedBox(height: 14),
-                  AppPasswordField(
-                    label: 'Confirmer le mot de passe *',
-                    controller: confirmation,
-                    textInputAction: TextInputAction.done,
-                    validator: (v) => v != password.text ? 'Les mots de passe ne correspondent pas.' : null,
-                  ),
-                  const SizedBox(height: 24),
-                  _AuthButton(
-                    label: 'Créer mon compte',
-                    loadingLabel: 'Création...',
-                    onPressed: _submit,
-                    ref: ref,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text('Déjà un compte ?', style: TextStyle(color: Colors.white)),
-                      TextButton(
-                        onPressed: () => context.go('/login'),
-                        child: const Text('Se connecter'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+    return AuthLayout(
+      title: 'Espace recruteur',
+      subtitle: 'Créez votre compte entreprise et publiez vos offres.',
+      child: Form(
+        key: formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
+          children: [
+            AppTextField(
+              label: 'Nom de l\'entreprise *',
+              controller: companyName,
+              prefixIcon: Icons.business_rounded,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.organizationName],
+              autocorrect: false,
+              validator: (v) => v == null || v.trim().isEmpty ? 'Le nom est obligatoire.' : null,
             ),
-          ),
+            const SizedBox(height: 14),
+            AppTextField(
+              label: 'Email *',
+              controller: email,
+              prefixIcon: Icons.email_outlined,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.email],
+              autocorrect: false,
+              validator: Validators.email,
+            ),
+            const SizedBox(height: 14),
+            AppPasswordField(
+              label: 'Mot de passe *',
+              controller: password,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newPassword],
+              autocorrect: false,
+              validator: (v) => v == null || v.length < 8 ? '8 caractères minimum.' : null,
+            ),
+            const SizedBox(height: 14),
+            AppPasswordField(
+              label: 'Confirmer le mot de passe *',
+              controller: confirmation,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.newPassword],
+              autocorrect: false,
+              validator: (v) => v != password.text ? 'Les mots de passe ne correspondent pas.' : null,
+            ),
+            const SizedBox(height: 24),
+            _AuthButton(
+              label: 'Créer mon compte',
+              loadingLabel: 'Création...',
+              onPressed: _submit,
+              ref: ref,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Déjà un compte ?', style: TextStyle(color: Colors.white)),
+                TextButton(
+                  onPressed: () => context.go('/login'),
+                  child: const Text('Se connecter'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

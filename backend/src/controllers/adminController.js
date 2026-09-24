@@ -100,7 +100,21 @@ exports.overview = async (req, res) => {
     let dbOk = true;
     try { await prisma.$queryRaw`SELECT 1`; } catch { dbOk = false; }
     let storageOk = true;
-    try { await fs.access(path.join(__dirname, '../../uploads'), fs.constants.W_OK); } catch { storageOk = false; }
+    if ((process.env.STORAGE_DRIVER || 'local') === 's3') {
+      storageOk = Boolean(process.env.AWS_S3_BUCKET);
+    } else {
+      // Vercel : /tmp/uploads est le dossier écrivable, sinon ./uploads
+      const candidates = process.env.VERCEL
+        ? [path.join('/tmp', 'uploads'), path.join(__dirname, '../../uploads')]
+        : [path.join(__dirname, '../../uploads'), path.join('/tmp', 'uploads')];
+      storageOk = false;
+      for (const p of candidates) {
+        try { await fs.access(p, fs.constants.W_OK); storageOk = true; break; } catch {}
+      }
+      if (!storageOk && process.env.VERCEL) {
+        try { await fs.mkdir(path.join('/tmp', 'uploads'), { recursive: true }); await fs.access(path.join('/tmp', 'uploads'), fs.constants.W_OK); storageOk = true; } catch {}
+      }
+    }
 
     const distributionTotal = Math.max(1, candidatesCount + employeesCount + recruitersCount + adminsCount);
     const pct = (value) => Math.round((value / distributionTotal) * 100);
@@ -620,10 +634,19 @@ exports.system = async (req, res) => {
     }
 
     let storageStatus = 'operational';
-    try {
-      await fs.access(path.join(__dirname, '../../uploads'), fs.constants.W_OK);
-    } catch {
+    if ((process.env.STORAGE_DRIVER || 'local') === 's3') {
+      storageStatus = process.env.AWS_S3_BUCKET ? 'operational' : 'degraded';
+    } else {
+      const candidates = process.env.VERCEL
+        ? [path.join('/tmp', 'uploads'), path.join(__dirname, '../../uploads')]
+        : [path.join(__dirname, '../../uploads'), path.join('/tmp', 'uploads')];
       storageStatus = 'degraded';
+      for (const p of candidates) {
+        try { await fs.access(p, fs.constants.W_OK); storageStatus = 'operational'; break; } catch {}
+      }
+      if (storageStatus === 'degraded' && process.env.VERCEL) {
+        try { await fs.mkdir(path.join('/tmp', 'uploads'), { recursive: true }); await fs.access(path.join('/tmp', 'uploads'), fs.constants.W_OK); storageStatus = 'operational'; } catch {}
+      }
     }
 
     res.json([

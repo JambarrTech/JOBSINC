@@ -152,6 +152,9 @@ model Job {
   @@index([companyId])
   @@index([isOpen])
   @@index([createdAt])
+  @@index([location])
+  @@index([contractType])
+  @@index([companyId, isOpen, createdAt])
 }
 
 model Application {
@@ -172,6 +175,7 @@ model Application {
   @@unique([jobId, candidateProfileId])
   @@index([candidateProfileId])
   @@index([status])
+  @@index([jobId, status])
 }
 
 model Interview {

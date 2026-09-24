@@ -11,6 +11,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/validators.dart';
+import '../../../core/widgets/app_feedback.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../candidate/home/candidate_home_screen.dart';
@@ -65,16 +66,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     switch (uploadResult) {
       case CvUploadSuccess():
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('CV mis à jour avec succès.'),
-            backgroundColor: AppColors.accent,
-          ),
-        );
+        AppFeedback.success(context, 'CV mis à jour avec succès.');
       case CvUploadFailure(:final message):
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: AppColors.error),
-        );
+        AppFeedback.error(context, AppFeedback.humanizeError(message));
     }
   }
 
@@ -91,12 +85,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final size = await file.length();
     if (size > CandidateProfileController.maxImageSizeBytes) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('L\'image ne doit pas dépasser 15 Mo.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      AppFeedback.error(context, 'L\'image ne doit pas dépasser 15 Mo.');
       return;
     }
 
@@ -111,16 +100,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() => _isUploadingAvatar = false);
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: AppColors.error),
-      );
+      AppFeedback.error(context, AppFeedback.humanizeError(error));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo de profil mise à jour.'),
-          backgroundColor: AppColors.accent,
-        ),
-      );
+      AppFeedback.success(context, 'Photo de profil mise à jour.');
     }
   }
 
@@ -259,25 +241,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Positioned(
                       right: -4,
                       bottom: -4,
-                      child: GestureDetector(
-                        onTap: _isUploadingAvatar ? null : _pickAvatar,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
+                      child: Semantics(
+                        label: 'Modifier la photo de profil',
+                        button: true,
+                        child: GestureDetector(
+                          onTap: _isUploadingAvatar ? null : _pickAvatar,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: _isUploadingAvatar
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.camera_alt,
+                                    size: 14, color: Colors.white),
                           ),
-                          child: _isUploadingAvatar
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.camera_alt,
-                                  size: 14, color: Colors.white),
                         ),
                       ),
                     ),
@@ -763,18 +749,13 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
 
     setState(() => _saving = false);
 
-    final messenger = ScaffoldMessenger.of(context);
-    final nav = Navigator.of(context);
-    nav.pop();
-
-    messenger.showSnackBar(
-      error != null
-          ? SnackBar(content: Text(error), backgroundColor: AppColors.error)
-          : const SnackBar(
-              content: Text('Profil mis à jour avec succès.'),
-              backgroundColor: AppColors.accent,
-            ),
-    );
+    if (error != null) {
+      AppFeedback.error(context, AppFeedback.humanizeError(error));
+    } else {
+      AppFeedback.success(context, 'Profil mis à jour avec succès.');
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
   @override

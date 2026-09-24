@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,6 +27,7 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
   late final TextEditingController _searchController;
   late final TextEditingController _locationController;
   String _selectedContract = 'Tous';
+  Timer? _debounce;
 
   static const _contracts = ['Tous', 'CDI', 'CDD', 'Stage', 'Freelance'];
 
@@ -37,9 +40,17 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     _locationController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) setState(() {});
+    });
   }
 
   List<JobOffer> _filter(List<JobOffer> offers) {
@@ -126,14 +137,14 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
                     controller: _searchController,
                     hint: 'Rechercher un poste',
                     icon: Icons.search_rounded,
-                    onChanged: (_) => setState(() {}),
+                    onChanged: _onSearchChanged,
                   ),
                   const SizedBox(height: 8),
                   _SearchField(
                     controller: _locationController,
                     hint: 'Ville ou localisation',
                     icon: Icons.location_on_outlined,
-                    onChanged: (_) => setState(() {}),
+                    onChanged: _onSearchChanged,
                   ),
                   const SizedBox(height: 12),
                   SizedBox(
@@ -145,23 +156,28 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
                       itemBuilder: (context, index) {
                         final contract = _contracts[index];
                         final selected = _selectedContract == contract;
-                        return ChoiceChip(
-                          label: Text(contract),
+                        return Semantics(
+                          label: 'Filtrer par $contract',
                           selected: selected,
-                          onSelected: (_) => setState(() => _selectedContract = contract),
-                          selectedColor: AppColors.primary.withValues(alpha: .14),
-                          labelStyle: TextStyle(
-                            color: selected ? AppColors.primary : AppColors.secondaryText,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          side: BorderSide(
-                            color: selected
-                                ? AppColors.primary.withValues(alpha: .3)
-                                : AppColors.background,
+                          button: true,
+                          child: ChoiceChip(
+                            label: Text(contract),
+                            selected: selected,
+                            onSelected: (_) => setState(() => _selectedContract = contract),
+                            selectedColor: AppColors.primary.withValues(alpha: .14),
+                            labelStyle: TextStyle(
+                              color: selected ? AppColors.primary : AppColors.secondaryText,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            side: BorderSide(
+                              color: selected
+                                  ? AppColors.primary.withValues(alpha: .3)
+                                  : AppColors.background,
+                            ),
                           ),
                         );
                       },
