@@ -6,8 +6,11 @@
 /// (émulateur ou téléphone réel en USB).
 class AppConfig {
   /// URL racine de l'API (suffixe `/api` inclus).
+  /// Par défaut : backend en ligne Render (prod). Pour dev local :
+  /// `flutter run --dart-define=API_URL=http://127.0.0.1:5000/api` (+ `adb reverse tcp:5000 tcp:5000` si device USB)
+  /// ou LAN `http://192.168.1.9:5000/api`.
   static const apiBaseUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'http://127.0.0.1:5000/api',
+    defaultValue: 'https://jobsinc.onrender.com/api',
   );
 }
