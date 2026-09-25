@@ -14,7 +14,7 @@ function isPublicPath(pathname: string): boolean {
 
 // Cache LRU en mémoire edge (60s) pour éviter fetch /auth/me par requête
 const tokenCache = new Map<string, { valid: boolean; role?: string; exp: number }>();
-const CACHE_TTL_MS = 60_000;
+const CACHE_TTL_MS = 10_000;
 const MAX_CACHE_SIZE = 500;
 
 function getCached(token: string): { valid: boolean; role?: string } | null {
@@ -32,20 +32,6 @@ function setCached(token: string, result: { valid: boolean; role?: string }) {
     if (firstKey) tokenCache.delete(firstKey);
   }
   tokenCache.set(token, { ...result, exp: Date.now() + CACHE_TTL_MS });
-}
-
-// Décode JWT sans vérif signature pour optimisation (vérif réelle côté backend)
-// Utilisé comme fast-path; en cas de doute on fallback sur fetch.
-function tryDecodeRole(token: string): string | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-    if (payload?.exp && payload.exp * 1000 < Date.now()) return null;
-    return typeof payload?.role === 'string' ? payload.role : null;
-  } catch {
-    return null;
-  }
 }
 
 async function verifyToken(token: string): Promise<{ valid: boolean; role?: string }> {
@@ -70,12 +56,7 @@ async function verifyToken(token: string): Promise<{ valid: boolean; role?: stri
     setCached(token, result);
     return result;
   } catch {
-    // Fallback décode local si backend indisponible (évite boucle redirect)
-    const role = tryDecodeRole(token);
-    if (role) {
-      // Ne pas cacher ce fallback (risque tokenVersion révoqué)
-      return { valid: true, role };
-    }
+    // Une panne backend ne doit jamais devenir une validation locale du JWT.
     const result = { valid: false };
     setCached(token, result);
     return result;

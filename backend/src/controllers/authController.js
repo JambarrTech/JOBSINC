@@ -51,15 +51,36 @@ async function issueTokens(user, res) {
   const accessToken = generateAccessToken(user);
   const { hashAndStoreRefreshToken, generateRefreshToken } = require('../utils/tokenUtils');
   const refreshToken = await hashAndStoreRefreshToken(user.id, generateRefreshToken());
-  
+
+  const isProd = process.env.NODE_ENV === 'production';
+
+  // HttpOnly Secure cookie pour le web (remplace localStorage.jobsinc_token)
+  // SameSite None requis en cross-site (Vercel <> Render), Lax en dev
+  res.cookie('jobsinc_token', accessToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    maxAge: 15 * 60 * 1000,
+    path: '/',
+  });
+
+  // Alias accessToken pour compatibilité middleware
+  res.cookie('accessToken', accessToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    maxAge: 15 * 60 * 1000,
+    path: '/',
+  });
+
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000,
     path: '/api/auth',
   });
-  
+
   return { accessToken, token: accessToken, refreshToken, user: userDto(user) };
 }
 
@@ -228,12 +249,28 @@ exports.refreshToken = async (req, res) => {
 
     const newRefreshToken = await rotateRefreshToken(user.id, rawToken);
     const accessToken = generateAccessToken(user);
-    
+
+    const isProd = process.env.NODE_ENV === 'production';
+    // Rafraîchit aussi le cookie d'accès HttpOnly
+    res.cookie('jobsinc_token', accessToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 15 * 60 * 1000,
+      path: '/',
+    });
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 15 * 60 * 1000,
+      path: '/',
+    });
     // Set cookie for web clients
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/api/auth',
     });
@@ -274,10 +311,13 @@ exports.logout = async (req, res) => {
     const userId = req.user?.userId;
     // Support both cookie (web) and body (mobile) for refresh token
     const rawToken = req.cookies?.refreshToken || req.body?.refreshToken;
-    
+
     await authService.logout(userId, rawToken);
-    
-    res.clearCookie('refreshToken', { path: '/api/auth', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
+
+    const isProd = process.env.NODE_ENV === 'production';
+    res.clearCookie('refreshToken', { path: '/api/auth', httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' });
+    res.clearCookie('jobsinc_token', { path: '/', httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' });
+    res.clearCookie('accessToken', { path: '/', httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' });
     return res.json({ message: 'Déconnexion réussie.' });
   } catch (cause) {
     return handleError(cause, res);

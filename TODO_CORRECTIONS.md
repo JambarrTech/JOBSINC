@@ -31,7 +31,7 @@
 - [x] **Vérif** `prisma validate` OK, `tsc --noEmit` OK, `flutter analyze` OK, `matching.test 27 pass`
 
 ## P1 — Avant scale (partiellement traité / reste à faire)
-- [ ] Migrer `localStorage` web → `HttpOnly Secure` cookie (backend `Set-Cookie`, supprimer `localStorage.jobsinc_token`)
+- [x] Migrer `localStorage` web → `HttpOnly Secure` cookie (backend `Set-Cookie`, supprimer `localStorage.jobsinc_token`) — `backend/src/middlewares/authMiddleware.js:4` + `backend/src/controllers/authController.js:50` (issueTokens pose `jobsinc_token`/`accessToken` HttpOnly SameSite None/Lax + `backend/src/app.js:100` uploadAuth cookie) + `backend/src/services/socketService.js:50` handshake cookie + `entreprise/app/api/auth/cookie/route.ts:1` BFF pose `jobsinc_token` HttpOnly sur domaine frontend (proxy) + `entreprise/lib/api.ts:30` supprime `localStorage.getItem` + `lib/socket.ts:12` withCredentials + `components/auth/AuthForm.tsx:8`/`RegistrationForm.tsx:55`/`DashboardAuthGuard.tsx:8`/`AdminAuthGuard.tsx:10`/`AdminLoginForm.tsx:12` migration + refresh auto `lib/api.ts:30` tryRefresh
 - [ ] Remplacer `multipartParser` maison par `multer` battle-tested (actuellement durci mais toujours custom)
 - [ ] `TanStack Query` + `zod` côté web (partiel: retry + zod backend OK)
 - [ ] `StatefulShellRoute` GoRouter mobile (actuel `int _tab` fragile)

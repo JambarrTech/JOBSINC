@@ -43,7 +43,19 @@ export default function RegistrationForm() {
   }
   function next() { if (validateCurrentStep()) setStep((current) => Math.min(4, current + 1)); }
   function previous() { setError(''); setStep((current) => Math.max(1, current - 1)); }
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!validateCurrentStep() || !terms || !privacy) { setError('Veuillez accepter les conditions d’utilisation et la politique de confidentialité.'); return; } if (!logo) { setError('Veuillez ajouter le logo de votre entreprise.'); return; } setLoading(true); setError(''); const endpoint = process.env.NEXT_PUBLIC_REGISTER_ENDPOINT || '/auth/register/company'; const fields = Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'confirmPassword' && key !== 'description')); const payload = { ...fields, description: values.description }; try { const result = await authenticateWithFiles(endpoint, payload, [logo.file], 'logo'); if (result.token) localStorage.setItem('jobsinc_token', result.token); setSuccess(true); } catch (err) { setError(err instanceof Error ? err.message : 'Impossible de créer le compte pour le moment.'); } finally { setLoading(false); } }
+  async function setFrontendCookie(token: string) {
+    try {
+      await fetch('/api/auth/cookie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+        credentials: 'include',
+      });
+    } catch {}
+    try { localStorage.removeItem('jobsinc_token'); } catch {}
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!validateCurrentStep() || !terms || !privacy) { setError('Veuillez accepter les conditions d’utilisation et la politique de confidentialité.'); return; } if (!logo) { setError('Veuillez ajouter le logo de votre entreprise.'); return; } setLoading(true); setError(''); const endpoint = process.env.NEXT_PUBLIC_REGISTER_ENDPOINT || '/auth/register/company'; const fields = Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'confirmPassword' && key !== 'description')); const payload = { ...fields, description: values.description }; try { const result = await authenticateWithFiles(endpoint, payload, [logo.file], 'logo'); if (result.token) await setFrontendCookie(result.token); setSuccess(true); } catch (err) { setError(err instanceof Error ? err.message : 'Impossible de créer le compte pour le moment.'); } finally { setLoading(false); } }
 
   if (success) return <div className="form-shell"><RegistrationShowcase /><main className="form-main"><div className="form-card success-card"><div className="success-mark">✓</div><div className="eyebrow">Inscription terminée</div><h2>Votre espace entreprise est prêt.</h2><p>Merci d’avoir rejoint JOBSINC. Vous pouvez maintenant accéder à votre tableau de bord.</p><Link href="/dashboard" className="button button-primary">Accéder à mon tableau de bord</Link></div></main></div>;
 

@@ -44,7 +44,9 @@ if (process.env.TRUST_PROXY === '0') {
   }
 }
 
-const defaultOrigins = ['http://localhost:3000','http://localhost:3001','http://127.0.0.1:3000','http://127.0.0.1:3001'];
+const defaultOrigins = process.env.NODE_ENV === 'production'
+  ? []
+  : ['http://localhost:3000','http://localhost:3001','http://127.0.0.1:3000','http://127.0.0.1:3001'];
 const corsOrigins = [...new Set([
   ...defaultOrigins,
   ...(process.env.CORS_ORIGINS || '').split(',').map(o=>o.trim()).filter(Boolean)
@@ -60,13 +62,8 @@ app.use(helmet({
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
-    if (corsOrigins.includes(origin) || corsOrigins.includes('*')) return cb(null, true);
-    // Autorise par défaut les frontends déployés Render/Vercel même si CORS_ORIGINS non configuré (prod)
-    try {
-      const { hostname } = new URL(origin);
-      if (hostname.endsWith('.onrender.com') || hostname.endsWith('.vercel.app') || hostname === 'jobsinc.com' || hostname.endsWith('.jobsinc.com')) return cb(null, true);
-    } catch {}
-    return cb(null, false);
+    if (corsOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Origin non autorisée par CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -76,6 +73,18 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Les clients mobiles utilisent Authorization: Bearer. Pour le web, les
+// cookies d'authentification doivent aussi respecter l'origine approuvée.
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  const hasCookieAuth = Boolean(req.cookies?.jobsinc_token || req.cookies?.accessToken);
+  const origin = req.headers.origin;
+  if (hasCookieAuth && origin && !corsOrigins.includes(origin)) {
+    return res.status(403).json({ error: 'Origine non autorisée.' });
+  }
+  return next();
+});
 
 // Request id minimal (utile pour logs Vercel)
 app.use((req, _res, next) => {
@@ -184,10 +193,8 @@ app.get('/api/cron/cleanup', async (req, res) => {
     if (provided !== secret) {
       return res.status(401).json({ error: 'Unauthorized cron' });
     }
-  } else if (process.env.VERCEL) {
-    // Sur Vercel sans secret, on n'autorise que les invocations internes Vercel
-    // (header x-vercel-cron) ou on log un warning mais on autorise quand même pour compat
-    // On reste permissif si VERCEL et pas de secret en dev vercel.
+  } else {
+    return res.status(503).json({ error: 'CRON_SECRET non configuré.' });
   }
   try {
     const { cleanupExpiredRefreshTokens } = require('./utils/tokenUtils');
