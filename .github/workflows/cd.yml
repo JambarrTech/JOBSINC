@@ -69,6 +69,18 @@ jobs:
   build-mobile:
     name: Build Mobile APK
     runs-on: ubuntu-latest
+    # Le build release échoue désormais EXPLICIEMENT sans android/key.properties
+    # (auparavant il retombait silencieusement sur la signature debug, ce qui
+    # produisait un APK non publiable sans le moindre signal). Sans le secret,
+    # on ne construit que l'APK de debug.
+    # KEYSTORE_BASE64 est déclare AU NIVEAU DU JOB et pas du step : le contexte
+    # `env` n'est pas résolu pour le `if` d'un step qui définit lui-même sa
+    # propre variable. Portée par le seul step, `if: env.KEYSTORE_BASE64 != ''`
+    # valait toujours false : la restauration était ignorée et le build
+    # retombait silencieusement sur debug — précisément le défaut que ce bloc
+    # cherche à éviter.
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     defaults:
       run:
         working-directory: mobile
@@ -77,12 +89,35 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.22.x'
+          # Doit rester aligné avec mobile/pubspec.lock (dart >=3.12.0,
+          # flutter >=3.44.0) et avec .github/workflows/ci.yml, sinon
+          # `flutter pub get` échoue et aucun APK n'est produit.
+          flutter-version: '3.47.x'
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release --no-pub
+      - name: Restore signing key (release only)
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          {
+            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}"
+            echo "storeFile=../app/release.keystore"
+            echo "storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}"
+          } > android/key.properties
+      - name: Build APK release
+        if: env.KEYSTORE_BASE64 != ''
+        run: flutter build apk --release --no-pub
+      - name: Build APK debug (fallback)
+        if: env.KEYSTORE_BASE64 == ''
+        run: flutter build apk --debug --no-pub
       - uses: actions/upload-artifact@v4
         with:
           name: jobsinc-apk
-          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            mobile/build/app/outputs/flutter-apk/app-release.apk
+            mobile/build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 14
+          if-no-files-found: error
