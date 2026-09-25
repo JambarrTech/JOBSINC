@@ -7,7 +7,7 @@ services:
     branch: main
     rootDir: backend
     buildCommand: npm install && npx prisma generate
-    startCommand: node server.js
+    startCommand: if [ -z "$DIRECT_URL" ]; then echo "DIRECT_URL is required for Prisma migrations"; exit 1; fi; npx prisma migrate deploy && node server.js
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -15,3 +15,4 @@ services:
         value: production
       - key: TRUST_PROXY
         value: 1
+      # DIRECT_URL doit être configurée dans le dashboard Render.

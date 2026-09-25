@@ -27,20 +27,65 @@ export const cvHref = (value?: string | null) => {
   try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
 };
 
+let refreshing: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      const res = await fetch(endpoint('/auth/refresh'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        cache: 'no-store',
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => null);
+      const newToken = data?.accessToken || data?.token || data?.accessToken;
+      if (newToken) {
+        // Synchronise le cookie HttpOnly frontend (proxy) avec le nouveau token backend
+        await fetch('/api/auth/cookie', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: newToken }),
+          credentials: 'include',
+          cache: 'no-store',
+        }).catch(() => {});
+      }
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
+
 export async function apiRequest<T>(path: string, options?: RequestInit & { retries?: number }): Promise<T> {
-  const token = typeof window === 'undefined' ? null : localStorage.getItem('jobsinc_token');
   const retries = options?.retries ?? 0;
+  const isAuthPath = path.includes('/auth/login') || path.includes('/auth/register') || path.includes('/auth/refresh');
   const doFetch = async (): Promise<Response> =>
-    fetch(endpoint(path), { ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers }, credentials: 'include', cache: 'no-store' });
+    fetch(endpoint(path), { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers }, credentials: 'include', cache: 'no-store' });
   let lastError: unknown;
+  let refreshed = false;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await doFetch();
+      if (response.status === 401 && !isAuthPath && !refreshed) {
+        const ok = await tryRefresh();
+        if (ok) {
+          refreshed = true;
+          const retry = await doFetch();
+          if (retry.ok) return retry.json();
+          // Si toujours 401 après refresh, on laisse l'erreur remonter
+        }
+      }
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number };
         error.status = response.status;
-        // Retry uniquement sur 503/429
         if ((response.status === 503 || response.status === 429) && attempt < retries) {
           await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
           continue;
@@ -51,6 +96,14 @@ export async function apiRequest<T>(path: string, options?: RequestInit & { retr
     } catch (e) {
       lastError = e;
       const status = (e as { status?: number })?.status;
+      // 401 déjà géré via refresh, sinon on ne retry pas
+      if (status === 401 && !refreshed && !isAuthPath) {
+        const ok = await tryRefresh().catch(() => false);
+        if (ok) {
+          refreshed = true;
+          continue;
+        }
+      }
       if (status !== 503 && status !== 429) throw e;
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
@@ -63,7 +116,7 @@ export async function apiRequest<T>(path: string, options?: RequestInit & { retr
 }
 
 function list<T>(response: T[] | { data?: T[]; results?: T[] }) { return Array.isArray(response) ? response : response.data || response.results || []; }
-function normalizeCompany(company: Company): Company { const logoUrl = assetUrl(company.logo); const images = (company.images || []).map((image) => ({ ...image, url: assetUrl(image.url) || image.url })); const primary = images.find((image) => image.isPrimary) || images[0]; return { ...company, images, logo: logoUrl || primary?.url || null, location: company.location || [company.city, company.country].filter(Boolean).join(', ') || undefined }; }
+function normalizeCompany(company: Company): Company { const logoUrl = assetUrl(company.logo); const images = (company.images || []).map((image) => ({ ...image, url: assetUrl(image.url) })).filter((image): image is CompanyImage => Boolean(image.url)); const primary = images.find((image) => image.isPrimary) || images[0]; return { ...company, images, logo: logoUrl || primary?.url || null, location: company.location || [company.city, company.country].filter(Boolean).join(', ') || undefined }; }
 export const getDashboardData = (days?: number) => apiRequest<DashboardData>(`${process.env.NEXT_PUBLIC_DASHBOARD_ENDPOINT || '/company/dashboard'}${days ? `?days=${days}` : ''}`);
 export async function getMatching(params?: Record<string, string | number | undefined>) { const base = process.env.NEXT_PUBLIC_MATCHING_ENDPOINT || '/company/matching'; const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); }); const qs = query.toString(); return apiRequest<{ data?: Match[]; results?: Match[] } | Match[]>(qs ? `${base}?${qs}` : base); }
 export async function getJobMatches(jobId: string | number, params?: Record<string, string | number | undefined>) { const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); }); const qs = query.toString(); return apiRequest<{ data?: Match[]; results?: Match[] } | Match[]>(`/company/jobs/${jobId}/matches${qs ? `?${qs}` : ''}`); }
@@ -73,22 +126,24 @@ export const getCompanyProfile = () => apiRequest<CompanyProfile>('/company/prof
 export type CompanyProfileFields = Partial<Record<'name' | 'description' | 'website' | 'sector' | 'size' | 'country' | 'city' | 'address' | 'foundedYear', string | number | null>>;
 export const updateCompanyProfile = (fields: CompanyProfileFields) => apiRequest<CompanyProfile>('/company/profile', { method: 'PUT', body: JSON.stringify(fields) });
 export async function uploadCompanyLogo(file: File) {
-  const token = typeof window === 'undefined' ? null : localStorage.getItem('jobsinc_token');
-  const response = await fetch(endpoint('/company/logo'), { method: 'POST', ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}), body: (() => { const form = new FormData(); form.append('logo', file); return form; })(), credentials: 'include', cache: 'no-store' });
+  const response = await fetch(endpoint('/company/logo'), { method: 'POST', body: (() => { const form = new FormData(); form.append('logo', file); return form; })(), credentials: 'include', cache: 'no-store' });
   if (!response.ok) { const body = await response.json().catch(() => null); const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number }; error.status = response.status; throw error; }
   return response.json() as Promise<CompanyProfile>;
 }
 export const deleteCompanyJob = (jobId: string | number) => apiRequest<{ message: string }>(`/company/jobs/${jobId}`, { method: 'DELETE' });
 export const setJobOpen = (jobId: string | number, isOpen: boolean) => apiRequest<Record<string, unknown>>(`/company/jobs/${jobId}`, { method: 'PUT', body: JSON.stringify({ isOpen }) });
 export async function getCompanyApplications() { return list(await apiRequest<NonNullable<DashboardData['applications']> | { data?: NonNullable<DashboardData['applications']>; results?: NonNullable<DashboardData['applications']> }>(process.env.NEXT_PUBLIC_COMPANY_APPLICATIONS_ENDPOINT || '/company/applications')); }
-export async function getCompanyMessages() { const path = process.env.NEXT_PUBLIC_COMPANY_MESSAGES_ENDPOINT; return path ? list(await apiRequest<CompanyMessage[] | { data?: CompanyMessage[]; results?: CompanyMessage[] }>(path)) : null; }
+export async function getCompanyMessages() { const path = process.env.NEXT_PUBLIC_COMPANY_MESSAGES_ENDPOINT || '/company/messages'; return list(await apiRequest<CompanyMessage[] | { data?: CompanyMessage[]; results?: CompanyMessage[] }>(path)); }
 export async function getConversationMessages(conversationId: string | number) { return apiRequest<ChatResponse>(`/company/messages/${conversationId}`); }
 export async function sendMessage(candidateUserId: string, content: string, subject?: string) { return apiRequest<ChatMessage & { participantName?: string; conversationId?: string | number }>('/company/messages', { method: 'POST', body: JSON.stringify({ candidateUserId, content, subject }) }); }
 export async function markConversationRead(conversationId: string | number) { return apiRequest<{ message: string }>(`/company/messages/${conversationId}/read`, { method: 'PATCH' }); }
 // Ouvre (ou récupère) la conversation liée à une candidature autorisée (INTERVIEW / ACCEPTED).
 export async function ensureConversation(applicationId: string | number) { return apiRequest<{ conversation: ChatConversation; created?: boolean }>(`/applications/${applicationId}/conversation`, { method: 'POST', body: JSON.stringify({}) }); }
 // Cycle de vie des entretiens vidéo (statuts PLANIFIE / EN_COURS / TERMINE / ANNULE côté backend).
-export const getCompanyInterviews = () => apiRequest<InterviewItem[]>('/interviews/company');
+export const getCompanyInterviews = async () => {
+  const response = await apiRequest<InterviewItem[] | { data?: InterviewItem[]; results?: InterviewItem[] }>('/interviews/company');
+  return Array.isArray(response) ? response : response.data || response.results || [];
+};
 const interviewAction = (action: string, applicationId: string | number) => apiRequest<InterviewItem>(`/interviews/applications/${applicationId}/${action}`, { method: 'POST', body: JSON.stringify({}) });
 export const startInterview = (applicationId: string | number) => interviewAction('start', applicationId);
 export const finishInterview = (applicationId: string | number) => interviewAction('finish', applicationId);

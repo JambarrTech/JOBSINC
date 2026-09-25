@@ -44,9 +44,20 @@ function init(httpServer, corsOrigins) {
     },
   });
 
+  function getTokenFromHandshake(socket) {
+    if (socket.handshake.auth?.token) return socket.handshake.auth.token;
+    // Fallback cookie HttpOnly (web BFF)
+    const cookieHeader = socket.handshake.headers?.cookie || '';
+    const cookies = Object.fromEntries(cookieHeader.split(';').map((c) => {
+      const [k, ...v] = c.trim().split('=');
+      return [k, decodeURIComponent(v.join('='))];
+    }));
+    return cookies.jobsinc_token || cookies.accessToken || cookies.token || null;
+  }
+
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth?.token;
+      const token = getTokenFromHandshake(socket);
       if (!token || !process.env.JWT_SECRET) return next(new Error('unauthorized'));
       const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       if (!decoded?.userId) return next(new Error('unauthorized'));

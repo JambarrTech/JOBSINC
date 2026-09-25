@@ -9,7 +9,7 @@ services:
     buildCommand: npm install && npx prisma generate
     # migrate deploy retiré : Neon pooler (pgbouncer) ne supporte pas pg_advisory_lock (P1002).
     # Utiliser DIRECT_URL (sans -pooler) si migrate nécessaire, ou lancer `npx prisma migrate deploy` en local avec DIRECT_URL
-    startCommand: node server.js
+    startCommand: if [ -z "$DIRECT_URL" ]; then echo "DIRECT_URL is required for Prisma migrations"; exit 1; fi; npx prisma migrate deploy && node server.js
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -21,6 +21,7 @@ services:
         value: 10000 # Render injecte PORT, fallback 5000 dans server.js
       # Variables à définir dans Dashboard Render (ne pas hardcoder ici) :
       # - DATABASE_URL
+      # - DIRECT_URL (connexion Neon directe, sans suffixe -pooler)
       # - JWT_SECRET
       # - CORS_ORIGINS
       # - REDIS_URL / REDIS_TLS

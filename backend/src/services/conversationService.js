@@ -192,7 +192,10 @@ exports.listForUser = async (user, query = {}) => {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const skip = (page - 1) * limit;
 
-  const where = membershipWhere(user);
+  const where = {
+    ...membershipWhere(user),
+    application: { status: { in: AUTHORIZED_APPLICATION_STATUSES } },
+  };
   const [conversations, total] = await Promise.all([
     prisma.conversation.findMany({
       where,
@@ -244,6 +247,9 @@ exports.getAuthorizedConversation = async (user, conversationId) => {
     include: conversationInclude,
   });
   if (!conversation) return { error: { status: 403, error: 'Accès refusé : cette conversation ne vous est pas destinée.' } };
+  if (!conversation.application || !AUTHORIZED_APPLICATION_STATUSES.includes(conversation.application.status)) {
+    return { error: { status: 403, error: 'Cette conversation n’est plus active pour cette candidature.' } };
+  }
   return { conversation };
 };
 

@@ -3,6 +3,7 @@ const pushService = require('../services/pushService');
 const socketService = require('../services/socketService');
 const videoProvider = require('../services/videoProviderService');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const { invalidate } = require('../utils/cache');
 
 // ============================================================
 // ENTRETIENS — cycle de vie complet
@@ -32,6 +33,10 @@ function formatDateTimeFr(date) {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
+}
+
+function invalidateCompanyDashboard(companyId) {
+  if (companyId) invalidate(`company:dashboard:${companyId}`);
 }
 
 function interviewDto(interview) {
@@ -124,16 +129,6 @@ exports.schedule = async (req, res) => {
     if (!mode || !['ONLINE', 'PRESENTIEL'].includes(mode)) {
       return res.status(400).json({ error: 'Mode d\'entretien invalide (ONLINE ou PRESENTIEL).' });
     }
-    // Lien visio : fourni par le recruteur OU généré par un fournisseur configuré.
-    let streamingUrl = providedUrl || null;
-    if (mode === 'ONLINE' && !streamingUrl) {
-      const generated = await videoProvider.createRoom({ applicationId: id, scheduledAt }).catch(() => null);
-      if (!generated?.url) {
-        return res.status(400).json({ error: 'Le lien Google Meet / visioconférence est obligatoire pour un entretien en ligne.' });
-      }
-      streamingUrl = generated.url;
-    }
-
     const company = await prisma.company.findUnique({ where: { userId: req.user.userId } });
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const application = await prisma.application.findFirst({
@@ -143,6 +138,33 @@ exports.schedule = async (req, res) => {
     if (!application) return res.status(404).json({ error: 'Candidature introuvable.' });
     if (application.status !== 'INTERVIEW') {
       return res.status(400).json({ error: 'La candidature doit être en statut Entretien pour planifier un entretien.' });
+    }
+    const parsedScheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+    if (scheduledAt && Number.isNaN(parsedScheduledAt.getTime())) {
+      return res.status(400).json({ error: 'Date d\'entretien invalide.' });
+    }
+    const parsedDuration = duration === undefined || duration === null || duration === '' ? null : Number(duration);
+    if (parsedDuration !== null && (!Number.isInteger(parsedDuration) || parsedDuration < 5 || parsedDuration > 480)) {
+      return res.status(400).json({ error: 'La durée doit être un nombre entier compris entre 5 et 480 minutes.' });
+    }
+    if (providedUrl && (typeof providedUrl !== 'string' || providedUrl.length > 2048)) {
+      return res.status(400).json({ error: 'Lien de visioconférence invalide.' });
+    }
+    if (location && (typeof location !== 'string' || location.length > 500)) {
+      return res.status(400).json({ error: 'Lieu d\'entretien trop long.' });
+    }
+    if (notes && (typeof notes !== 'string' || notes.length > 5000)) {
+      return res.status(400).json({ error: 'Notes d\'entretien trop longues.' });
+    }
+
+    // Le contrôle de propriété/statut précède toute création de ressource externe.
+    let streamingUrl = providedUrl || null;
+    if (mode === 'ONLINE' && !streamingUrl) {
+      const generated = await videoProvider.createRoom({ applicationId: id, scheduledAt }).catch(() => null);
+      if (!generated?.url) {
+        return res.status(400).json({ error: 'Le lien Google Meet / visioconférence est obligatoire pour un entretien en ligne.' });
+      }
+      streamingUrl = generated.url;
     }
 
     // Un entretien terminé est figé : pas de re-planification possible.
@@ -160,8 +182,8 @@ exports.schedule = async (req, res) => {
       update: {
         mode,
         status: 'PLANIFIE',
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-        duration: duration ? Number(duration) : null,
+        scheduledAt: parsedScheduledAt,
+        duration: parsedDuration,
         streamingUrl: streamingUrl || null,
         location: location || null,
         notes: notes || null,
@@ -172,8 +194,8 @@ exports.schedule = async (req, res) => {
         applicationId: id,
         mode,
         status: 'PLANIFIE',
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-        duration: duration ? Number(duration) : null,
+        scheduledAt: parsedScheduledAt,
+        duration: parsedDuration,
         streamingUrl: streamingUrl || null,
         location: location || null,
         notes: notes || null,
@@ -203,6 +225,7 @@ exports.schedule = async (req, res) => {
       { candidateUser, companyUserId: req.user.userId },
       { applicationId: id, status: interview.status },
     );
+    invalidateCompanyDashboard(company.id);
 
     res.status(201).json(interviewDto({ ...interview, application }));
   } catch (error) {
@@ -262,6 +285,7 @@ exports.start = async (req, res) => {
       { candidateUser, companyUserId: context.viewerUserId },
       { applicationId: dto.applicationId, status: dto.status },
     );
+    invalidateCompanyDashboard(updated.application?.job?.companyId);
 
     res.json(dto);
   } catch (error) {
@@ -308,6 +332,7 @@ exports.finish = async (req, res) => {
       { candidateUser, companyUserId },
       { applicationId: dto.applicationId, status: dto.status },
     );
+    invalidateCompanyDashboard(updated.application?.job?.companyId);
 
     res.json(dto);
   } catch (error) {
@@ -352,6 +377,7 @@ exports.cancel = async (req, res) => {
       { candidateUser, companyUserId: context.viewerUserId },
       { applicationId: dto.applicationId, status: dto.status },
     );
+    invalidateCompanyDashboard(updated.application?.job?.companyId);
 
     res.json(dto);
   } catch (error) {

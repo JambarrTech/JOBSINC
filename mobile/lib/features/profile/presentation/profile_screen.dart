@@ -551,7 +551,7 @@ class _InfoSkeleton extends StatelessWidget {
   const _InfoSkeleton();
   @override
   Widget build(BuildContext context) {
-    return Column(children: List.generate(5, (_) => Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [AppSkeleton(width: 34, height: 34, borderRadius: 10), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [AppSkeleton(width: 80, height: 10, borderRadius: 6), SizedBox(height: 6), AppSkeleton(width: double.infinity, height: 12, borderRadius: 6)]))]))));
+    return Column(children: List.generate(5, (_) => const Padding(padding: EdgeInsets.only(bottom: 12), child: Row(children: [AppSkeleton(width: 34, height: 34, borderRadius: 10), SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [AppSkeleton(width: 80, height: 10, borderRadius: 6), SizedBox(height: 6), AppSkeleton(width: double.infinity, height: 12, borderRadius: 6)]))]))));
   }
 }
 
@@ -627,7 +627,7 @@ class _CvCard extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.label, required this.value, this.onTap});
+  const _InfoRow({required this.icon, required this.label, required this.value}) : onTap = null;
   final IconData icon;
   final String label;
   final String value;
@@ -789,17 +789,17 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
               const SizedBox(height: 4),
               const Text('Vos informations sont visibles par les recruteurs', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppColors.secondaryText)),
               const SizedBox(height: 18),
-              _SectionLabel('Identité'),
+              const _SectionLabel('Identité'),
               AppTextField(label: 'Prénom', controller: _firstName, prefixIcon: Icons.badge_outlined, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next, validator: (v) => Validators.name(v, label: 'Le prénom')),
               const SizedBox(height: 12),
               AppTextField(label: 'Nom', controller: _lastName, prefixIcon: Icons.badge_outlined, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next, validator: (v) => Validators.name(v, label: 'Le nom')),
               const SizedBox(height: 14),
-              _SectionLabel('Contact'),
+              const _SectionLabel('Contact'),
               AppTextField(label: 'Téléphone', controller: _phone, prefixIcon: Icons.phone_outlined, keyboardType: TextInputType.phone, textInputAction: TextInputAction.next, validator: Validators.phone),
               const SizedBox(height: 12),
               Row(children: [Expanded(child: AppTextField(label: 'Pays', controller: _country, prefixIcon: Icons.public_outlined, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next)), const SizedBox(width: 12), Expanded(child: AppTextField(label: 'Ville', controller: _city, prefixIcon: Icons.location_city_outlined, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next))]),
               const SizedBox(height: 14),
-              _SectionLabel('Professionnel'),
+              const _SectionLabel('Professionnel'),
               AppTextField(label: 'Compétences', controller: _skills, prefixIcon: Icons.auto_awesome_outlined, hintText: 'Ex : Flutter, React, Figma', textInputAction: TextInputAction.next),
               const SizedBox(height: 6),
               const Text('Séparez par des virgules', style: TextStyle(fontSize: 11, color: AppColors.secondaryText)),
