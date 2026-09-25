@@ -54,10 +54,10 @@ async function startServer() {
     if (isRedisAvailable()) {
       console.log('✅ Redis connecté');
     } else {
-      if (process.env.NODE_ENV === 'production') {
+      if (process.env.REQUIRE_REDIS === 'true') {
         throw new Error('Redis est obligatoire en production pour le rate-limiting distribué.');
       }
-      console.warn('⚠️ Redis non disponible, utilisation du stockage en mémoire pour le rate-limiting');
+      console.warn('⚠️ Redis non disponible, utilisation du stockage en mémoire pour le rate-limiting (REQUIRE_REDIS=true pour bloquer le démarrage)');
     }
     await connectWithRetry();
 

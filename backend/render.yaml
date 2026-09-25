@@ -25,6 +25,7 @@ services:
       # - JWT_SECRET
       # - CORS_ORIGINS
       # - REDIS_URL / REDIS_TLS
+      # - REQUIRE_REDIS=true (optionnel : bloque le démarrage si Redis est indisponible)
       # - SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / MAIL_FROM
       # - FCM_SERVICE_ACCOUNT_JSON (ou FCM_SERVICE_ACCOUNT_PATH si fichier monté)
       # - STORAGE_DRIVER / AWS_S3_BUCKET / AWS_S3_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY

@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+const { default: rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const skipOptions = (req) => req.method === 'OPTIONS';
 const stdHeaders = { standardHeaders: 'draft-7', legacyHeaders: false };
@@ -42,7 +42,7 @@ const candidateLimiter = rateLimit({
   limit: 200,
   skip: skipOptions,
   ...stdHeaders,
-  keyGenerator: (req) => `cand:${req.ip}`,
+  keyGenerator: (req) => `cand:${ipKeyGenerator(req.ip)}`,
   message: { error: 'Trop de requêtes candidat.' },
 });
 
@@ -51,7 +51,7 @@ const recruiterLimiter = rateLimit({
   limit: 200,
   skip: skipOptions,
   ...stdHeaders,
-  keyGenerator: (req) => `rec:${req.ip}`,
+  keyGenerator: (req) => `rec:${ipKeyGenerator(req.ip)}`,
   message: { error: 'Trop de requêtes recruteur.' },
 });
 
@@ -60,7 +60,7 @@ const adminLimiter = rateLimit({
   limit: 60,
   skip: skipOptions,
   ...stdHeaders,
-  keyGenerator: (req) => `adm:${req.ip}`,
+  keyGenerator: (req) => `adm:${ipKeyGenerator(req.ip)}`,
   message: { error: 'Trop de requêtes admin.' },
 });
 
@@ -69,7 +69,7 @@ const messageLimiter = rateLimit({
   limit: 60,
   skip: skipOptions,
   ...stdHeaders,
-  keyGenerator: (req) => `msg:${req.ip}`,
+  keyGenerator: (req) => `msg:${ipKeyGenerator(req.ip)}`,
   message: { error: 'Trop de messages. Ralentissez.' },
 });
 
