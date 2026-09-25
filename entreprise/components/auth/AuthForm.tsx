@@ -14,8 +14,6 @@ async function setFrontendCookie(token: string) {
       credentials: 'include',
     });
   } catch {}
-  // Nettoyage legacy localStorage
-  try { localStorage.removeItem('jobsinc_token'); } catch {}
 }
 
 export default function AuthForm({ mode }: { mode: 'login' | 'register' }) {

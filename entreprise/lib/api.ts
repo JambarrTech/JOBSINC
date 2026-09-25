@@ -16,14 +16,22 @@ const endpoint = (path: string) => `${API_URL}${path.startsWith('/') ? path : `/
 export const assetUrl = (value?: string | null) => {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) {
-    try { const u = new URL(value); if (u.origin !== API_ORIGIN) return null; return u.toString(); } catch { return null; }
+    try {
+      const u = new URL(value);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+      return u.toString();
+    } catch { return null; }
   }
   if (!value.startsWith('/uploads/')) return null;
   if (value.includes('..')) return null;
   try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
 };
 export const cvHref = (value?: string | null) => {
-  if (!value || !value.startsWith('/uploads/cvs/') || value.includes('..')) return null;
+  if (!value || value.includes('..')) return null;
+  if (/^https?:\/\//i.test(value)) {
+    try { return new URL(value).toString(); } catch { return null; }
+  }
+  if (!value.startsWith('/uploads/cvs/')) return null;
   try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
 };
 

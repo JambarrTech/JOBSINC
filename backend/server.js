@@ -5,15 +5,12 @@ require('dotenv').config();
 const http = require('http');
 const app = require('./src/app');
 const prisma = require('./src/config/prisma');
+const { getCorsOrigins } = require('./src/config/corsOrigins');
 const { connectRedis, closeRedis, isRedisAvailable } = require('./src/config/redis');
 const { cleanupExpiredRefreshTokens } = require('./src/utils/tokenUtils');
 
 // CORS origins réutilisées pour Socket.IO (doit matcher app.js)
-const corsOrigins = (process.env.CORS_ORIGINS ||
-  'http://localhost:3000,http://127.0.0.1:3000')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const corsOrigins = getCorsOrigins(process.env);
 
 const PORT = process.env.PORT || 5000;
 

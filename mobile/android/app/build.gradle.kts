@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -27,17 +30,33 @@ android {
         versionName = flutter.versionName
     }
 
+    val keystorePropertiesFile = rootProject.file("key.properties")
+    if (keystorePropertiesFile.exists()) {
+        val keystoreProperties = Properties()
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+        signingConfigs {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Debug: autorise le trafic HTTP clair pour 10.0.2.2 / 127.0.0.1 / LAN
             manifestPlaceholders["usesCleartextTraffic"] = true
         }
         release {
-            // Release: HTTPS obligatoire, signature à configurer via key.properties
-            // Voir https://docs.flutter.dev/deployment/android#create-a-keystore
+            // Release: HTTPS obligatoire, signature configurable via key.properties
             manifestPlaceholders["usesCleartextTraffic"] = false
-            signingConfig = signingConfigs.getByName("debug")
-            // TODO(prod): remplacer par signingConfigs.create("release") avec keystore
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }

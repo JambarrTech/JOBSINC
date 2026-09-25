@@ -8,7 +8,7 @@ import { useDashboard } from './DashboardContext';
 const statConfig = [['activeJobs', 'Offres actives', 'briefcase'], ['applications', 'Candidatures reçues', 'users'], ['interviews', 'Entretiens', 'chart'], ['hired', 'Talents recrutés', 'check']] as const;
 function value(data: DashboardData | null, key: string) { const result = data?.stats?.[key]; return result === undefined || result === null || result === '' ? '--' : result; }
 function displayName(data: DashboardData | null) { return data?.company?.name || data?.user?.firstName || data?.user?.name || 'votre entreprise'; }
-function ErrorState({ retry }: { retry: () => void }) { return <div className="dashboard-state dashboard-error"><strong>Impossible de charger les données.</strong><button type="button" className="button button-outline button-small" onClick={retry}>Réessayer</button></div>; }
+function ErrorState({ retry }: { retry: () => void }) { const { error } = useDashboard(); return <div className="dashboard-state dashboard-error"><strong>{error || 'Impossible de charger les données.'}</strong><button type="button" className="button button-outline button-small" onClick={retry}>Réessayer</button></div>; }
 function EmptyState({ text, href, action }: { text: string; href?: string; action?: string }) { return <div className="dashboard-state"><span>{text}</span>{href && <Link className="button button-outline button-small" href={href}>{action}</Link>}</div>; }
 
 export default function DashboardOverview() {

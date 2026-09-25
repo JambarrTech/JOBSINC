@@ -64,7 +64,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   });
 
   return GoRouter(
-    initialLocation: '/splash',
+    initialLocation: '/onboarding',
 
     // GoRouter réévalue redirect() lorsque l'authentification change.
     refreshListenable: authNotifier,
@@ -74,7 +74,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       final location = state.uri.path;
 
       const publicRoutes = {
-        '/splash',
         '/onboarding',
         '/login',
         '/register',
@@ -91,7 +90,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null;
         }
 
-        return '/splash';
+        return '/onboarding';
       }
 
       // ---------------------------------------------------------
@@ -123,8 +122,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 4. EMPÊCHER UN UTILISATEUR CONNECTÉ DE RETOURNER
       //    SUR LOGIN / REGISTER / SPLASH / ONBOARDING
       // ---------------------------------------------------------
-      final isAuthRoute = location == '/splash' ||
-          location == '/login' ||
+      final isAuthRoute = location == '/login' ||
           location == '/register' ||
           location == '/onboarding' ||
           location == '/forgot-password';
@@ -182,12 +180,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       GoRoute(
         path: '/',
-        redirect: (_, __) => '/splash',
-      ),
-
-      GoRoute(
-        path: '/splash',
-        builder: (_, __) => const SplashScreen(),
+        redirect: (_, __) => '/onboarding',
       ),
 
       GoRoute(

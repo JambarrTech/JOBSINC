@@ -12,6 +12,8 @@ const jwt = require('jsonwebtoken');
 const prisma = require('./config/prisma');
 const { globalLimiter, authLimiter, publicLimiter, candidateLimiter, recruiterLimiter, adminLimiter, messageLimiter } = require('./middlewares/rateLimit');
 
+const { getCorsOrigins } = require('./config/corsOrigins');
+
 const authRoutes = require('./routes/authRoutes');
 const companyRoutes = require('./routes/companyRoutes');
 const publicCompanyRoutes = require('./routes/publicCompanyRoutes');
@@ -44,13 +46,7 @@ if (process.env.TRUST_PROXY === '0') {
   }
 }
 
-const defaultOrigins = process.env.NODE_ENV === 'production'
-  ? []
-  : ['http://localhost:3000','http://localhost:3001','http://127.0.0.1:3000','http://127.0.0.1:3001'];
-const corsOrigins = [...new Set([
-  ...defaultOrigins,
-  ...(process.env.CORS_ORIGINS || '').split(',').map(o=>o.trim()).filter(Boolean)
-].filter(Boolean))];
+const corsOrigins = getCorsOrigins(process.env);
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -185,16 +181,32 @@ const { isRedisAvailable } = require('./config/redis');
 app.get('/health', async (req, res) => {
   const redisUp = isRedisAvailable();
   const redisRequired = process.env.REQUIRE_REDIS === 'true';
-  const checks = { status: redisUp || !redisRequired ? 'ok' : 'degraded', timestamp: new Date().toISOString(), uptime: process.uptime(), redis: redisUp ? 'up' : 'down' };
+  const checks = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    redis: redisUp ? 'up' : 'down',
+  };
+
   try {
     await prisma.$queryRaw`SELECT 1`;
     checks.db = 'up';
-    res.json(checks);
   } catch (e) {
     checks.db = 'down';
     checks.status = 'degraded';
-    res.status(503).json(checks);
+    return res.status(503).json(checks);
   }
+
+  if (!redisUp && redisRequired) {
+    checks.status = 'degraded';
+    return res.status(503).json(checks);
+  }
+
+  if (!redisUp) {
+    checks.status = 'degraded';
+  }
+
+  return res.json(checks);
 });
 
 // Cron endpoint pour Vercel Cron Jobs (sécurisé par CRON_SECRET)
