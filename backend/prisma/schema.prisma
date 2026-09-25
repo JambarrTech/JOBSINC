@@ -6,6 +6,11 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Neon : le runtime passe par le pooler, les migrations par l'URL directe.
+  // `render.yaml` exige déjà DIRECT_URL au démarrage (sans quoi le service ne
+  // démarre pas) mais elle n'était câblée nulle part : `migrate deploy`
+  // executait son DDL via le pooler.
+  directUrl = env("DIRECT_URL")
 }
 
 model Notification {
@@ -44,6 +49,12 @@ model User {
   passwordResets         PasswordReset[]
   savedJobs              SavedJob[]
   refreshTokens          RefreshToken[]
+
+  // Index GIN trigram (pg_trgm) : les recherches utilisent `contains`
+  // + `mode: 'insensitive'` → ILIKE '%…%', inutilisable avec un B-tree.
+  // Déclarés ici pour rester synchronisés avec les migrations manuelles.
+  @@index([email(ops: raw("gin_trgm_ops"))], type: Gin, map: "User_email_trgm_idx")
+  @@index([createdAt])
 }
 
 model DeviceToken {
@@ -71,6 +82,13 @@ model CandidateProfile {
   cvUrl            String?
   skills           String?
   experienceYears  Int?
+  // Le formulaire de profil candidat (web + mobile) envoie ce champ et
+  // `matchingService.scoreEducation` le compare au `Job.educationLevel`.
+  // La colonne manquait dans le schéma : Prisma rejetait l'argument
+  // (« Unknown argument educationLevel ») et PUT /candidate/profile
+  // répondait 500 — donc TOUTE sauvegarde de profil depuis le mobile
+  // échouait. Déclarée par la migration 20260925000002.
+  educationLevel   String?
   educationField   String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -80,6 +98,19 @@ model CandidateProfile {
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   candidateSkills  CandidateSkill[]
   employments      Employment[]
+
+  // Tri des profils (admin, stats) et recherche trigram.
+  @@index([createdAt])
+  @@index([updatedAt])
+  // Résolution "qui a le droit de lire ce fichier ?" lors du streaming d'un
+  // CV ou d'un avatar : la route d'upload est transformée en chemin applicatif
+  // et utilisée comme predicate. Sans index, chaque lecture de fichier protégé
+  // déclenche un seq scan sur CandidateProfile.
+  @@index([cvUrl], map: "CandidateProfile_cvUrl_idx")
+  @@index([avatarUrl], map: "CandidateProfile_avatarUrl_idx")
+  @@index([firstName(ops: raw("gin_trgm_ops"))], type: Gin, map: "CandidateProfile_firstName_trgm_idx")
+  @@index([lastName(ops: raw("gin_trgm_ops"))], type: Gin, map: "CandidateProfile_lastName_trgm_idx")
+  @@index([skills(ops: raw("gin_trgm_ops"))], type: Gin, map: "CandidateProfile_skills_trgm_idx")
 }
 
 model Company {
@@ -104,6 +135,12 @@ model Company {
   faqs        Faq[]
   feedbacks   Feedback[]
   jobs        Job[]
+
+  // Toutes les lectures publiques d'entreprises filtrent par isApproved.
+  @@index([isApproved])
+  // Index trigram (pg_trgm) pour les recherches `contains`/`insensitive`.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Company_name_trgm_idx")
+  @@index([sector(ops: raw("gin_trgm_ops"))], type: Gin, map: "Company_sector_trgm_idx")
 }
 
 model CompanyImage {
@@ -155,6 +192,9 @@ model Job {
   @@index([location])
   @@index([contractType])
   @@index([companyId, isOpen, createdAt])
+  // Recherche trigram du catalogue public et de l'administration.
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "Job_title_trgm_idx")
+  @@index([location(ops: raw("gin_trgm_ops"))], type: Gin, map: "Job_location_trgm_idx")
 }
 
 model Application {
@@ -176,6 +216,8 @@ model Application {
   @@index([candidateProfileId])
   @@index([status])
   @@index([jobId, status])
+  // Trends admin + fenêtre d'activité du dashboard entreprise.
+  @@index([createdAt])
 }
 
 model Interview {
@@ -193,6 +235,9 @@ model Interview {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   application   Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Entretiens à venir (administration, bannière « en cours »).
+  @@index([scheduledAt])
 }
 
 model Skill {
@@ -202,6 +247,8 @@ model Skill {
   createdAt       DateTime         @default(now())
   candidateSkills CandidateSkill[]
   jobSkills       JobSkill[]
+
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Skill_name_trgm_idx")
 }
 
 model CandidateSkill {
@@ -249,6 +296,7 @@ model Employment {
 
   @@index([candidateId])
   @@index([companyId])
+  @@index([startDate])
 }
 
 model Conversation {
@@ -298,6 +346,7 @@ model Faq {
 
   @@index([companyId])
   @@index([isPublished])
+  @@index([question(ops: raw("gin_trgm_ops"))], type: Gin, map: "Faq_question_trgm_idx")
   @@map("FAQ")
 }
 
@@ -314,6 +363,7 @@ model Feedback {
 
   @@index([companyId])
   @@index([isPublished])
+  @@index([text(ops: raw("gin_trgm_ops"))], type: Gin, map: "Feedback_text_trgm_idx")
   @@map("Feedback")
 }
 

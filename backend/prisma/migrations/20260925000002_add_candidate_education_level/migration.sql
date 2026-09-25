@@ -1,0 +1,12 @@
+-- Le formulaire de profil candidat (web + mobile) envoie `educationLevel`, et
+-- `matchingService.scoreEducation` le compare au `Job.educationLevel`, mais la
+-- colonne n'existait ni dans le schéma Prisma ni dans la migration init. Prisma
+-- rejetait donc l'argument (« Unknown argument educationLevel ») et
+-- `PUT /candidate/profile` répondait 500 : toute sauvegarde de profil depuis
+-- le mobile échouait, et le niveau de formation du candidat n'entrait jamais
+-- dans le score de matching.
+--
+-- IF NOT EXISTS : certaines bases (ex. Neon, cf. scripts/migrate-to-neon.sql)
+-- portent déjà la colonne issue d'un import manuel. La migration reste alors
+-- un no-op au lieu de faire échouer le deploy.
+ALTER TABLE "CandidateProfile" ADD COLUMN IF NOT EXISTS "educationLevel" TEXT;
