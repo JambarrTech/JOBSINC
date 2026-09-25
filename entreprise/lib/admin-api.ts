@@ -43,10 +43,14 @@ export type AdminAuthResponse = {
 const adminLoginEndpoint = process.env.NEXT_PUBLIC_ADMIN_LOGIN_ENDPOINT || '/auth/login/admin';
 
 export async function adminLogin(payload: Record<string, unknown>) {
-  return apiRequest<AdminAuthResponse>(adminLoginEndpoint, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  const options = { method: 'POST', body: JSON.stringify(payload) } as const;
+  try {
+    return await apiRequest<AdminAuthResponse>(adminLoginEndpoint, options);
+  } catch (error) {
+    // Compatibilité pendant le déploiement progressif du backend admin dédié.
+    if ((error as { status?: number })?.status !== 404 || adminLoginEndpoint === '/auth/login') throw error;
+    return apiRequest<AdminAuthResponse>('/auth/login', options);
+  }
 }
 
 export async function verifyAdminSession() {
