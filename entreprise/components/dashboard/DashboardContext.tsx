@@ -4,12 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { DashboardData, getDashboardData } from '@/lib/api';
 import { getMessagesSocket } from '@/lib/socket';
 
-type DashboardContextValue = { data: DashboardData | null; loading: boolean; error: boolean; days: number; setDays: (days: number) => void; reload: () => void };
+type DashboardContextValue = { data: DashboardData | null; loading: boolean; error: string | null; days: number; setDays: (days: number) => void; reload: () => void };
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<DashboardData | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(false); const [days, setDaysState] = useState(30);
-  const load = useCallback((period: number) => { setLoading(true); setError(false); getDashboardData(period).then(setData).catch(() => setError(true)).finally(() => setLoading(false)); }, []);
+  const [data, setData] = useState<DashboardData | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [days, setDaysState] = useState(30);
+  const load = useCallback((period: number) => { setLoading(true); setError(null); getDashboardData(period).then(setData).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Erreur inconnue.')).finally(() => setLoading(false)); }, []);
   const reload = useCallback(() => { load(days); }, [load, days]);
   const setDays = useCallback((period: number) => { setDaysState(period); load(period); }, [load]);
   useEffect(() => { load(days); }, []); // eslint-disable-line react-hooks/exhaustive-deps

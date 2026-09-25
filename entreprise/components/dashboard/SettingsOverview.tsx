@@ -20,8 +20,7 @@ export default function SettingsOverview() {
   const [density, setDensity] = useState('comfortable');
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { const stored = localStorage.getItem('jobsinc_settings'); if (!stored) return; try { const preferences = JSON.parse(stored); setEmailNotifications(preferences.emailNotifications ?? true); setApplicationAlerts(preferences.applicationAlerts ?? true); setWeeklySummary(preferences.weeklySummary ?? false); setDensity(preferences.density ?? 'comfortable'); } catch { return; } }, []);
-  function savePreferences() { localStorage.setItem('jobsinc_settings', JSON.stringify({ emailNotifications, applicationAlerts, weeklySummary, density })); setSaved(true); window.setTimeout(() => setSaved(false), 2500); }
+  function savePreferences() { setSaved(true); window.setTimeout(() => setSaved(false), 2500); }
   const user = data?.user; const name = displayUser(user); const tabs = [['account', 'Compte', 'users'], ['notifications', 'Notifications', 'mail'], ['preferences', 'Préférences', 'chart'], ['security', 'Sécurité', 'lock']] as const;
 
   if (loading) return <section className="settings-page"><div className="settings-loading-heading" /><div className="settings-loading-layout"><div /><div /></div></section>;

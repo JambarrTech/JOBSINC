@@ -9,7 +9,7 @@ export default function AdminLoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setLoading(true); setError(''); const payload = Object.fromEntries(new FormData(event.currentTarget).entries()); try { const result = await adminLogin(payload); if (!result.user || !isAdminUser(result.user)) throw new Error('Accès refusé. Ce compte ne possède pas les permissions administrateur.'); // Backend a déjà posé les cookies HttpOnly jobsinc_token/accessToken/refreshToken via Set-Cookie (credentials: include) — pas de localStorage pour l'auth
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setLoading(true); setError(''); const payload = Object.fromEntries(new FormData(event.currentTarget).entries()); try { const result = await adminLogin(payload); if (!result.user || !isAdminUser(result.user)) throw new Error('Accès refusé. Ce compte ne possède pas les permissions administrateur.'); // Le backend pose les cookies HttpOnly jobsinc_token/accessToken/refreshToken via Set-Cookie.
     if (result.token) {
       try {
         await fetch('/api/auth/cookie', {

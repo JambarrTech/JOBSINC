@@ -52,7 +52,6 @@ export default function RegistrationForm() {
         credentials: 'include',
       });
     } catch {}
-    try { localStorage.removeItem('jobsinc_token'); } catch {}
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!validateCurrentStep() || !terms || !privacy) { setError('Veuillez accepter les conditions d’utilisation et la politique de confidentialité.'); return; } if (!logo) { setError('Veuillez ajouter le logo de votre entreprise.'); return; } setLoading(true); setError(''); const endpoint = process.env.NEXT_PUBLIC_REGISTER_ENDPOINT || '/auth/register/company'; const fields = Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'confirmPassword' && key !== 'description')); const payload = { ...fields, description: values.description }; try { const result = await authenticateWithFiles(endpoint, payload, [logo.file], 'logo'); if (result.token) await setFrontendCookie(result.token); setSuccess(true); } catch (err) { setError(err instanceof Error ? err.message : 'Impossible de créer le compte pour le moment.'); } finally { setLoading(false); } }

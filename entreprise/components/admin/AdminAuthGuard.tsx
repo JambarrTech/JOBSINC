@@ -9,12 +9,12 @@ export default function AdminAuthGuard({ children, onUser }: { children: React.R
   useEffect(() => {
     let active = true;
     async function checkSession() {
-      // Auth sécurisée : uniquement cookie HttpOnly + vérif backend DB (pas de localStorage pour l'auth)
+      // Auth sécurisée : uniquement cookie HttpOnly + vérification backend en base.
       try {
         const verified = await verifyAdminSession();
         if (verified?.user && isAdminUser(verified.user)) {
           const user = verified.user;
-          // Cookie non-HttpOnly pour UI uniquement (pas de token), localStorage supprimé pour l'auth
+          // Cookie non-HttpOnly réservé à l'affichage, aucun token côté JavaScript.
           document.cookie = `jobsinc_admin_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=${24 * 60 * 60}; SameSite=Lax`;
           if (active) {
             onUser(user);

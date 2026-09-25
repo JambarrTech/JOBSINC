@@ -9,6 +9,33 @@ const { validate, jobCreateSchema } = require('../utils/zodSchemas');
 const jobInclude = { _count: { select: { applications: true } } };
 const companyInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
 
+function parseBooleanLike(value) {
+  if (value === undefined || value === null) return value;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+  }
+  return value;
+}
+
+function normalizeJobInput(body = {}) {
+  const normalized = { ...body };
+  const trimIfDefined = (key) => {
+    if (normalized[key] === undefined || normalized[key] === null) return;
+    normalized[key] = String(normalized[key]).trim();
+  };
+
+  ['title', 'description', 'location', 'contractType', 'department', 'workMode', 'experience', 'currency', 'responsibilities', 'educationLevel', 'skills'].forEach(trimIfDefined);
+
+  if (normalized.isOpen !== undefined) {
+    normalized.isOpen = parseBooleanLike(normalized.isOpen);
+  }
+
+  return normalized;
+}
+
 function paginate(req) {
   return parsePagination(req.query);
 }
@@ -271,33 +298,27 @@ exports.jobs = async (req, res) => {
 exports.createJob = async (req, res) => {
   try {
     if (!isRecruiter(req, res)) return;
-    // Validation zod (garde compat contractType français)
-    const normalized = {
-      ...req.body,
-      contractType: req.body.contractType,
-      title: req.body.title?.trim(),
-      description: req.body.description?.trim(),
-      location: req.body.location?.trim(),
-      skills: req.body.skills?.trim(),
-    };
-    // Pre-validate zod puis mappe contractType legacy
+    const normalized = normalizeJobInput(req.body);
     const validContractTypesLegacy = ['Temps plein','Temps partiel','Stage','Freelance','CDD','CDI'];
     let bodyForZod = { ...normalized };
     if (validContractTypesLegacy.includes(bodyForZod.contractType)) {
       bodyForZod.contractType = bodyForZod.contractType;
     }
-    // Utilise zod pour les champs communs, puis vérif contractType élargie
+    bodyForZod = Object.fromEntries(Object.entries(bodyForZod).map(([key, value]) => [
+      key,
+      value === null || value === '' ? undefined : value,
+    ]));
     try { validate(jobCreateSchema, { ...bodyForZod, jobType: undefined }); } catch (e) { return res.status(400).json({ error: e.message, details: e.details }); }
-    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
+    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = normalized;
     if (deadline && new Date(deadline) < new Date()) return res.status(400).json({ error: 'La date limite ne peut pas être dans le passé.' });
     const validContractTypes = ['Temps plein','Temps partiel','Stage','Freelance','CDD','CDI','FULL_TIME','PART_TIME','INTERNSHIP','FREELANCE'];
     if (!validContractTypes.includes(contractType)) return res.status(400).json({ error: `contractType invalide: ${contractType}` });
     const company = await getCompany(req.user.userId);
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
-    if (isOpen !== undefined && typeof isOpen !== 'boolean' && isOpen !== 'true' && isOpen !== 'false') return res.status(400).json({ error: 'isOpen doit être un booléen.' });
-    const parsedIsOpen = typeof isOpen === 'string' ? isOpen === 'true' : isOpen;
+    if (isOpen !== undefined && typeof isOpen !== 'boolean') return res.status(400).json({ error: 'isOpen doit être un booléen.' });
+    const parsedIsOpen = parseBooleanLike(isOpen);
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
-    const job = await prisma.job.create({ data: { companyId: company.id, title: title.trim(), description: description.trim(), location: location.trim(), jobType: types[contractType] || 'FULL_TIME', contractType, department: department || null, workMode: workMode || null, experience: experience || null, salaryMin: salaryMin === null || salaryMin === '' ? null : Number(salaryMin), salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax), currency: currency || null, deadline: deadline ? new Date(deadline) : null, startsAt: startsAt ? new Date(startsAt) : null, responsibilities: responsibilities || null, skills: skills.trim(), educationLevel: educationLevel || null, minExperienceYears: minExperienceYears == null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)), maxExperienceYears: maxExperienceYears == null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }, include: jobInclude });
+    const job = await prisma.job.create({ data: { companyId: company.id, title: title?.trim() || '', description: description?.trim() || '', location: location?.trim() || '', jobType: types[contractType] || 'FULL_TIME', contractType, department: department || null, workMode: workMode || null, experience: experience || null, salaryMin: salaryMin === null || salaryMin === '' ? null : Number(salaryMin), salaryMax: salaryMax === null || salaryMax === '' ? null : Number(salaryMax), currency: currency || null, deadline: deadline ? new Date(deadline) : null, startsAt: startsAt ? new Date(startsAt) : null, responsibilities: responsibilities || null, skills: skills !== undefined && skills !== null ? String(skills).trim() : null, isOpen: parsedIsOpen ?? true, educationLevel: educationLevel || null, minExperienceYears: minExperienceYears == null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)), maxExperienceYears: maxExperienceYears == null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }, include: jobInclude });
     invalidate(`company:dashboard:${company.id}`);
     invalidate(`matching:pool:`);
     invalidate(`matching:match:`);
@@ -470,11 +491,13 @@ exports.updateJob = async (req, res) => {
     if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const job = await prisma.job.findFirst({ where: { id: req.params.id, companyId: company.id } });
     if (!job) return res.status(404).json({ error: 'Offre introuvable.' });
-    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = req.body;
+    const normalized = normalizeJobInput(req.body);
+    const { title, description, location, contractType, department, workMode, experience, salaryMin, salaryMax, currency, deadline, startsAt, responsibilities, skills, isOpen, educationLevel, minExperienceYears, maxExperienceYears } = normalized;
     if (salaryMin !== undefined && salaryMin !== null && salaryMin !== '' && Number.isNaN(Number(salaryMin))) return res.status(400).json({ error: 'salaryMin invalide.' });
     if (salaryMax !== undefined && salaryMax !== null && salaryMax !== '' && Number.isNaN(Number(salaryMax))) return res.status(400).json({ error: 'salaryMax invalide.' });
     if (deadline && new Date(deadline) < new Date()) return res.status(400).json({ error: 'La date limite ne peut pas être dans le passé.' });
     const types = { 'Temps plein': 'FULL_TIME', 'Temps partiel': 'PART_TIME', Stage: 'INTERNSHIP', Freelance: 'FREELANCE', CDD: 'FULL_TIME' };
+    const parsedIsOpen = parseBooleanLike(isOpen);
     const updated = await prisma.job.update({
       where: { id: job.id },
       data: {
@@ -491,7 +514,7 @@ exports.updateJob = async (req, res) => {
         ...(deadline !== undefined && { deadline: deadline ? new Date(deadline) : null }),
         ...(startsAt !== undefined && { startsAt: startsAt ? new Date(startsAt) : null }),
         ...(responsibilities !== undefined && { responsibilities }),
-        ...(skills !== undefined && { skills: skills.trim() }),
+        ...(skills !== undefined && { skills: skills === null ? null : String(skills).trim() }),
         ...(educationLevel !== undefined && { educationLevel }),
         ...(minExperienceYears !== undefined && { minExperienceYears: minExperienceYears === null || minExperienceYears === '' ? null : Math.max(0, Number(minExperienceYears)) }),
         ...(maxExperienceYears !== undefined && { maxExperienceYears: maxExperienceYears === null || maxExperienceYears === '' ? null : Math.max(0, Number(maxExperienceYears)) }),
@@ -508,6 +531,11 @@ exports.updateJob = async (req, res) => {
     res.status(500).json({ error: "Impossible de mettre à jour l'offre." });
   }
 };
+
+Object.assign(exports, {
+  normalizeJobInput,
+  parseBooleanLike,
+});
 
 exports.deleteJob = async (req, res) => {
   try {

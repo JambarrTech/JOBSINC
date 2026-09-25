@@ -43,13 +43,14 @@ export default function NewJobForm({ jobId }: { jobId?: string }) {
     if (!form.title.trim() || !form.contractType || !form.location.trim() || !form.description.trim() || !form.skills.trim()) { setError('Complétez les champs obligatoires avant de publier l’offre.'); return; }
     if (form.salaryMin && form.salaryMax && Number(form.salaryMin) > Number(form.salaryMax)) { setError('Le salaire minimum doit être inférieur au salaire maximum.'); return; }
     if (form.minExperienceYears && form.maxExperienceYears && Number(form.minExperienceYears) > Number(form.maxExperienceYears)) { setError('L’expérience minimum doit être inférieure à l’expérience maximum.'); return; }
-    const payload = JSON.stringify({
+    const payloadData = {
       ...form,
       salaryMin: form.salaryMin || null, salaryMax: form.salaryMax || null,
       educationLevel: form.educationLevel || null,
       minExperienceYears: form.minExperienceYears === '' ? null : Number(form.minExperienceYears),
       maxExperienceYears: form.maxExperienceYears === '' ? null : Number(form.maxExperienceYears),
-    });
+    };
+    const payload = JSON.stringify(Object.fromEntries(Object.entries(payloadData).filter(([, value]) => value !== '' && value !== null)));
     const endpoint = isEdit ? `/company/jobs/${jobId}` : process.env.NEXT_PUBLIC_CREATE_JOB_ENDPOINT;
     if (!endpoint) { setError('Le formulaire est prêt, mais l’endpoint de création d’offre n’est pas encore configuré.'); return; }
     setLoading(true);

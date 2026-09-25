@@ -159,7 +159,7 @@ exports.updateStatus = async (req, res) => {
             position: application.job.title,
           },
         });
-        await tx.user.update({ where: { id: application.candidate.userId }, data: { role: 'EMPLOYEE' } });
+        await tx.user.update({ where: { id: application.candidate.userId }, data: { role: 'EMPLOYEE', tokenVersion: { increment: 1 } } });
       }
 
       // Messagerie : la sélection (entretien) ou l'acceptation ouvre

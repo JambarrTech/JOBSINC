@@ -245,8 +245,9 @@ class _OnboardingPage extends StatelessWidget {
         20,
         20,
       ),
-      child: Column(
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: AspectRatio(
@@ -272,8 +273,8 @@ class _OnboardingPage extends StatelessWidget {
                   color: AppColors.secondaryText,
                 ),
           ),
-          const Spacer(),
-        ],
+          ],
+        ),
       ),
     );
   }
