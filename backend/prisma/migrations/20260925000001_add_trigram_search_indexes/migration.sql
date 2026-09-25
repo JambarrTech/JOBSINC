@@ -36,8 +36,10 @@ CREATE INDEX IF NOT EXISTS "CandidateProfile_skills_trgm_idx"
 CREATE INDEX IF NOT EXISTS "Skill_name_trgm_idx"
   ON "Skill" USING gin ("name" gin_trgm_ops);
 
--- FAQ / témoignages : recherche et unicité applicative sur la question
+-- FAQ / témoignages : recherche et unicité applicative sur la question.
+-- Attention : le modèle est mappé en "FAQ" (@@map dans schema.prisma), pas
+-- "Faq" — sinon 42P01 « relation "Faq" does not exist ».
 CREATE INDEX IF NOT EXISTS "Faq_question_trgm_idx"
-  ON "Faq" USING gin ("question" gin_trgm_ops);
+  ON "FAQ" USING gin ("question" gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS "Feedback_text_trgm_idx"
   ON "Feedback" USING gin ("text" gin_trgm_ops);
