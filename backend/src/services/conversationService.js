@@ -27,7 +27,7 @@ const RATE_LIMIT_MAX_MESSAGES = 20;
 const RATE_LIMIT_WINDOW_MS = 10000;
 const RATE_BUCKETS_MAX = 5000;
 
-setInterval(() => {
+const cleanupRateBucketsTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, value] of rateBuckets) {
     if (now > value.resetAt) rateBuckets.delete(key);
@@ -39,6 +39,7 @@ setInterval(() => {
     for (let i = 0; i < toDelete; i++) rateBuckets.delete(keys.next().value);
   }
 }, 60_000);
+cleanupRateBucketsTimer.unref?.();
 
 function isRateLimited(userId) {
   const now = Date.now();

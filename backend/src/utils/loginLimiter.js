@@ -127,7 +127,7 @@ async function remainingSeconds(email, ip) {
 }
 
 // Cleanup expired entries periodically
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, record] of memoryStore.entries()) {
     if (now - record.lastAt > LOCKOUT_MS) {
@@ -135,5 +135,6 @@ setInterval(() => {
     }
   }
 }, 60000);
+cleanupTimer.unref?.();
 
 module.exports = { recordFailedAttempt, isLocked, clearAttempts, remainingSeconds };

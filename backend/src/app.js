@@ -92,6 +92,21 @@ app.use((req, _res, next) => {
   next();
 });
 
+app.use((req, res, next) => {
+  const startedAt = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    console.log(JSON.stringify({
+      requestId: req.id,
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Math.round(durationMs * 100) / 100,
+    }));
+  });
+  next();
+});
+
 app.use('/api', globalLimiter);
 
 // ---- Uploads statiques ----
@@ -168,7 +183,9 @@ app.get('/', (req, res) => {
 // Health check (utilisé par Vercel + monitoring)
 const { isRedisAvailable } = require('./config/redis');
 app.get('/health', async (req, res) => {
-  const checks = { status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime(), redis: isRedisAvailable() ? 'up' : 'down' };
+  const redisUp = isRedisAvailable();
+  const redisRequired = process.env.REQUIRE_REDIS === 'true';
+  const checks = { status: redisUp || !redisRequired ? 'ok' : 'degraded', timestamp: new Date().toISOString(), uptime: process.uptime(), redis: redisUp ? 'up' : 'down' };
   try {
     await prisma.$queryRaw`SELECT 1`;
     checks.db = 'up';

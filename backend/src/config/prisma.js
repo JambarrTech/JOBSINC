@@ -5,6 +5,7 @@ const { PrismaClient } = require('@prisma/client');
 // tentatives : on réessaie les requêtes qui échouent sur une erreur
 // de connexion au lieu de remonter l'erreur au contrôleur.
 const RETRIABLE_CODES = new Set(['P1001', 'P2024', 'P1000']);
+const READ_OPERATIONS = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy']);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const base = new PrismaClient({
@@ -26,15 +27,15 @@ async function safeReconnect() {
 const prisma = base.$extends({
   query: {
     $allModels: {
-      async $allOperations({ args, query }) {
-        const MAX_ATTEMPTS = 4;
+      async $allOperations({ operation, args, query }) {
+        const maxAttempts = READ_OPERATIONS.has(operation) ? 4 : 1;
         for (let attempt = 1; ; attempt++) {
           try {
             return await query(args);
           } catch (err) {
             const retriable = err && RETRIABLE_CODES.has(err.code);
             if (!retriable) throw err;
-            if (attempt === MAX_ATTEMPTS) throw err;
+            if (attempt === maxAttempts) throw err;
             await safeReconnect();
             await sleep(3000 * attempt);
           }
