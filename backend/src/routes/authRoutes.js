@@ -9,6 +9,7 @@ const { sensitiveAuthLimiter, authLimiter } = require('../middlewares/rateLimit'
 router.post('/register/candidate', candidateUpload, authController.registerCandidate);
 router.post('/login/candidate', authController.loginCandidate);
 router.post('/login', authController.login);
+router.post('/login/admin', authController.loginAdmin);
 
 router.post('/forgot-password', sensitiveAuthLimiter, authController.forgotPassword);
 router.post('/reset-password', sensitiveAuthLimiter, authController.resetPassword);

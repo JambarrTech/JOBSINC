@@ -75,8 +75,8 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/admin')) {
     if (pathname === '/admin/login') {
       if (token) {
-        const { valid } = await verifyToken(token);
-        if (valid) return NextResponse.redirect(new URL('/admin', request.url));
+        const { valid, role } = await verifyToken(token);
+        if (valid && role === 'ADMIN') return NextResponse.redirect(new URL('/admin', request.url));
       }
       return NextResponse.next();
     }

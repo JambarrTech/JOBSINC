@@ -40,7 +40,7 @@ export type AdminAuthResponse = {
   user?: AdminUser;
 };
 
-const adminLoginEndpoint = process.env.NEXT_PUBLIC_ADMIN_LOGIN_ENDPOINT || process.env.NEXT_PUBLIC_LOGIN_ENDPOINT || '/auth/login';
+const adminLoginEndpoint = process.env.NEXT_PUBLIC_ADMIN_LOGIN_ENDPOINT || '/auth/login/admin';
 
 export async function adminLogin(payload: Record<string, unknown>) {
   return apiRequest<AdminAuthResponse>(adminLoginEndpoint, {

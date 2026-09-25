@@ -147,7 +147,7 @@ exports.login = async (req, res) => {
     
     const email = req.body.email;
     const password = req.body.password;
-    if (!email || !password) return handleError(new Error('L\'adresse email et le mot de passe sont obligatoires.'), res);
+    if (!email || !password) return handleError(new ValidationError('L\'adresse email et le mot de passe sont obligatoires.'), res);
     
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
     if (await isLocked(email, ip)) {
@@ -157,6 +157,32 @@ exports.login = async (req, res) => {
     }
     
     const user = await authService.authenticateUser(email, password);
+    return loginUser(req, res, user);
+  } catch (cause) {
+    if (cause.message === 'Identifiants invalides.') {
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      await recordFailedAttempt(req.body?.email, ip);
+    }
+    return handleError(cause, res);
+  }
+};
+
+exports.loginAdmin = async (req, res) => {
+  try {
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+
+    const email = req.body.email;
+    const password = req.body.password;
+    if (!email || !password) return handleError(new ValidationError('L\'adresse email et le mot de passe sont obligatoires.'), res);
+
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    if (await isLocked(email, ip)) {
+      const sec = remainingSeconds(email, ip);
+      const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
+      return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
+    }
+
+    const user = await authService.authenticateUser(email, password, ['ADMIN']);
     return loginUser(req, res, user);
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {

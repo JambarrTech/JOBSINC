@@ -76,7 +76,7 @@ NEXT_PUBLIC_COMPANY_MESSAGES_ENDPOINT=/companies/me/messages
 NEXT_PUBLIC_MATCHING_ENDPOINT=/companies/me/matching
 
 # Auth et données Admin — uniquement si ces routes existent côté backend
-NEXT_PUBLIC_ADMIN_LOGIN_ENDPOINT=/auth/login
+NEXT_PUBLIC_ADMIN_LOGIN_ENDPOINT=/auth/login/admin
 NEXT_PUBLIC_ADMIN_SESSION_ENDPOINT=/auth/me
 NEXT_PUBLIC_ADMIN_ROLES=ADMIN,SUPER_ADMIN,SYSTEM_ADMIN
 NEXT_PUBLIC_ADMIN_DASHBOARD_ENDPOINT=/admin/overview
