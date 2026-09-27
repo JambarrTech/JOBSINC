@@ -1,6 +1,7 @@
 const { default: rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { getRedis, isRedisAvailable } = require('../config/redis');
 const { getAccessTokenFromCookies } = require('../utils/tokenCookies');
+const logger = require('../utils/logger');
 
 const skipOptions = (req) => req.method === 'OPTIONS';
 const stdHeaders = { standardHeaders: 'draft-7', legacyHeaders: false };
@@ -121,7 +122,13 @@ function lazyStore() {
   const warnOnce = (message) => {
     if (warned) return;
     warned = true;
-    console.warn(message);
+    // Passe par `utils/logger` et non par `console.warn` : ces deux messages
+    // signalent une DÉGRADATION silencieuse (quotas comptés par instance, ou
+    // pas comptés du tout) et c'est précisément le genre d'information qu'un
+    // aggregateur doit pouvoir remonter. Un `console.warn` les sortirait du
+    // flux JSON, et ignorerait `LOG_LEVEL` — un `LOG_LEVEL=error` en
+    // production aurait quand même laissé passer l'alerte.
+    logger.warn({ message, scope: 'rateLimit' });
   };
 
   /**
@@ -151,10 +158,7 @@ function lazyStore() {
         } catch (err) {
           // `rate-limit-redis` est optionnel : sans lui, on reste en mémoire.
           redisUnusable = true;
-          warnOnce(
-            '[rateLimit] rate-limit-redis indisponible, quotas comptés par instance : '
-            + err.message
-          );
+          warnOnce(`rate-limit-redis indisponible, quotas comptés par instance : ${err.message}`);
         }
       }
       if (redisTarget) return redisTarget;
@@ -170,7 +174,7 @@ function lazyStore() {
         if (fallback && initOptions) fallback.init(initOptions);
       } catch (err) {
         fallback = null;
-        warnOnce('[rateLimit] MemoryStore indisponible, quotas non comptés : ' + err.message);
+        warnOnce(`MemoryStore indisponible, quotas non comptés : ${err.message}`);
       }
     }
     return fallback;

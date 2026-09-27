@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/prisma');
 const { getAccessTokenFromCookies } = require('../utils/tokenCookies');
+const logger = require('../utils/logger');
 
 // ============================================================
 // UPLOAD AUTH — autorisation de LECTURE des fichiers protégés
@@ -178,7 +179,15 @@ const uploadAuth = async (req, res, next) => {
 
   const decision = await authorizeStoredFile({ userId: user.id, role: user.role }, storedPath)
     .catch((error) => {
-      console.error('uploadAuth: unexpected error', error);
+      // Fail-closed : une erreur d'autorisation vaut refus, jamais accès.
+      // Le journalisation passe par `utils/logger` (cf. `errors.js`) et non
+      // `console.error`, pour rester dans le flux JSON et suivre `LOG_LEVEL` :
+      // une panne d'autorisation de fichier est exactement ce qu'un opérateur
+      // doit pouvoir remonter, et un `console.error` échappait aux deux.
+      logger.exception(error, {
+        message: 'uploadAuth: erreur inattendue',
+        scope: 'uploadAuth',
+      });
       return { allowed: false, reason: 'ERREUR' };
     });
 

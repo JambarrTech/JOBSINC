@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
+const logger = require('../utils/logger');
 
 const DRIVER = process.env.STORAGE_DRIVER || 'local';
 
@@ -53,7 +54,12 @@ async function removeS3(fileUrl) {
       Key: key,
     }));
   } catch (err) {
-    console.error('Erreur suppression S3:', err?.message || err);
+    // Une suppression S3 en echec ne doit pas interrompre l'appelant — le
+    // fichier peut deja etre absent, ou le stockage indisponible. Mais
+    // l'echec doit rester visible : `logger.exception` le porte dans le flux
+    // JSON et respecte `LOG_LEVEL`, ce que ne faisait pas le `console.error`
+    // d'origine.
+    logger.exception(err, { message: 'Erreur suppression S3', scope: 'storage' });
   }
 }
 
@@ -155,7 +161,9 @@ async function streamS3Object(key, req, res, { public: isPublic = false } = {}) 
     if (status === 403) {
       return res.status(403).json({ error: 'Accès refusé au fichier.' });
     }
-    console.error('Erreur lecture S3:', err?.message || err);
+    // 404 et 403 sont des reponses VOLONTAIRES, déjà traitées ci-dessus : ce
+    // qui reste est une panne de stockage. Journalisée comme telle.
+    logger.exception(err, { message: 'Erreur lecture S3', scope: 'storage' });
     return res.status(502).json({ error: 'Stockage indisponible.' });
   }
 
