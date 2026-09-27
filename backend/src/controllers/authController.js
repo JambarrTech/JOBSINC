@@ -86,14 +86,14 @@ async function issueTokens(user, res) {
 
 async function loginUser(req, res, user) {
   const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-  clearAttempts(user.email, ip);
+  clearAttempts(user.email);
   const tokens = await issueTokens(user, res);
   return res.json({ message: 'Connexion réussie.', ...tokens });
 }
 
 exports.registerCandidate = async (req, res) => {
   try {
-    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res, req);
     
     const data = {
       email: req.body.email,
@@ -111,73 +111,99 @@ exports.registerCandidate = async (req, res) => {
     const tokens = await issueTokens(user, res);
     return res.status(201).json({ message: 'Compte créé avec succès.', ...tokens });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
+/**
+ * Enregistre un échec de connexion, sans jamais masquer l'erreur d'origine.
+ *
+ * ============================================================
+ * POURQUOI CE HELPER EXISTE
+ * ============================================================
+ * Les quatre endpoints de connexion (`loginCandidate`, `login`,
+ * `loginAdmin`, `loginCompany`)_make tous la même chose : declares
+ * `const email = req.body.email;` à l'INTÉRIEUR du bloc `try`, puis
+ * référencent `email` dans le bloc `catch`.
+ *
+ * En JavaScript, `const` est lié à son bloc. `email` était donc INVISIBLE depuis
+ * le `catch`, qui levait :
+ *
+ *     ReferenceError: email is not defined
+ *     at exports.loginCompany (src/controllers/authController.js:236:33)
+ *
+ * Deux conséquences, l'une visible et l'autre grave :
+ *
+ *  1. Tout mot de passe erroné renvoyait 500 au lieu de 401.
+ *  2. `recordFailedAttempt(email)` n'était JAMAIS atteint. Le verrouillage par
+ *     nombre de tentatives — implémenté dans `utils/loginLimiter.js` et testé
+ *     par `tests/authTiming.test.js` — n'enregistrait donc aucune tentative, et
+ *     le `isLocked(email)` du `try` restait toujours faux. Autrement dit :
+ *     IL N'Y AVAIT AUCUN VERROUILLAGE DE COMPTE, sur aucun des quatre endpoints.
+ *     La protection anti-bruteforce existait dans le code et neProtectait rien.
+ *
+ * `email` est désormais lu AVANT le `try`, donc visible dans le `catch`.
+ * `req.body` est de toute façon disponible avant toute instruction.
+ */
+const readLoginEmail = (req) => (typeof req.body?.email === 'string' ? req.body.email : undefined);
 exports.loginCandidate = async (req, res) => {
+  const email = readLoginEmail(req);
   try {
-    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
-    
-    const email = req.body.email;
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res, req);
+
     const password = req.body.password;
-    if (!email || !password) return handleError(new Error("L'adresse email et le mot de passe sont obligatoires."), res);
-    
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (await isLocked(email, ip)) {
-      const sec = remainingSeconds(email, ip);
+    if (!email || !password) return handleError(new ValidationError("L'adresse email et le mot de passe sont obligatoires."), res, req);
+
+    if (await isLocked(email)) {
+      const sec = remainingSeconds(email);
       const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
       return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
     }
-    
+
     const user = await authService.authenticateUser(email, password, ['CANDIDATE']);
     return loginUser(req, res, user);
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {
-      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      await recordFailedAttempt(req.body?.email, ip);
+      await recordFailedAttempt(email);
     }
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.login = async (req, res) => {
+  const email = readLoginEmail(req);
   try {
-    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
-    
-    const email = req.body.email;
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res, req);
+
     const password = req.body.password;
-    if (!email || !password) return handleError(new ValidationError('L\'adresse email et le mot de passe sont obligatoires.'), res);
-    
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (await isLocked(email, ip)) {
-      const sec = remainingSeconds(email, ip);
+    if (!email || !password) return handleError(new ValidationError('L\'adresse email et le mot de passe sont obligatoires.'), res, req);
+
+    if (await isLocked(email)) {
+      const sec = remainingSeconds(email);
       const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
       return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
     }
-    
+
     const user = await authService.authenticateUser(email, password);
     return loginUser(req, res, user);
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {
-      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      await recordFailedAttempt(req.body?.email, ip);
+      await recordFailedAttempt(email);
     }
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.loginAdmin = async (req, res) => {
+  const email = readLoginEmail(req);
   try {
-    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res, req);
 
-    const email = req.body.email;
     const password = req.body.password;
-    if (!email || !password) return handleError(new ValidationError('L\'adresse email et le mot de passe sont obligatoires.'), res);
+    if (!email || !password) return handleError(new ValidationError('L\'adresse email et le mot de passe sont obligatoires.'), res, req);
 
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (await isLocked(email, ip)) {
-      const sec = remainingSeconds(email, ip);
+    if (await isLocked(email)) {
+      const sec = remainingSeconds(email);
       const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
       return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
     }
@@ -186,16 +212,15 @@ exports.loginAdmin = async (req, res) => {
     return loginUser(req, res, user);
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {
-      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      await recordFailedAttempt(req.body?.email, ip);
+      await recordFailedAttempt(email);
     }
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.registerCompany = async (req, res) => {
   try {
-    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res, req);
     
     const data = {
       email: req.body.email,
@@ -209,51 +234,49 @@ exports.registerCompany = async (req, res) => {
     const tokens = await issueTokens(user, res);
     return res.status(201).json({ message: 'Compte entreprise créé avec succès.', ...tokens });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.loginCompany = async (req, res) => {
+  const email = readLoginEmail(req);
   try {
-    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res);
-    
-    const email = req.body.email;
+    if (!process.env.JWT_SECRET) return handleError(new Error('Configuration de sécurité incomplète.'), res, req);
+
     const password = req.body.password;
-    if (!email || !password) return handleError(new Error("L'adresse email et le mot de passe sont obligatoires."), res);
-    
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (await isLocked(email, ip)) {
-      const sec = remainingSeconds(email, ip);
+    if (!email || !password) return handleError(new ValidationError("L'adresse email et le mot de passe sont obligatoires."), res, req);
+
+    if (await isLocked(email)) {
+      const sec = remainingSeconds(email);
       const minutes = Number.isFinite(sec) && sec > 0 ? Math.ceil(sec / 60) : 1;
       return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} minute(s).` });
     }
-    
+
     const user = await authService.authenticateUser(email, password, ['RECRUITER', 'ADMIN']);
     return loginUser(req, res, user);
   } catch (cause) {
     if (cause.message === 'Identifiants invalides.') {
-      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-      await recordFailedAttempt(req.body?.email, ip);
+      await recordFailedAttempt(email);
     }
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.getMe = async (req, res) => {
   try {
     const userId = req.user?.userId;
-    if (!userId) return handleError(new Error('Session invalide ou expirée.'), res);
+    if (!userId) return handleError(new AuthenticationError('Session invalide ou expirée.'), res, req);
     
     const prisma = require('../config/prisma');
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { candidate: true, company: true } });
-    if (!user) return handleError(new Error('Utilisateur introuvable.'), res);
+    if (!user) return handleError(new NotFoundError('Utilisateur introuvable.'), res, req);
     if (!user.company && user.role === 'RECRUITER') {
-      return handleError(new Error('Aucune entreprise associée à ce compte. Contactez le support.'), res);
+      return handleError(new NotFoundError('Aucune entreprise associée à ce compte. Contactez le support.'), res, req);
     }
     // Format cohérent avec l'attente mobile : { user: {...} } sans wrapper success
     return res.json({ user: userDto(user) });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
@@ -261,17 +284,17 @@ exports.refreshToken = async (req, res) => {
   try {
     // Support both cookie (web) and body (mobile) for refresh token
     const rawToken = req.cookies?.refreshToken || req.body?.refreshToken;
-    if (!rawToken) return handleError(new ValidationError('Refresh token manquant.'), res);
+    if (!rawToken) return handleError(new ValidationError('Refresh token manquant.'), res, req);
 
     // Aucun authMiddleware sur cette route : le refresh token (cookie
     // httpOnly) est la seule preuve d'authenticité. On retrouve
     // l'utilisateur via le hash stocké en base.
     const stored = await verifyRefreshToken(null, rawToken);
-    if (!stored) return handleError(new AuthenticationError('Refresh token invalide ou expiré.'), res);
+    if (!stored) return handleError(new AuthenticationError('Refresh token invalide ou expiré.'), res, req);
 
     const prisma = require('../config/prisma');
     const user = await prisma.user.findUnique({ where: { id: stored.userId }, include: { candidate: true, company: true } });
-    if (!user) return handleError(new NotFoundError('Utilisateur introuvable.'), res);
+    if (!user) return handleError(new NotFoundError('Utilisateur introuvable.'), res, req);
 
     const newRefreshToken = await rotateRefreshToken(user.id, rawToken);
     const accessToken = generateAccessToken(user);
@@ -304,31 +327,31 @@ exports.refreshToken = async (req, res) => {
     // Also return refresh token in body for mobile clients
     return res.json({ accessToken, refreshToken: newRefreshToken, user: userDto(user) });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email || !email.trim()) return handleError(new Error('Email requis.'), res);
+    if (!email || !email.trim()) return handleError(new ValidationError('Email requis.'), res, req);
     
     const result = await authService.requestPasswordReset(email);
     return res.json({ message: 'Si cet email existe, un lien de réinitialisation a été envoyé.' });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
-    if (!token || !newPassword) return handleError(new Error('Token et nouveau mot de passe requis.'), res);
+    if (!token || !newPassword) return handleError(new ValidationError('Token et nouveau mot de passe requis.'), res, req);
     
     await authService.resetPassword(token, newPassword);
     return res.json({ message: 'Mot de passe réinitialisé avec succès.' });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
@@ -346,7 +369,7 @@ exports.logout = async (req, res) => {
     res.clearCookie('accessToken', { path: '/', httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' });
     return res.json({ message: 'Déconnexion réussie.' });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
@@ -355,18 +378,18 @@ exports.requestEmailVerification = async (req, res) => {
     await authService.requestEmailVerification(req.user.userId);
     return res.json({ message: 'Un lien de vérification a été envoyé à votre adresse email.' });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };
 
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.body;
-    if (!token) return handleError(new Error('Token requis.'), res);
+    if (!token) return handleError(new ValidationError('Token requis.'), res, req);
     
     await authService.verifyEmail(token);
     return res.json({ message: 'Email vérifié avec succès.' });
   } catch (cause) {
-    return handleError(cause, res);
+    return handleError(cause, res, req);
   }
 };

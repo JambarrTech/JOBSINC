@@ -1,18 +1,80 @@
+# ============================================================
+# RENDER — source de vérité du déploiement backend
+# ============================================================
+#
+# Emplacement : la racine du dépôt. Render ne lit un Blueprint que depuis la
+# racine du repository — `backend/render.yaml` était donc INERTE, et c'est
+# justement celui qui portait la documentation. Deux blueprints pour le même
+# service `jobsinc-backend` divergeaient déjà sur `PORT` et sur le commentaire
+# de migration ; le second a été supprimé et son contenu utile fusionné ici.
+#
+# Cible unique : Render. `backend/vercel.json` et `backend/Dockerfile` ont été
+# supprimés — voir `DEPLOY.md` (racine) pour le détail de cette décision, la
+# liste des variables d'environnement et la procédure de rotation des clés.
+# ============================================================
+
 services:
   - type: web
     name: jobsinc-backend
     runtime: node
     plan: starter
+    # Frankfurt : choix assumé. Neon est en us-east-2, donc la latence
+    # inter-région reste mesurée (~90 ms) mais le service est proche des
+    # utilisateurs européens.
     region: frankfurt
     branch: main
     rootDir: backend
-    buildCommand: npm install && npx prisma generate
+
+    # `npm ci` et non `npm install` : le premier installe EXACTEMENT les
+    # versions de `package-lock.json`. La CI (`ci.yml`) buildait et testait le
+    # lockfile pendant que la production installait des versions résolues à
+    # chaque déploiement — donc l'artefact déployé n'était pas celui qui avait
+    # été validé. `prisma generate` est déjà exécuté par le `postinstall` de
+    # `package.json`, mais il est redit explicitement parce que c'est
+    # l'étape dont l'échec doit interrompre le build, pas être avalé.
+    buildCommand: npm ci && npx prisma generate
+
+    # `migrate deploy` DOIT passer par `DIRECT_URL` (connexion directe), pas par
+    # le pooler Neon : pgbouncer ne supporte pas `pg_advisory_lock`, que Prisma
+    # utilise pour sérialiser les migrations (erreur P1002). C'est exactement ce
+    # que câble `directUrl` dans `prisma/schema.prisma:13`. Le garde en tête de
+    # commande évite un démarrage via le pooler puis un échec de migration
+    # obscur : le service refuse de démarrer avec un message explicite.
     startCommand: if [ -z "$DIRECT_URL" ]; then echo "DIRECT_URL is required for Prisma migrations"; exit 1; fi; npx prisma migrate deploy && node server.js
+
+    # `/health` sonde réellement Postgres (et Redis selon `REQUIRE_REDIS`) —
+    # voir `src/utils/healthCheck.js`. Ce n'est pas un endpoint qui renvoie
+    # toujours 200 : c'est ce qui permet à Render d'écarter une instance dont
+    # la base est injoignable.
     healthCheckPath: /health
     autoDeploy: true
+
     envVars:
       - key: NODE_ENV
         value: production
+      # Indispensable derrière le proxy Render : sans cela `req.ip` vaut l'IP du
+      # proxy pour TOUTES les requêtes, et le rate-limiting par IP
+      # (`middlewares/rateLimit.js`) plafonne l'ensemble du trafic d'un coup.
       - key: TRUST_PROXY
         value: 1
-      # DIRECT_URL doit être configurée dans le dashboard Render.
+      # Render injecte `PORT=10000`. Redéfini ici explicitement parce que
+      # `server.js:15` retombe sur 5000 et que l'oubli rend le service
+      # injoignable SANS erreur visible côté application.
+      - key: PORT
+        value: 10000
+      # Variables à définir dans le dashboard Render (jamais ici — un Blueprint
+      # est versionné dans Git) :
+      #   DATABASE_URL   Neon pooler (suffixe -pooler, pgbouncer=true)
+      #   DIRECT_URL     Neon directe (SANS -pooler) — requise par migrate deploy
+      #   JWT_SECRET     `openssl rand -hex 32`
+      #   CORS_ORIGINS   URL(s) du front `entreprise` séparées par des virgules
+      #   APP_URL        URL publique du service, pour les liens d'email
+      #   REDIS_URL / REDIS_TLS
+      #     optionnels ; le service dégrade proprement sans Redis, mais le
+      #     rate-limiting devient alors par instance. REQUIRE_REDIS=true
+      #     transforme cette absence en 503 (échec de health check Render).
+      #   SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS / MAIL_FROM
+      #   FCM_SERVICE_ACCOUNT_JSON (JSON du compte de service, en base64) ou
+      #     FCM_SERVICE_ACCOUNT_PATH si le fichier est monté
+      #   STORAGE_DRIVER / AWS_S3_BUCKET / AWS_S3_REGION / AWS_ACCESS_KEY_ID /
+      #     AWS_SECRET_ACCESS_KEY

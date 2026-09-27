@@ -1,19 +1,16 @@
 const prisma = require('../config/prisma');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+// `absoluteUrl` est importé, pas réimplémenté : la copie locale qui vivait ici
+// n'avait pas le garde-fou d'injection d'en-tête Host de celle de
+// `companyController`, alors que c'est CETTE liste (publique, non authentifiée)
+// qui renvoyait les URLs de logo. Voir `utils/urls.js` pour le détail.
+const { absoluteUrl } = require('../utils/urls');
 
 const companyImagesInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
 // Les offres visibles publiquement proviennent uniquement d'entreprises approuvées.
 // Fonction (pas constante) pour éviter Date figée au boot.
 function getPublicJobWhere() {
   return { isOpen: true, company: { isApproved: true }, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] };
-}
-
-function absoluteUrl(req, value) {
-  if (!value) return null;
-  if (/^https?:\/\//i.test(value)) return value;
-  const host = req?.get?.('host') || 'localhost:5000';
-  const proto = req?.protocol || 'http';
-  return `${proto}://${host}${value.startsWith('/') ? '' : '/'}${value}`;
 }
 
 function dto(job, req) {

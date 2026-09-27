@@ -43,3 +43,17 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase — configuration projet par environnement.
+# `google-services.json` est propre au projet Firebase (clé API Android
+# restreinte par package name + SHA-1) : ce n'est pas le secret serveur, mais le
+# committer force chaque développeur et chaque agent CI à utiliser le même
+# projet Firebase. La clé serveur reste côté backend et n'est jamais ici.
+# Le secret qui compte (FCM server key) vit dans les variables d'env backend.
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# Signature Android
+android/key.properties
+android/app/*.keystore
+

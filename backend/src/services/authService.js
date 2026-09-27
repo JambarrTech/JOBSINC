@@ -14,6 +14,35 @@ async function verifyPassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 
+// Hachage factice utilisé quand l'e-mail n'existe pas. bcrypt à coût 12 est
+// volontairement lent : sans cette comparaison, le court-circuit de
+// `authenticateUser` évitait tout hachage et le temps de réponse distinguait
+// « e-mail inconnu » de « e-mail connu, mauvais mot de passe ». C'est une
+// oracle d'énumération de comptes exploitable sans authentification.
+//
+// Le préfixe DOIT être un vrai `$2b$12$` : avec un coût plus faible, la
+// comparaison factice est ~100x plus rapide et ne comble donc pas l'oracle.
+// `hashDummyCost()` vérifie cela au chargement.
+const DUMMY_HASH = '$2b$12$W24S.w8XjdSQDltrEjiy0eOEQW/FhTYBiPQoaEzPI8hkNrHm.LDce';
+
+function assertDummyHashIsCost12() {
+  if (!/^\$2[aby]\$12\$/.test(DUMMY_HASH)) {
+    throw new Error(
+      'authService: DUMMY_HASH doit etre un hachage bcrypt de cout 12, ' +
+      "sinon l'oracle d'enumeration de comptes reapparait.",
+    );
+  }
+}
+assertDummyHashIsCost12();
+
+async function burnPasswordComparison(password) {
+  try {
+    await verifyPassword(password, DUMMY_HASH);
+  } catch (_) {
+    // Le résultat n'a aucune importance : seul le coût temporel compte.
+  }
+}
+
 async function createCandidate(data) {
   validateRequired(data.email, 'Email');
   validateRequired(data.password, 'Mot de passe');
@@ -115,7 +144,13 @@ async function authenticateUser(email, password, allowedRoles = null) {
     include: { candidate: true, company: true } 
   });
   
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+  // Comparaison systématique : si le compte n'existe pas, on haché quand même
+  // pour que le temps de réponse ne révèle pas quels e-mails sont inscrits.
+  if (!user) {
+    await burnPasswordComparison(password);
+    throw new AuthenticationError('Identifiants invalides.');
+  }
+  if (!(await verifyPassword(password, user.passwordHash))) {
     throw new AuthenticationError('Identifiants invalides.');
   }
 

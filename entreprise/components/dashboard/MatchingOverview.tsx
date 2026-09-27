@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '@/components/ui/Icon';
-import { getCompanyJobs, getJobMatches, getMatching, type Match, type MatchCriterion } from '@/lib/api';
+import { getCompanyJobs, getMatching, type Match, type MatchCriterion } from '@/lib/api';
 
 const CRITERION_LABELS: Record<string, string> = {
   skills: 'Compétences',

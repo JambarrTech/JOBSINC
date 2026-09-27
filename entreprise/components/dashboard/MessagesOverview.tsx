@@ -136,7 +136,15 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
   // TEMPS RÉEL (Socket.IO) : le backend émet `message:new` dès qu'un
   // message est persisté. On recharge alors les messages postérieurs
   // au dernier connu (paramètre after) via l'API REST.
-  // Un polling lent reste en filet de sécurité si le socket est down.
+  //
+  // Le polling n'est PLUS un filet de sécurité « en plus » du socket : il ne
+  // tourne QUE lorsque le socket est effectivement déconnecté. Avant, les deux
+  // mécanismes étaient armés en parallèle et sans condition : une
+  // conversation ouverte déclenchait un
+  // `GET /conversations/:id/messages?after=…` toutes les 10 secondes, POUR
+  // TOUJOURS, y compris socket parfaitement connecté et au repos. Sur une
+  // messagerie de recrutement, c'était la plus grosse source de charge
+  // inutile de toute l'application.
   // ------------------------------------------------------------
   const syncActiveChat = useCallback(async (conversationId: string | number) => {
     const anchor = [...chatMessagesRef.current].reverse().find((message) => !message.id.startsWith('temp-'));
@@ -159,11 +167,23 @@ export default function MessagesOverview({ initialConversationId }: { initialCon
 
   useEffect(() => {
     if (!activeConvId || showNewConversation) return;
-    const timer = setInterval(() => {
+    const tick = () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      // Socket connecté = source de vérité temps réel. Inutile d'interroger en
+      // plus : le listener `message:new` ci-dessous déclenche déjà la synchro.
+      if (getMessagesSocket()?.connected) return;
       syncActiveChat(activeConvId);
-    }, 10000);
-    return () => clearInterval(timer);
+    };
+    const timer = setInterval(tick, 10000);
+    // Resynchronise dès le retour de la connexion socket, pour éviter d'attendre
+    // la fin de l'intervalle alors qu'on sait qu'il y a peut-être des messages
+    // manqués pendant la coupure.
+    const sock = getMessagesSocket();
+    sock?.on('connect', tick);
+    return () => {
+      clearInterval(timer);
+      sock?.off('connect', tick);
+    };
   }, [activeConvId, showNewConversation, syncActiveChat]);
 
   useEffect(() => {

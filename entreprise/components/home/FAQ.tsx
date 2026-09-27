@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getPublicFAQ, isApiConfigured, type FAQItem } from '@/lib/api';
+import { getPublicFAQ, type FAQItem } from '@/lib/api';
 
 export default function FAQ() {
   const [faqs, setFaqs] = useState<FAQItem[]>([]);
@@ -9,7 +9,6 @@ export default function FAQ() {
   const [open, setOpen] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!isApiConfigured()) { setLoading(false); return; }
     getPublicFAQ()
       .then((data) => setFaqs(data))
       .catch(() => setFaqs([]))

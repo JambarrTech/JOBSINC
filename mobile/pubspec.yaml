@@ -4,7 +4,14 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  # Aligné sur la contrainte RÉELLE de pubspec.lock (`sdks: dart >=3.12.0
+  # <4.0.0`), et non sur le `>=3.3.0` de `flutter create`. L'écart de 9 versions
+  # mineures était une promesse fausse : `flutter pub get` échouait avant même
+  # l'analyse sur toute machine dont le SDK est entre 3.3 et 3.11 (cf. le
+  # commentaire du job `mobile` dans .github/workflows/ci.yml, qui documente le
+  # build déjà cassé pour cette raison). On aligne donc le manifeste sur le
+  # lockfile, pas l'inverse.
+  sdk: '>=3.12.0 <4.0.0'
 
 dependencies:
   flutter:

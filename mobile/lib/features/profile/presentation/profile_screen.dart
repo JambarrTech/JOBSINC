@@ -265,28 +265,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 ),
                               ),
                               Positioned(
-                                right: -2,
-                                bottom: -2,
+                                // `-2 + 6` : le `Positioned` ancre la boîte
+                                // EXTÉRIEURE (44x44, cf. le `Padding` du
+                                // `GestureDetector` ci-dessous). On la décale
+                                // de 6 px pour que le cercle VISIBLE de 32 px
+                                // conserve exactement son ancien bord — donc
+                                // zéro décalage optique de l'avatar.
+                                right: 4,
+                                bottom: 4,
                                 child: Semantics(
                                   label: 'Modifier la photo de profil',
                                   button: true,
                                   child: GestureDetector(
                                     onTap: _isUploadingAvatar ? null : _pickAvatar,
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: AppColors.primary, width: 2),
-                                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 8)],
+                                    // La zone de TAP fait 44 (plancher
+                                    // d'accessibilité) alors que le cercle
+                                    // visible reste à 32 : les 6 px de chaque
+                                    // côté sont transparents. Avant, il fallait
+                                    // un appui de 32 px exactement sur la petite
+                                    // caméra.
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(6),
+                                      child: Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: AppColors.primary, width: 2),
+                                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 8)],
+                                        ),
+                                        child: _isUploadingAvatar
+                                            ? const Padding(
+                                                padding: EdgeInsets.all(7),
+                                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                              )
+                                            : const Icon(Icons.camera_alt_rounded, size: 14, color: AppColors.primary),
                                       ),
-                                      child: _isUploadingAvatar
-                                          ? const Padding(
-                                              padding: EdgeInsets.all(7),
-                                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-                                            )
-                                          : const Icon(Icons.camera_alt_rounded, size: 14, color: AppColors.primary),
                                     ),
                                   ),
                                 ),
@@ -764,10 +779,13 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
     if (!mounted) return;
     setState(() => _saving = false);
     if (error != null) {
+      // La feuille reste ouverte : la fermer ici faisait croire à un
+      // enregistrement réussi alors que rien n'était persisté, et les
+      // modifications en cours étaient perdues.
       AppFeedback.error(context, AppFeedback.humanizeError(error));
-    } else {
-      AppFeedback.success(context, 'Profil mis à jour avec succès.');
+      return;
     }
+    AppFeedback.success(context, 'Profil mis à jour avec succès.');
     if (!mounted) return;
     Navigator.of(context).pop();
   }

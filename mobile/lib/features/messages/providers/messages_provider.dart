@@ -18,15 +18,19 @@ class MessagesState {
   final bool isLoading;
   final String? error;
 
+  /// `clearError` explicite : `error: null` était un no-op avec
+  /// `error ?? this.error`, l'erreur ne pouvait donc jamais être effacée.
+  /// Même correctif que `ChatState` et `NotificationsState`.
   MessagesState copyWith({
     List<Conversation>? conversations,
     bool? isLoading,
     String? error,
+    bool clearError = false,
   }) {
     return MessagesState(
       conversations: conversations ?? this.conversations,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 }
@@ -49,7 +53,7 @@ class MessagesController extends Notifier<MessagesState> {
       return;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
 
     try {
       final conversations = await _repo.fetchConversations(token);
@@ -118,6 +122,15 @@ class ChatState {
   /// Indique une reconnexion en cours après un échec réseau du polling.
   final bool isReconnecting;
 
+  /// `error: null` doit EFFACER l'erreur, pas la conserver.
+  ///
+  /// Avec `error ?? this.error`, passer `error: null` était un no-op : les
+  /// deux appelants qui voulaient résoudre l'état d'erreur
+  /// (`copyWith(sending: true, error: null)` dans `send`) ne le parvenaient
+  /// pas, et le message d'erreur restait affiché après un envoi réussi.
+  ///
+  /// `clearError` explicite, même schéma que `NotificationsState` : c'est ce
+  /// contournement qui révèle le problème, donc on l'applique partout.
   ChatState copyWith({
     Conversation? conversation,
     List<ChatMessage>? messages,
@@ -127,13 +140,14 @@ class ChatState {
     bool? hasMore,
     bool? isLoadingOlder,
     bool? isReconnecting,
+    bool clearError = false,
   }) {
     return ChatState(
       conversation: conversation ?? this.conversation,
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       sending: sending ?? this.sending,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
       hasMore: hasMore ?? this.hasMore,
       isLoadingOlder: isLoadingOlder ?? this.isLoadingOlder,
       isReconnecting: isReconnecting ?? this.isReconnecting,
@@ -158,6 +172,10 @@ List<ChatMessage> _mergeById(List<ChatMessage> current, List<ChatMessage> incomi
 class ChatController extends FamilyNotifier<ChatState, Conversation> {
   final _repo = MessagesRepository();
 
+  /// Verrou de vol pour `poll()` : empêche deux synchronisations concurrentes
+  /// d'écrire `state` à partir du même instantané périmé. Voir `poll()`.
+  bool _polling = false;
+
   @override
   ChatState build(Conversation arg) {
     ref.cacheFor(const Duration(minutes: 5));
@@ -181,7 +199,7 @@ class ChatController extends FamilyNotifier<ChatState, Conversation> {
       return;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
 
     try {
       final (conversation, messages, hasMore) =
@@ -242,6 +260,16 @@ class ChatController extends FamilyNotifier<ChatState, Conversation> {
     final token = _token;
     if (token == null || token.isEmpty || state.isLoading) return;
 
+    // Garde de vol : plusieurs appelants déclenchent `poll()` en même temps —
+    // le `Timer.periodic` de 15 s de `chat_screen`, le retour de cycle de vie,
+    // et l'événement socket. `state.isLoading` ne les arrestait pas : cette
+    // méthode ne le positionne jamais. Deux requêtes concurentes lisaient donc
+    // le même `state.messages` et écrivaient ensuite DEUX fois `state` à partir
+    // d'instantanés périmés : la seconde écriture pouvait écraser des messages
+    // reçus entre-temps (message perdu) ou remettre un ancien `isLoading`.
+    if (_polling) return;
+    _polling = true;
+
     final anchorId = _lastRealMessageId;
     try {
       final List<ChatMessage> fresh;
@@ -271,6 +299,8 @@ class ChatController extends FamilyNotifier<ChatState, Conversation> {
       state = state.copyWith(isReconnecting: false, error: error.message);
     } catch (_) {
       state = state.copyWith(isReconnecting: true);
+    } finally {
+      _polling = false;
     }
   }
 
@@ -290,7 +320,7 @@ class ChatController extends FamilyNotifier<ChatState, Conversation> {
     state = state.copyWith(
       messages: [...state.messages, temp],
       sending: true,
-      error: null,
+      clearError: true,
     );
 
     try {

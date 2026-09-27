@@ -1,11 +1,19 @@
-gradle-wrapper.jar
 /.gradle
 /captures/
-/gradlew
-/gradlew.bat
 /local.properties
 GeneratedPluginRegistrant.java
 .cxx/
+
+# Le wrapper Gradle (`gradle-wrapper.jar`, `/gradlew`, `/gradlew.bat`) est
+# VOLONTAIREMENT versionné — il l'était moins. Ces trois lignes venaient du
+# template `flutter create` et ne sont pas un choix d'équipe.
+# Conséquences réelles de cet état :
+#   - un clone frais du dépôt ne peut PAS builder l'app Android sans avoir Gradle
+#     préinstallé et mis sur le PATH à la main (`./gradlew` n'existe pas) ;
+#   - le pin de la toolchain (`distributionUrl` gradle-9.1.0) n'est vérifié par
+#     personne : le JAR téléchargé à l'exécution décide de la version de Gradle,
+#     et un miroir compromis n'a rien contre quoi être comparé.
+# C'est exactement la supply-chain que le pin existe pour protéger.
 
 # Remember to never publicly share your keystore.
 # See https://flutter.dev/to/reference-keystore

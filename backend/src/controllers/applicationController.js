@@ -50,14 +50,22 @@ exports.create = async (req, res) => {
     const cvUrlStr = String(cvUrl || '').trim();
     const coverLetterStr = String(coverLetter || '').trim();
     if (!cvUrlStr) return res.status(400).json({ error: 'Le lien du CV est obligatoire.' });
-    const isS3 = (process.env.STORAGE_DRIVER || 'local') === 's3';
-    const isValidCvUrl = isS3
-      ? (cvUrlStr.startsWith(CV_PATH_PREFIX) || /^https?:\/\//i.test(cvUrlStr))
-      : cvUrlStr.startsWith(CV_PATH_PREFIX);
-    if (!isValidCvUrl) return res.status(400).json({ error: 'Le lien du CV est invalide. Rechargez votre CV.' });
-    // Vérifie que le fichier existe réellement sur disque (skip pour S3, car fichier sur S3).
-    if (!isS3 && cvUrlStr.startsWith(CV_PATH_PREFIX)) {
-      const isVercel = Boolean(process.env.VERCEL);
+    // Les URLs de CV sont TOUJOURS des chemins applicatifs relatifs
+    // (`/uploads/cvs/...`), y compris avec le driver S3 (bucket privé). On
+    // n'accepte donc plus aucune URL absolue : c'était le cas avant avec
+    // STORAGE_DRIVER=s3, où n'importe quelle URL http passait la validation.
+    if (!cvUrlStr.startsWith(CV_PATH_PREFIX) || cvUrlStr.includes('..')) {
+      return res.status(400).json({ error: 'Le lien du CV est invalide. Rechargez votre CV.' });
+    }
+    // Vérifie que le CV appartient bien à ce candidat : sans ce contrôle, un
+    // candidat pouvait référencer le CV d'un autre (dont l'URL lui apparaît
+    // dans une candidature existante) et usurpier un parcours de recrutement.
+    if (candidate.cvUrl !== cvUrlStr) {
+      return res.status(400).json({ error: 'Ce CV ne correspond pas à votre profil. Rechargez votre CV.' });
+    }
+    // Vérifie que le fichier existe réellement sur disque (sur S3 le fichier
+    // est streamé par app.js à la lecture, on se contente du chemin).
+    if ((process.env.STORAGE_DRIVER || 'local') !== 's3') {
       const candidates = [
         path.join(BACKEND_ROOT, '.' + cvUrlStr),
         path.join('/tmp', cvUrlStr.replace(/^\//, '')),
@@ -123,10 +131,19 @@ exports.updateStatus = async (req, res) => {
     const status = req.body.status;
     if (!['UNDER_REVIEW', 'INTERVIEW', 'ACCEPTED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Statut de candidature invalide.' });
 
-    const company = await prisma.company.findUnique({ where: { userId: req.user.userId } });
-    if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
+    // Un ADMIN n'a pas de ligne `Company` : chercher son entreprise par
+    // `req.user.userId` le faisait systématiquement échouer, donc 404, alors
+    // qu'il venait de passer le contrôle de rôle de la ligne ci-dessus. La
+    // modération admin passait le port et se prenait un 404 au premier obstacle.
+    //
+    // On construit donc le filtre selon le rôle : un recruteur reste borné à
+    // SES candidatures (on ne lui ouvre pas les autres entreprises), un admin
+    // n'est borné par aucune entreprise.
+    const isAdmin = req.user.role === 'ADMIN';
+    const company = isAdmin ? null : await prisma.company.findUnique({ where: { userId: req.user.userId } });
+    if (!isAdmin && !company) return res.status(404).json({ error: 'Profil entreprise introuvable.' });
     const application = await prisma.application.findFirst({
-      where: { id: req.params.id, job: { companyId: company.id } },
+      where: { id: req.params.id, ...(company ? { job: { companyId: company.id } } : {}) },
       include: { candidate: { include: { user: true } }, job: { include: { company: true } } },
     });
     if (!application) return res.status(404).json({ error: 'Candidature introuvable.' });

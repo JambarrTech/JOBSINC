@@ -1,13 +1,21 @@
 'use client';
 
+/**
+ * Frontière d’erreur racine. Les espaces authentifiés utilisent
+ * `components/ui/SectionError.tsx` (voir `app/admin/error.tsx` et
+ * `app/dashboard/error.tsx`).
+ */
 export default function RootError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const showDigest = process.env.NODE_ENV !== 'production' && Boolean(error?.digest);
+
   return (
     <main style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f6f8fb', padding: '40px' }}>
-      <div style={{ maxWidth: 440, textAlign: 'center' }}>
+      <div role="alert" style={{ maxWidth: 440, textAlign: 'center' }}>
         <div style={{ display: 'grid', placeItems: 'center', width: 64, height: 64, margin: '0 auto 20px', borderRadius: 16, background: '#fceceb', color: '#c0392b', fontSize: 28 }}>!</div>
         <h1 style={{ margin: '0 0 8px', color: '#10233f', fontSize: 22, letterSpacing: '-.04em' }}>Une erreur est survenue</h1>
         <p style={{ margin: '0 0 24px', color: '#7692a9', fontSize: 13, lineHeight: 1.6 }}>
-          {error?.digest ? `Référence : ${error.digest}` : "L'application a rencontré un problème inattendu."}
+          L’application a rencontré un problème inattendu.
+          {showDigest ? ` (référence : ${error.digest})` : ''}
         </p>
         <button
           type="button"

@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import logo from '@/components/layout/logo.png';
-import { Company, getCompanies, isApiConfigured } from '@/lib/api';
+import { Company, getCompanies } from '@/lib/api';
 
 const benefits = [
   'Trouvez les meilleurs talents',
@@ -32,7 +32,6 @@ export default function RegistrationShowcase() {
   useEffect(() => {
     let cancelled = false;
     const timeout = window.setTimeout(() => { if (!cancelled) setStatus('error'); }, 9000);
-    if (!isApiConfigured()) { window.clearTimeout(timeout); setStatus('empty'); return () => { cancelled = true; }; }
     getCompanies().then((data) => {
       if (cancelled) return;
       setCompanies(data);

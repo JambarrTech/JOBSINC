@@ -56,14 +56,55 @@ class ChatSocketService {
 
   bool get isConnected => _socket?.connected ?? false;
 
+  /// L'app est-elle a l'ecran (premier plan) ?
+  ///
+  /// Le backend supprime le push FCM d'un destinataire qu'il juge « actif ».
+  /// Un socket mobile survit au passage en arriere-plan : sans ce signal, le
+  /// backend confondait « connecte » et « devant son ecran » et n'envoyait
+  /// donc jamais de push sur mobile.
+  bool _visible = true;
+
+  /// Signale au backend si l'app est au premier plan.
+  void setVisible(bool visible) {
+    if (_visible == visible) return;
+    _visible = visible;
+    if (_socket?.connected ?? false) {
+      _socket!.emit('presence', {'visible': visible});
+    }
+  }
+
+  bool get isVisible => _visible;
+
   /// Établit la connexion si nécessaire (idempotent).
   void connect(String token) {
     if (token.isEmpty) return;
     if (isConnected && _connectedToken == token) return;
-    if (_connectedToken != null && _connectedToken != token) disconnect();
+
+    // Les rooms sont EJETÉES par `disconnect()`. On les sauvegarde avant pour
+    // les rejouer sur la nouvelle connexion.
+    //
+    // Pourquoi cette branche existe : `AuthTokenRefresher` fait tourner le
+    // jeton d'accès toutes les ~15 minutes, et `app.dart` rappelle `connect()`
+    // avec le nouveau. Avant, ce chemin :
+    //   1. vidait `_joinedConversations` ;
+    //   2. recréait le socket.
+    // Un `ChatScreen` ouvert ne re-rejoint sa conversation que dans son
+    // `initState` : ses `message:new` cessaient donc d'arriver, sans erreur
+    // visible, avec repli silencieux sur le polling de 15 s.
+    final previouslyJoined = List<String>.from(_joinedConversations);
+
+    // Un jeton différent EXIGE un socket neuf : `setAuth` n'est lu qu'à la
+    // création. Le `??=` d'avant ne recréait donc jamais le socket, et celui-ci
+    // continuait de s'authentifier avec un jeton devenu PÉRIMÉ — jusqu'à ce que
+    // le backend le refuse et coupe la connexion.
+    if (_connectedToken != null && _connectedToken != token) {
+      _socket?.disconnect();
+      _socket?.dispose();
+      _socket = null;
+      _connectedToken = null;
+    }
 
     _connectedToken = token;
-    // Recrée si nécessaire avec le nouveau token (l'ancien socket garde l'ancien auth)
     _socket ??= sio.io(
       socketUrl,
       sio.OptionBuilder()
@@ -74,6 +115,9 @@ class ChatSocketService {
     );
 
     final socket = _socket!;
+    _joinedConversations
+      ..clear()
+      ..addAll(previouslyJoined);
 
     // Évite les listeners dupliqués à chaque connect()
     socket.off('connect');
@@ -86,6 +130,10 @@ class ChatSocketService {
       for (final conversationId in List<String>.from(_joinedConversations)) {
         socket.emit('conversation:join', conversationId);
       }
+      // Le socket seul ne dit PAS au backend si l'app est a l'ecran : il
+      // reste vivant quand l'app passe en arriere-plan. Sans cette emission,
+      // le backend croyait l'utilisateur « actif » et supprimait tout push.
+      socket.emit('presence', {'visible': _visible});
     });
 
     socket.on('message:new', (data) {
@@ -143,6 +191,10 @@ class ChatSocketService {
   }
 
   /// Ferme la connexion et réinitialise l'état (déconnexion utilisateur).
+  ///
+  /// Vide aussi les rooms : c'est le comportement voulu pour une déconnexion
+  /// VOLONTAIRE. La rotation de jeton ne passe plus par ici — `connect()`
+  /// gère lui-même le changement de jeton en préservant les rooms.
   void disconnect() {
     _socket?.disconnect();
     _socket?.dispose();

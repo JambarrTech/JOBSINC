@@ -6,6 +6,7 @@ import '../core/services/api_client.dart';
 import '../features/applications/presentation/application_flow_screen.dart';
 import '../features/applications/presentation/applications_screen.dart';
 import '../features/applications/providers/applications_provider.dart';
+import 'candidate_shell.dart';
 import '../features/candidate/home/data/home_repository.dart';
 import '../features/auth/models/auth_user.dart';
 import '../features/auth/presentation/auth_screens.dart';
@@ -18,8 +19,10 @@ import '../features/jobs/presentation/offers_screen.dart';
 import '../features/jobs/presentation/saved_jobs_screen.dart';
 import '../features/messages/models/conversation.dart';
 import '../features/messages/presentation/chat_screen.dart';
+import '../features/messages/presentation/conversation_resolver.dart';
 import '../features/messages/presentation/messages_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
+import '../features/profile/presentation/profile_screen.dart';
 import '../features/profile/presentation/settings_screen.dart';
 import '../features/recruiter/dashboard/recruiter_dashboard_screen.dart';
 
@@ -37,6 +40,21 @@ class AuthRouterNotifier extends ChangeNotifier {
 
     _authState = newState;
     notifyListeners();
+  }
+}
+
+/// Navigation vers un onglet de l'espace candidat via l'URL. Utilisé par les
+/// écrans imbriqués qui n'ont pas accès au `StatefulNavigationShell`.
+void navigationShellGo(BuildContext context, int index) {
+  switch (index) {
+    case 0:
+      context.go('/candidate/home');
+    case 1:
+      context.go('/candidate/applications');
+    case 2:
+      context.go('/candidate/messages');
+    case 3:
+      context.go('/candidate/profile');
   }
 }
 
@@ -64,7 +82,15 @@ final routerProvider = Provider<GoRouter>((ref) {
   });
 
   return GoRouter(
-    initialLocation: '/onboarding',
+    // Point d'entrée : le SplashScreen, et non /onboarding.
+    //
+    // SplashScreen est le SEUL appelant de `AuthController.initialize()`.
+    // Tant qu'il n'était pas routé, la session stockée en secure storage
+    // n'était jamais relue au démarrage : « se souvenir de moi » ne
+    // fonctionnait pas, l'onboarding se réaffichait à chaque lancement, et
+    // ChatSocketService.connect() / FcmService.initAndRegister() n'étaient
+    // jamais appelés avant un login manuel.
+    initialLocation: '/splash',
 
     // GoRouter réévalue redirect() lorsque l'authentification change.
     refreshListenable: authNotifier,
@@ -74,6 +100,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final location = state.uri.path;
 
       const publicRoutes = {
+        '/splash',
         '/onboarding',
         '/login',
         '/register',
@@ -90,7 +117,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null;
         }
 
-        return '/onboarding';
+        // Tant que la session stockée n'a pas été relue, on reste sur le
+        // splash (spinner) au lieu de rediriger vers l'onboarding, ce qui
+        // provoquerait un aller-retour visuel à chaque démarrage.
+        return '/splash';
       }
 
       // ---------------------------------------------------------
@@ -125,6 +155,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthRoute = location == '/login' ||
           location == '/register' ||
           location == '/onboarding' ||
+          location == '/splash' ||
           location == '/forgot-password';
 
       if (isAuthRoute) {
@@ -165,7 +196,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       if (location.startsWith('/recruiter') &&
           accountStatus != AccountStatus.recruiter) {
-        return '/candidate/home';
+        // Renvoie vers L'ESPACE DU PERSONNE, comme les deux branches
+        // précédentes (5 et 6) le font. Le code retournait inconditionnellement
+        // '/candidate/home' : un employé ou un candidat qui ouvrait
+        // /recruiter/messages était projeté vers l'accueil candidat, alors que
+        // les branches symétriques les renvoient vers /employee/dashboard et
+        // /recruiter/dashboard. Un utilisateur dont le chat de recruteur était
+        // dans ses liens profonde se retrouvait donc sur un écran sans rapport
+        // avec sa demande.
+        if (accountStatus == AccountStatus.employee) {
+          return '/employee/dashboard';
+        }
+        return '/candidate/messages';
       }
 
       // ---------------------------------------------------------
@@ -180,7 +222,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       GoRoute(
         path: '/',
-        redirect: (_, __) => '/onboarding',
+        redirect: (_, __) => '/splash',
+      ),
+
+      // Splash : restaure la session avant d'afficher quoi que ce soit.
+      GoRoute(
+        path: '/splash',
+        builder: (_, __) => const SplashScreen(),
       ),
 
       GoRoute(
@@ -204,11 +252,56 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // ---------------------------------------------------------
-      // CANDIDAT
+      // ESPACE CANDIDAT (StatefulShellRoute)
       // ---------------------------------------------------------
-      GoRoute(
-        path: '/candidate/home',
-        builder: (_, __) => const CandidateHomeScreen(),
+      // L'onglet actif vit dans l'URL (`/candidate/home/messages`) au lieu
+      // d'un `int _tab` local au State. Conséquences :
+      //  - la navigation arrière système restaure l'onglet précédent ;
+      //  - un deep-link ou un partage d'URL ouvre le bon onglet ;
+      //  - l'état n'est plus perdu quand le widget est reconstruit.
+      // `IndexedStack` reste nécessaire pour conserver la position de scroll
+      // et l'état de chaque onglet.
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            CandidateShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/candidate/home',
+                builder: (context, __) => CandidateHomeScreen(
+                  // L'accueil navigue vers l'onglet Profil via l'URL.
+                  onOpenProfile: () => navigationShellGo(context, 3),
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/candidate/applications',
+                builder: (_, __) => const ApplicationsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/candidate/messages',
+                builder: (_, __) =>
+                    const MessagesScreen(isCompanySide: false),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/candidate/profile',
+                builder: (_, __) => const ProfileScreen(),
+              ),
+            ],
+          ),
+        ],
       ),
 
       GoRoute(
@@ -285,11 +378,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/recruiter/chat',
         builder: (_, state) {
-          final conversation = state.extra;
-          if (conversation is Conversation) {
-            return ChatScreen(conversation: conversation);
+          final extra = state.extra;
+          if (extra is Conversation) {
+            return ChatScreen(conversation: extra);
           }
-          return const MessagesScreen();
+          // Identifiant brut (payload de notification) : le builder
+          // retombait sur MessagesScreen dans tous les cas.
+          return ConversationResolver(
+            conversationId: extra is String ? extra : null,
+            isCompanySide: true,
+          );
         },
       ),
 
@@ -299,11 +397,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/chat',
         builder: (_, state) {
-          final conversation = state.extra;
-          if (conversation is Conversation) {
-            return ChatScreen(conversation: conversation);
+          final extra = state.extra;
+          if (extra is Conversation) {
+            return ChatScreen(conversation: extra);
           }
-          return const MessagesScreen(isCompanySide: false);
+          return ConversationResolver(conversationId: extra is String ? extra : null);
         },
       ),
 
@@ -312,7 +410,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       GoRoute(
         path: '/application/success',
-        builder: (_, __) => const ApplicationSuccessScreen(),
+        builder: (_, state) {
+          // La candidature qui vient d'être créée est passée en `extra` par
+          // l'écran de candidature : l'écran de succès peut ainsi ouvrir le
+          // suivi de CETTE candidature. Sans `extra` (deep-link, pile
+          // restaurée), il retombe sur la liste.
+          final extra = state.extra;
+          return ApplicationSuccessScreen(
+            application: extra is HomeApplication ? extra : null,
+          );
+        },
       ),
 
       GoRoute(
@@ -340,14 +447,40 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class _JobDetailByIdScreen extends StatelessWidget {
+/// Écran de détail d'une offre atteinte par deep link (`/jobs/:id`).
+///
+/// Converti en `StatefulWidget` : la version précédente était un
+/// `StatelessWidget` qui construisait `FutureBuilder(future: _fetchJob(jobId))`.
+/// `_fetchJob` était donc ré-éVALUÉ à chaque `build` — c'est-à-dire à chaque
+/// frame pendant le chargement, et à chaque reconstruction du parent. Le
+/// `Future` changeait d'identité à chaque fois, ce qui :
+///   - relançait un `GET /jobs/:id` en boucle ;
+///   - faisait repasser l'écran par l'état `waiting` (retour du spinner) ;
+///   - saturait l'API et le réseau pour un simple deep link.
+///
+/// Le futur est désormais construit UNE FOIS, dans `initState`, et réutilisé.
+class _JobDetailByIdScreen extends StatefulWidget {
   const _JobDetailByIdScreen({required this.jobId});
   final String jobId;
+
+  @override
+  State<_JobDetailByIdScreen> createState() => _JobDetailByIdScreenState();
+}
+
+class _JobDetailByIdScreenState extends State<_JobDetailByIdScreen> {
+  late final Future<JobOffer?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _fetchJob(widget.jobId);
+  }
+
   @override
   Widget build(BuildContext context) {
     // Charge l'offre par ID puis affiche le détail ; fallback sur la liste si échec.
     return FutureBuilder(
-      future: _fetchJob(jobId),
+      future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -410,16 +543,10 @@ class _ApplicationDetailByIdScreen extends ConsumerWidget {
   }
 }
 
-// Minimal Api helper sans http.Client leak (utilise ApiClient partagé brièvement)
+// Helper d'accès API pour les routes de deep-link.
+// `ApiClient()` utilise désormais un `http.Client` partagé : plus besoin de
+// fermer quoi que ce soit, donc plus de fuite de socket sur ces chemins.
 class _SimpleApi {
   const _SimpleApi();
-  Future<dynamic> get(String path) async {
-    // ignore: avoid-creation via ApiClient temporaire fermé immédiatement
-    final client = ApiClient();
-    try {
-      return await client.getRaw(path);
-    } finally {
-      client.close();
-    }
-  }
+  Future<dynamic> get(String path) => ApiClient().getRaw(path);
 }

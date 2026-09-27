@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getOverviewStats, isApiConfigured, type OverviewData } from '@/lib/api';
+import { getOverviewStats, type OverviewData } from '@/lib/api';
 
 export default function HeroOverviewCard() {
   const [data, setData] = useState<OverviewData | null>(null);
 
   useEffect(() => {
-    if (isApiConfigured()) {
+  {
       getOverviewStats().then(setData).catch(() => {});
     }
   }, []);
@@ -28,7 +28,7 @@ export default function HeroOverviewCard() {
     <>
       <div className="dashboard-card">
         <div className="dash-top">
-          <span className="dash-title">Vue d'ensemble</span>
+          <span className="dash-title">Vue d’ensemble</span>
           <span className="dash-status">En activité</span>
         </div>
         <div className="dash-body">
@@ -78,7 +78,7 @@ export default function HeroOverviewCard() {
       </div>
       <div className="float-card two">
         <span>Candidatures</span>
-        <strong>{applicationsToday !== null ? `+${applicationsToday} aujourd'hui` : '—'}</strong>
+        <strong>{applicationsToday !== null ? `+${applicationsToday} aujourd’hui` : '—'}</strong>
         <span>reçues ce jour</span>
       </div>
     </>

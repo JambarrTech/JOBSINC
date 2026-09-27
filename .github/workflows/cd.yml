@@ -9,14 +9,55 @@ concurrency:
   group: cd-main
   cancel-in-progress: false
 
+# ============================================================
+# PERMISSIONS
+# ============================================================
+# `contents: read` est le strict nécessaire pour `actions/checkout`. La
+# permission par défaut du dépôt pouvait être `write` : ce workflow ne pousse
+# rien sur GitHub, il pousse chez Vercel et Render. Restreindre au minimum
+# évite qu'une action tierce compromise (ou une injection via une dépendance)
+# publie une release, supprime une branche ou force-push.
+permissions:
+  contents: read
+
 jobs:
   deploy-web:
     name: Deploy Web (Vercel)
     runs-on: ubuntu-latest
     if: github.repository == 'JambarrTech/JOBSINC'
+    # ---- LE POINT LE PLUS IMPORTANT DE CE FICHIER ----
+    # Ces variables sont déclarées AU NIVEAU DU JOB, et pas sur le step.
+    #
+    # Le contexte `env` n'est PAS résolu pour le `if` d'un step qui définit
+    # lui-même sa propre variable dans son bloc `env:`. Un `if: env.VERCEL_TOKEN
+    # != ''` posé sur un step qui porte `VERCEL_TOKEN` dans son propre `env:`
+    # vaut donc TOUJOURS false, et le step est silencieusement sauté.
+    #
+    # Conséquence réelle de l'état d'avant : le pipeline était vert, le build
+    # était vert, et le déploiement n'avait jamais eu lieu. Aucun échec, aucune
+    # trace. Le site servait la dernière version poussée manuellement, et
+    # `NEXT_PUBLIC_API_URL` n'atteignait jamais Vercel.
+    #
+    # `build-mobile` (plus bas) applique déjà cette règle, et le
+    # `ci.yml:130-131` aussi. Les deux jobs de déploiement ci-dessous ne
+    # l'appliquaient pas.
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # DOIT être au niveau du job, et pas seulement sur `npm run build` : le
+      # déploiement utilise `vercel build --prod`, qui RE-CONSTRUIT le projet.
+      # Une variable scopée au step de vérification n'atteindrait pas ce
+      # second build, et l'artefact déployé serait compilé avec l'URL de
+      # REPLI de `lib/api-url.ts` (`https://jobsinc.onrender.com/api`) — donc
+      # déployé et vérifié ne seraient pas le même code.
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://api.jobsinc.com/api' }}
     defaults:
       run:
         working-directory: entreprise
+    # Pas de timeout par défaut (360 min) : un `next build` bloqué
+    # immobiliserait un runner pendant 6 h.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,25 +67,30 @@ jobs:
           cache-dependency-path: entreprise/package-lock.json
       - run: npm ci
       - run: npm run build
-        env:
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://api.jobsinc.com/api' }}
-      # Vercel deploy via vercel CLI si secrets présents, sinon skip
+      # AUCUN `|| true` ici. Le step est déjà conditionné par
+      # `if: env.VERCEL_TOKEN != ''` : si les secrets sont absents, le step ne
+      # s'exécute pas. S'ils sont présents, un échec de build ou de deploy DOIT
+      # faire rouge le pipeline. Les `|| true` précédents rendaient un build
+      # cassé invisible : c'est ce qui a laissé passer une URL d'API divergente
+      # en prod et une liste `images.remotePatterns` incomplète.
       - name: Vercel Deploy
         if: env.VERCEL_TOKEN != ''
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           npm i -g vercel
-          vercel pull --yes --environment=production --token=$VERCEL_TOKEN || true
-          vercel build --prod --token=$VERCEL_TOKEN || true
-          vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN || echo "vercel deploy skip"
+          vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+          vercel build --prod --token=$VERCEL_TOKEN
+          vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
 
   deploy-backend:
     name: Deploy Backend (Render)
     runs-on: ubuntu-latest
     if: github.repository == 'JambarrTech/JOBSINC'
+    # Même règle que `deploy-web`, même raison : le `if` du step lit `env:`, donc
+    # la variable doit venir du job. Le `|| echo "hook skip"` précédent rendait
+    # en plus un déploiement backend cassé totalement invisible.
+    env:
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # Render auto-deploy via render.yaml si repo connecté — ce job vérifie juste le build
@@ -54,26 +100,32 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - working-directory: backend
+        # Aucun `|| true` : ce job est la seule vérification du backend avant
+        # déploiement (le vrai build est fait par Render). `node --check
+        # src/app.js || true` masquait une erreur de SYNTAXE dans le graphe
+        # Express — c'est-à-dire exactement le fichier qui casse le
+        # démarrage en production.
         run: |
           npm ci
           npx prisma generate
           npx prisma validate
           node --check server.js
-          node --check src/app.js || true
-      - name: Trigger Render Deploy Hook (optionnel)
+          node --check src/app.js
+      - name: Unit tests backend
+        working-directory: backend
+        run: npm test
+      - name: Trigger Render Deploy Hook
         if: env.RENDER_DEPLOY_HOOK != ''
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-        run: curl -sf -X POST "$RENDER_DEPLOY_HOOK" && echo "Render hook triggered" || echo "hook skip"
+        run: curl -sf -X POST "$RENDER_DEPLOY_HOOK" && echo "Render hook triggered"
 
   build-mobile:
     name: Build Mobile APK
     runs-on: ubuntu-latest
-    # Le build release échoue désormais EXPLICIEMENT sans android/key.properties
+    # Le build release échoue EXPLICIEMENT sans android/key.properties
     # (auparavant il retombait silencieusement sur la signature debug, ce qui
     # produisait un APK non publiable sans le moindre signal). Sans le secret,
     # on ne construit que l'APK de debug.
-    # KEYSTORE_BASE64 est déclare AU NIVEAU DU JOB et pas du step : le contexte
+    # KEYSTORE_BASE64 est déclaré AU NIVEAU DU JOB et pas du step : le contexte
     # `env` n'est pas résolu pour le `if` d'un step qui définit lui-même sa
     # propre variable. Portée par le seul step, `if: env.KEYSTORE_BASE64 != ''`
     # valait toujours false : la restauration était ignorée et le build
@@ -84,6 +136,10 @@ jobs:
     defaults:
       run:
         working-directory: mobile
+    # `flutter build apk --release` sur un runner froid dépasse largement le
+    # défaut de 6 h lors d'un pic de charge ; 45 min laisse de la marge sans
+    # immobiliser un runner indéfiniment.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -92,13 +148,19 @@ jobs:
           # Doit rester aligné avec mobile/pubspec.lock (dart >=3.12.0,
           # flutter >=3.44.0) et avec .github/workflows/ci.yml, sinon
           # `flutter pub get` échoue et aucun APK n'est produit.
-          flutter-version: '3.47.x'
+          # PIN EXACT, et non un range `3.47.x` : un range qui flotte produit un
+          # toolchain différent d'un build à l'autre SANS DIFF, donc un APK
+          # release signé potentiellement non reproductible, sans trace du
+          # changement dans le dépôt.
+          flutter-version: '3.47.5'
           cache: true
       - run: flutter pub get
       - name: Restore signing key (release only)
         if: env.KEYSTORE_BASE64 != ''
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        # PAS de bloc `env:` ici. La variable est déjà au niveau du job, et la
+        # redéclarer à l'identique donnerait l'illusion que c'est ce bloc qui
+        # alimente le `if` — c'est exactement l'erreur qui faisait que la
+        # restauration de la clé était ignorée en silence.
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
           {

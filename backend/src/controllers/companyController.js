@@ -5,6 +5,11 @@ const { getMatches, getCompanyMatches, getJobMatches, computeMatch } = require('
 const { getCached, setCache, invalidate } = require('../utils/cache');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { validate, jobCreateSchema } = require('../utils/zodSchemas');
+// `absoluteUrl` est importé, pas réimplémenté : voir `utils/urls.js`. Cette
+// fonction était la version gardée ; celle de `jobController.js` ne l'était pas
+// et servait pourtant la liste publique des offres. Une seule implémentation
+// désormais, donc plus rien à maintenir en phase.
+const { absoluteUrl } = require('../utils/urls');
 
 const jobInclude = { _count: { select: { applications: true } } };
 const companyInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
@@ -54,16 +59,6 @@ function isRecruiter(req, res) {
 
 async function getCompany(userId) {
   return prisma.company.findUnique({ where: { userId }, include: companyInclude });
-}
-
-function absoluteUrl(req, value) {
-  if (!value) return null;
-  if (/^https?:\/\//i.test(value)) return value;
-  // Host header injection guard : n'accepte que host connu ou localhost
-  const rawHost = req?.get?.('host') || 'localhost:5000';
-  const host = /^[a-zA-Z0-9.-]+(?::\d+)?$/.test(rawHost) ? rawHost : 'localhost:5000';
-  const proto = req?.protocol || 'http';
-  return `${proto}://${host}${value.startsWith('/') ? '' : '/'}${value}`;
 }
 
 function companyDto(company, req) {
@@ -148,6 +143,11 @@ function applicationDto(application, company) {
     candidateName: candidate ? `${candidate.firstName} ${candidate.lastName}`.trim() : 'Candidat',
     candidateUserId: candidate?.userId || null,
     candidateAvatar: candidate?.avatarUrl || null,
+    // `jobId` était absent du DTO alors que le lien « Voir les candidatures »
+    // du détail d'une offreFiltre la liste sur ce paramètre. Sans cet identifiant,
+    // le client ne pouvait pas appliquer le filtre et affichait toutes les
+    // candidatures de l'entreprise : le lien était un no-op silencieux.
+    jobId: application.jobId ?? application.job?.id ?? null,
     jobTitle: application.job?.title,
     date: application.createdAt,
     status: application.status,

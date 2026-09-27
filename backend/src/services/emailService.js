@@ -7,10 +7,13 @@
 //   MAIL_FROM  (défaut « JOBSINC <no-reply@jobsinc.com> »)
 //   APP_URL    (URL publique qui sert à construire les liens)
 //
-// Sans SMTP configuré, le mode développement se contente de journaliser
-// le lien en console ([DEV]) afin de préserver le flux de test SANS
-// jamais retourner le jeton dans une réponse HTTP.
+// Sans SMTP configuré, le mode développement journalise un APERÇU du lien
+// ([DEV]) afin de préserver le flux de test. Le jeton lui-même n'est JAMAIS
+// écrit dans les logs — voir `redactUrlToken` : c'est un moyen de se connecter
+// au compte, pas une information de diagnostic.
 // ============================================================
+
+const { createHash } = require('crypto');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5000';
 
@@ -36,8 +39,42 @@ function mailFrom() {
   return process.env.MAIL_FROM || 'JOBSINC <no-reply@jobsinc.com>';
 }
 
+// Un lien de réinitialisation de mot de passe est un jeton d'ACCES COMPLET :
+// il ouvre un compte sans mot de passe, pendant 1h, sans second facteur.
+// L'ecrire en clair dans les logs le transformait en :
+//   1. du materiel de prise de compte dans l'agregateur de logs (acces en
+//      lecture bien plus large que la base, retention bien plus longue) ;
+//   2. un défaut qui se déclenchait pile pendant un incident, quand SMTP est
+//      cassé et que le volume de logs et le nombre de personnes qui les lisent
+//      sont au maximum.
+//
+// Le lien reste CONSULTABLE (c'est le seul moyen de tester le flux sans SMTP),
+// mais le jeton n'est plus imprimé : il est journalisé sous forme d'empreinte
+// tronquée, suffisante pour faire la correspondance, uselesse pour se connecter.
 function logDevLink(subject, url) {
-  console.log(`[DEV] Email ${subject} non envoyé (SMTP non configuré). Lien : ${url}`);
+  const redacted = redactUrlToken(url);
+  console.warn(
+    `[DEV] Email ${subject} non envoyé (SMTP non configuré). `
+    + `Lien : ${redacted} — jeton NON journalisé. `
+    + 'Récupérez-le depuis la réponse de l’API en développement, ou configurez SMTP.'
+  );
+}
+
+/**
+ * Conserve la structure de l'URL pour le diagnostic et remplace le `token` par
+ * son empreinte tronquée. Ne jamais renvoyer la valeur d'origine.
+ */
+function redactUrlToken(url) {
+  try {
+    const parsed = new URL(url);
+    const token = parsed.searchParams.get('token');
+    if (!token) return `${parsed.origin}${parsed.pathname}?token=<absent>`;
+    const fingerprint = createHash('sha256').update(token).digest('hex').slice(0, 8);
+    parsed.searchParams.set('token', `REDACTED:${fingerprint}`);
+    return parsed.toString();
+  } catch (_) {
+    return '<url illisible>';
+  }
 }
 
 async function sendMail({ to, subject, text, html }) {

@@ -1,5 +1,5 @@
 const prisma = require('../config/prisma');
-const { notifyNewMessage, isUserConnected } = require('./socketService');
+const { notifyNewMessage, isUserActive } = require('./socketService');
 const pushService = require('./pushService');
 
 // ============================================================
@@ -76,9 +76,17 @@ function messagingSide(user) {
 // Filtre d'appartenance : ne jamais faire confiance à un id reçu du client.
 function membershipWhere(user, extra = {}) {
   const side = messagingSide(user);
+  const owner = side === 'company'
+    ? { companyUserId: user.userId }
+    : { candidateUserId: user.userId };
+  // L'ordre de fusion est délibérément inversé : le filtre d'appartenance est
+  // appliqué APRÈS `extra`, donc un appelant qui passe
+  // `{ companyUserId: 'victime-999' }` ne peut pas écraser le filtre serveur.
+  // Avec l'ordre inverse, un `extra` contenant la même clé écrasait la
+  // propriété d'appartenance et ouvrait l'accès aux conversations d'un tiers.
   return {
-    ...(side === 'company' ? { companyUserId: user.userId } : { candidateUserId: user.userId }),
     ...extra,
+    ...owner,
   };
 }
 
@@ -368,9 +376,15 @@ exports.sendMessage = async function sendMessage(user, conversationId, rawConten
   // room du destinataire) après la persistance.
   notifyNewMessage(conversation.id, receiverId);
 
-  // Push FCM uniquement si le destinataire n'est pas connecté en
-  // temps réel (sinon le socket suffit et éviterait les doublons).
-  if (!isUserConnected(receiverId)) {
+  // Push FCM uniquement si le destinataire n'a AUCUN client au premier plan
+  // (sinon le socket suffit et évite les doublons).
+  //
+  // On teste `isUserActive` et non `isUserConnected` : un socket mobile
+  // reste connecté en arrière-plan, et `isUserConnected` renvoyait alors
+  // toujours `true` — donc AUCUN push n'était jamais envoyé sur mobile, et
+  // l'utilisateur ne recevait rien même pour un message reçu de nulle part
+  // à l'écran. Le push est envoyé dès qu'aucun écran n'affiche l'app.
+  if (!isUserActive(receiverId)) {
     const senderName =
       user.userId === conversation.companyUserId ? companyNameOf(conversation) : participantNameOf(conversation);
     pushService
@@ -466,6 +480,36 @@ exports.ensureForCandidate = async (recruiterUser, candidateUserId) => {
   });
   if (!candidateUser) return { error: { status: 404, error: 'Candidat introuvable.' } };
 
+  // Garde-fou d'autorisation, PAS une simple commodité de typage.
+  //
+  // `where` n'est PAS optionnel du modèle `User` : la relation `candidate` peut
+  // légitimement être absente (compte créé sans profil complété). Dans ce cas
+  // `candidateUser.candidate?.id` vaut `undefined`.
+  //
+  // Or le générateur Prisma de ce projet n'active PAS `strictUndefinedChecks`.
+  // Son comportement par défaut est de **retirer silencieusement** un critère
+  // `where` dont la valeur est `undefined` — il n'est pas interprété comme
+  // « égal à null ». Le filtre `candidateProfileId` disparaissait donc, et la
+  // requête retournait la candidature autorisée la plus RÉCENTE de
+  // l'ENTREPRISE, quel que soit le candidat.
+  //
+  // Résultat : un recruteur pouvait ouvrir une conversation avec n'importe quel
+  // `userId` dont il connaissait l'identifiant, dès lors que son entreprise
+  // avait AU MOINS une candidature en cours d'entretien ou acceptée, en
+  // contournant entièrement la vérification d'appartenance. La ligne
+  // `if (!authorizedApplication)` ne protégeait plus rien.
+  //
+  // Le refus explicite ci-dessous rend l'échec bruyant plutôt que silencieux :
+  // sans profil, il n'y a par définition aucune candidature à rattacher.
+  if (!candidateUser.candidate) {
+    return {
+      error: {
+        status: 403,
+        error: "Ce compte n'a pas de profil candidat : la messagerie n'est pas accessible.",
+      },
+    };
+  }
+
   const existingConversation = await prisma.conversation.findUnique({
     where: {
       companyUserId_candidateUserId: { companyUserId: recruiterUser.userId, candidateUserId },
@@ -478,7 +522,7 @@ exports.ensureForCandidate = async (recruiterUser, candidateUserId) => {
   const authorizedApplication = await prisma.application.findFirst({
     where: {
       job: { companyId: company.id },
-      candidateProfileId: candidateUser.candidate?.id,
+      candidateProfileId: candidateUser.candidate.id,
       status: { in: AUTHORIZED_APPLICATION_STATUSES },
     },
     orderBy: { createdAt: 'desc' },
@@ -546,3 +590,10 @@ exports.ensureWithinTransaction = async (tx, application) => {
 exports.AUTHORIZED_APPLICATION_STATUSES = AUTHORIZED_APPLICATION_STATUSES;
 exports.MAX_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH;
 exports.messagingSide = messagingSide;
+// Exportés pour être testés directement (ils portent le modèle
+// d'autorisation de la messagerie, le module le plus sensible du dépôt).
+// Ils ne contiennent aucun accès base : ce sont des fonctions pures.
+exports.validateContent = validateContent;
+exports.membershipWhere = membershipWhere;
+exports.isRateLimited = isRateLimited;
+exports.MAX_RATE_LIMIT_MESSAGES = RATE_LIMIT_MAX_MESSAGES;

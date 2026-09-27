@@ -3,22 +3,40 @@ export type Match = { id?: string | number; applicationId?: string | number; job
 export type CompanyImage = { id: string; url: string; isPrimary?: boolean; sortOrder?: number };
 export type Company = { id: string | number; name: string; sector?: string; location?: string; city?: string; country?: string; description?: string; images?: CompanyImage[]; logo?: string | null };
 export type Job = { id: string | number; title: string; company?: string; location?: string; contractType?: string; publishedAt?: string };
-export type DashboardData = { user?: { name?: string; firstName?: string; lastName?: string; email?: string; role?: string; avatar?: string | null }; company?: { name?: string; sector?: string; size?: string; country?: string; city?: string; address?: string; website?: string; foundedYear?: string | number; description?: string; photos?: string[]; image?: string | null; logo?: string | null }; stats?: Record<string, number | string | null>; actions?: Array<{ id?: string | number; type?: string; label?: string; count?: number; href?: string }>; activity?: Array<{ label?: string; value?: number; date?: string }>; applications?: Array<{ id?: string | number; candidateName?: string; name?: string; jobTitle?: string; title?: string; date?: string; status?: string; avatar?: string | null; cvUrl?: string | null; coverLetter?: string | null; matchScore?: number | null; matchLevelLabel?: string | null }>; jobs?: Array<{ id?: string | number; title?: string; location?: string; contractType?: string; applicationsCount?: number; status?: string; publishedAt?: string }>; notifications?: Array<{ id?: string | number; label?: string; read?: boolean }>; matching?: Match[]; interviews?: Array<{ id?: string | number; applicationId?: string | number; status?: string; mode?: string; scheduledAt?: string | null; duration?: number | null; meetUrl?: string | null; startedAt?: string | null; jobTitle?: string | null; candidateName?: string }> };
+export type DashboardData = { user?: { name?: string; firstName?: string; lastName?: string; email?: string; role?: string; avatar?: string | null }; company?: { name?: string; sector?: string; size?: string; country?: string; city?: string; address?: string; website?: string; foundedYear?: string | number; description?: string; photos?: string[]; image?: string | null; logo?: string | null }; stats?: Record<string, number | string | null>; actions?: Array<{ id?: string | number; type?: string; label?: string; count?: number; href?: string }>; activity?: Array<{ label?: string; value?: number; date?: string }>; applications?: Array<{ id?: string | number; candidateName?: string; name?: string; jobId?: string | number | null; jobTitle?: string; title?: string; date?: string; status?: string; avatar?: string | null; cvUrl?: string | null; coverLetter?: string | null; matchScore?: number | null; matchLevelLabel?: string | null }>; jobs?: Array<{ id?: string | number; title?: string; location?: string; contractType?: string; applicationsCount?: number; status?: string; publishedAt?: string }>; notifications?: Array<{ id?: string | number; label?: string; read?: boolean }>; matching?: Match[]; interviews?: Array<{ id?: string | number; applicationId?: string | number; status?: string; mode?: string; scheduledAt?: string | null; duration?: number | null; meetUrl?: string | null; startedAt?: string | null; jobTitle?: string | null; candidateName?: string }> };
 export type CompanyMessage = { id?: string | number; conversationId?: string | number; participantName?: string; senderName?: string; name?: string; subject?: string; preview?: string; content?: string; date?: string; createdAt?: string; unread?: boolean; read?: boolean; avatar?: string | null; candidateId?: string | null; candidateUserId?: string | null; unreadCount?: number; jobId?: string | null; jobTitle?: string | null; applicationId?: string | null; applicationStatus?: string | null };
 export type ChatMessage = { id: string; senderId: string; content: string; isRead: boolean; isMine: boolean; createdAt: string };
 export type ChatConversation = { id: string; participantName: string; avatar: string | null; subject: string; jobId?: string | null; jobTitle?: string | null; applicationId?: string | null; applicationStatus?: string | null; companyName?: string | null };
 export type ChatResponse = { conversation: ChatConversation; messages: ChatMessage[]; hasMore?: boolean };
 export type InterviewItem = { id?: string; applicationId?: string; status?: string; mode?: string; scheduledAt?: string | null; duration?: number | null; meetUrl?: string | null; streamingUrl?: string | null; startedAt?: string | null; finishedAt?: string | null; jobTitle?: string | null; companyName?: string | null; candidateName?: string; applicationStatus?: string };
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://jobsinc.onrender.com/api').replace(/\/$/, '');
-const API_ORIGIN = new URL(API_URL).origin;
-const endpoint = (path: string) => `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
+// URL de l'API : source de vérité unique dans `lib/api-url.ts` (voir le
+// commentaire de ce module pour l'historique des 7 copies divergentes).
+import { API_ORIGIN, apiEndpoint as endpoint } from '@/lib/api-url';
+/**
+ * Origine backend autorisée pour les fichiers servis par l'API.
+ *
+ * Auparavant, `assetUrl` acceptait N'IMPORTE QUELLE URL `https://`. Combiné
+ * à un `img-src https:` large, un logo d'entreprise hostile stocké en base
+ * devenait un pixel de suivi (ou un canal d'exfiltration) sur toutes les pages
+ * qui l'affichaient. Les fichiers d'upload sont tous servis par le backend,
+ * donc on vérifie l'origine au lieu de faire confiance au chemin seul.
+ */
+const isTrustedAssetOrigin = (value: string): boolean => {
+  try {
+    return new URL(value).origin === API_ORIGIN;
+  } catch {
+    return false;
+  }
+};
+
 export const assetUrl = (value?: string | null) => {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) {
     try {
       const u = new URL(value);
       if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+      if (!isTrustedAssetOrigin(u.toString())) return null;
       return u.toString();
     } catch { return null; }
   }
@@ -29,6 +47,9 @@ export const assetUrl = (value?: string | null) => {
 export const cvHref = (value?: string | null) => {
   if (!value || value.includes('..')) return null;
   if (/^https?:\/\//i.test(value)) {
+    // Une URL absolue de CV doit venir de l'API : sinon un champ `cvUrl`
+    // injecté pourrait pointer vers n'importe quel hôte.
+    if (!isTrustedAssetOrigin(value)) return null;
     try { return new URL(value).toString(); } catch { return null; }
   }
   if (!value.startsWith('/uploads/cvs/')) return null;
@@ -50,7 +71,10 @@ async function tryRefresh(): Promise<boolean> {
       });
       if (!res.ok) return false;
       const data = await res.json().catch(() => null);
-      const newToken = data?.accessToken || data?.token || data?.accessToken;
+      // `accessToken` était testé DEUX fois (`… || data?.accessToken`) : le
+      // troisième terme était du code mort, atteint seulement si le premier
+      // avait renvoyé une valeur falsy — donc jamais. Une seule lecture.
+      const newToken = data?.accessToken || data?.token;
       if (newToken) {
         // Synchronise le cookie HttpOnly frontend (proxy) avec le nouveau token backend
         await fetch('/api/auth/cookie', {
@@ -71,63 +95,64 @@ async function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
-export async function apiRequest<T>(path: string, options?: RequestInit & { retries?: number }): Promise<T> {
-  const retries = options?.retries ?? 0;
+/**
+ * Requête API authentifiée, avec rafraîchissement du jeton sur 401.
+ *
+ * Le retry sur 503/429 a été SUPPRIMÉ. Il existait, mais AUCUN appelant ne
+ * passait jamais `retries` : la boucle `for (attempt = 0; attempt <= retries)`
+ * s'exécutait donc exactement une fois, et les deux blocs de backoff
+ * (`if (attempt < retries)`) étaient inatteignables. C'était du code mort qui
+ * donnait l'illusion d'une résilience en réseau.
+ *
+ * Un retry automatique sur 429 serait par ailleurs incorrect ici : le
+ * rate-limiting du backend est incremented PAR TENTATIVE ( voir
+ * `backend/src/middlewares/rateLimit.js` ), donc réessayer automatiquement
+ * aggrave précisément la situation que le 429 signale. Si un jour un retry est
+ * ajouté, il doit être explicite, borné, et réservé au 503 — jamais au 429.
+ *
+ * La rotation 401 → `/auth/refresh` → rejouer est conservée : elle est, elle,
+ * réellement utilisée, et le refresh est déjà dédupliqué par la promesse
+ * module-level `refreshing` ci-dessus.
+ */
+export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const isAuthPath = path.includes('/auth/login') || path.includes('/auth/register') || path.includes('/auth/refresh');
   const doFetch = async (): Promise<Response> =>
     fetch(endpoint(path), { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers }, credentials: 'include', cache: 'no-store' });
-  let lastError: unknown;
+
   let refreshed = false;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await doFetch();
-      if (response.status === 401 && !isAuthPath && !refreshed) {
-        const ok = await tryRefresh();
-        if (ok) {
-          refreshed = true;
-          const retry = await doFetch();
-          if (retry.ok) return retry.json();
-          // Si toujours 401 après refresh, on laisse l'erreur remonter
-        }
+  try {
+    const response = await doFetch();
+    if (response.status === 401 && !isAuthPath && !refreshed) {
+      const ok = await tryRefresh();
+      if (ok) {
+        refreshed = true;
+        const retry = await doFetch();
+        if (retry.ok) return retry.json();
+        // Si toujours 401 après refresh, on laisse l'erreur remonter.
       }
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number };
-        error.status = response.status;
-        if ((response.status === 503 || response.status === 429) && attempt < retries) {
-          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-          continue;
-        }
-        throw error;
-      }
-      return response.json();
-    } catch (e) {
-      lastError = e;
-      const status = (e as { status?: number })?.status;
-      // 401 déjà géré via refresh, sinon on ne retry pas
-      if (status === 401 && !refreshed && !isAuthPath) {
-        const ok = await tryRefresh().catch(() => false);
-        if (ok) {
-          refreshed = true;
-          continue;
-        }
-      }
-      if (status !== 503 && status !== 429) throw e;
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-        continue;
-      }
-      throw e;
     }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
+    }
+    return response.json();
+  } catch (e) {
+    // 401 déjà géré via refresh ci-dessus ; sinon on ne retente pas.
+    const status = (e as { status?: number })?.status;
+    if (status === 401 && !refreshed && !isAuthPath) {
+      const ok = await tryRefresh().catch(() => false);
+      if (ok) return doFetch().then((r) => r.json());
+    }
+    throw e;
   }
-  throw lastError;
 }
 
 function list<T>(response: T[] | { data?: T[]; results?: T[] }) { return Array.isArray(response) ? response : response.data || response.results || []; }
 function normalizeCompany(company: Company): Company { const logoUrl = assetUrl(company.logo); const images = (company.images || []).map((image) => ({ ...image, url: assetUrl(image.url) })).filter((image): image is CompanyImage => Boolean(image.url)); const primary = images.find((image) => image.isPrimary) || images[0]; return { ...company, images, logo: logoUrl || primary?.url || null, location: company.location || [company.city, company.country].filter(Boolean).join(', ') || undefined }; }
 export const getDashboardData = (days?: number) => apiRequest<DashboardData>(`${process.env.NEXT_PUBLIC_DASHBOARD_ENDPOINT || '/company/dashboard'}${days ? `?days=${days}` : ''}`);
 export async function getMatching(params?: Record<string, string | number | undefined>) { const base = process.env.NEXT_PUBLIC_MATCHING_ENDPOINT || '/company/matching'; const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); }); const qs = query.toString(); return apiRequest<{ data?: Match[]; results?: Match[] } | Match[]>(qs ? `${base}?${qs}` : base); }
-export async function getJobMatches(jobId: string | number, params?: Record<string, string | number | undefined>) { const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); }); const qs = query.toString(); return apiRequest<{ data?: Match[]; results?: Match[] } | Match[]>(`/company/jobs/${jobId}/matches${qs ? `?${qs}` : ''}`); }
 export async function getCompanyJobs() { return list(await apiRequest<any[] | { data?: any[]; results?: any[] }>(process.env.NEXT_PUBLIC_COMPANY_JOBS_ENDPOINT || '/company/jobs')).map((job: any) => ({ ...job, company: typeof job.company === 'object' && job.company !== null ? job.company.name : job.company })); }
 export type CompanyProfile = Company & { website?: string; size?: string; address?: string; foundedYear?: string | number };
 export const getCompanyProfile = () => apiRequest<CompanyProfile>('/company/profile');
@@ -142,16 +167,11 @@ export const deleteCompanyJob = (jobId: string | number) => apiRequest<{ message
 export const setJobOpen = (jobId: string | number, isOpen: boolean) => apiRequest<Record<string, unknown>>(`/company/jobs/${jobId}`, { method: 'PUT', body: JSON.stringify({ isOpen }) });
 export async function getCompanyApplications() { return list(await apiRequest<NonNullable<DashboardData['applications']> | { data?: NonNullable<DashboardData['applications']>; results?: NonNullable<DashboardData['applications']> }>(process.env.NEXT_PUBLIC_COMPANY_APPLICATIONS_ENDPOINT || '/company/applications')); }
 export async function getCompanyMessages() { const path = process.env.NEXT_PUBLIC_COMPANY_MESSAGES_ENDPOINT || '/company/messages'; return list(await apiRequest<CompanyMessage[] | { data?: CompanyMessage[]; results?: CompanyMessage[] }>(path)); }
-export async function getConversationMessages(conversationId: string | number) { return apiRequest<ChatResponse>(`/company/messages/${conversationId}`); }
 export async function sendMessage(candidateUserId: string, content: string, subject?: string) { return apiRequest<ChatMessage & { participantName?: string; conversationId?: string | number }>('/company/messages', { method: 'POST', body: JSON.stringify({ candidateUserId, content, subject }) }); }
 export async function markConversationRead(conversationId: string | number) { return apiRequest<{ message: string }>(`/company/messages/${conversationId}/read`, { method: 'PATCH' }); }
 // Ouvre (ou récupère) la conversation liée à une candidature autorisée (INTERVIEW / ACCEPTED).
 export async function ensureConversation(applicationId: string | number) { return apiRequest<{ conversation: ChatConversation; created?: boolean }>(`/applications/${applicationId}/conversation`, { method: 'POST', body: JSON.stringify({}) }); }
 // Cycle de vie des entretiens vidéo (statuts PLANIFIE / EN_COURS / TERMINE / ANNULE côté backend).
-export const getCompanyInterviews = async () => {
-  const response = await apiRequest<InterviewItem[] | { data?: InterviewItem[]; results?: InterviewItem[] }>('/interviews/company');
-  return Array.isArray(response) ? response : response.data || response.results || [];
-};
 const interviewAction = (action: string, applicationId: string | number) => apiRequest<InterviewItem>(`/interviews/applications/${applicationId}/${action}`, { method: 'POST', body: JSON.stringify({}) });
 export const startInterview = (applicationId: string | number) => interviewAction('start', applicationId);
 export const finishInterview = (applicationId: string | number) => interviewAction('finish', applicationId);
@@ -165,7 +185,6 @@ export async function getConversationPage(conversationId: string | number, param
   const qs = query.toString();
   return apiRequest<ChatResponse>(`/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`);
 }
-export const isApiConfigured = () => Boolean(API_URL);
 export async function getCompanies() { return list(await apiRequest<Company[] | { data?: Company[]; results?: Company[] }>(process.env.NEXT_PUBLIC_COMPANIES_ENDPOINT || '/companies')).map(normalizeCompany); }
 export async function getJobs(params?: { page?: number; limit?: number }) {
   const qs = new URLSearchParams();
@@ -185,13 +204,13 @@ export async function getOverviewStats(): Promise<OverviewData> { return apiRequ
 export async function authenticate(path: string, payload: Record<string, unknown>) { return apiRequest<{ token?: string; user?: unknown }>(path, { method: 'POST', body: JSON.stringify(payload) }); }
 export async function authenticateWithFiles(path: string, fields: Record<string, string>, files: File[], fieldName = 'photos') { const formData = new FormData(); Object.entries(fields).forEach(([key, value]) => formData.append(key, value)); files.forEach((file) => formData.append(fieldName, file, file.name)); const response = await fetch(endpoint(path), { method: 'POST', body: formData, credentials: 'include', cache: 'no-store' }); if (!response.ok) { const body = await response.json().catch(() => null); throw new Error(body?.message || body?.error || `Erreur serveur (${response.status})`); } return response.json() as Promise<{ token?: string; user?: unknown }>; }
 
-// ── FAQ ──
+// -- FAQ --
 export type FAQItem = { id: string; companyId?: string; question: string; answer?: string | null; isPublished?: boolean; createdAt?: string; company?: { name?: string } };
 export async function getPublicFAQ(): Promise<FAQItem[]> { return list(await apiRequest<FAQItem[] | { data?: FAQItem[] }>('/faq/public')); }
 export async function getCompanyFAQ(): Promise<FAQItem[]> { return list(await apiRequest<FAQItem[] | { data?: FAQItem[] }>('/company/faq')); }
 export async function createCompanyFAQ(question: string): Promise<FAQItem> { return apiRequest<FAQItem>('/company/faq', { method: 'POST', body: JSON.stringify({ question }) }); }
 
-// ── Feedback ──
+// -- Feedback --
 export type FeedbackItem = { id: string; companyId?: string; author: string; role?: string | null; text: string; isPublished?: boolean; createdAt?: string; company?: { name?: string } };
 export async function getPublicFeedback(): Promise<FeedbackItem[]> { return list(await apiRequest<FeedbackItem[] | { data?: FeedbackItem[] }>('/feedback/public')); }
 export async function getCompanyFeedback(): Promise<FeedbackItem[]> { return list(await apiRequest<FeedbackItem[] | { data?: FeedbackItem[] }>('/company/feedback')); }

@@ -123,22 +123,39 @@ class JobFeedCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Semantics(
-                      label: 'Sauvegarder cette offre',
-                      button: true,
-                      child: PressableButton(
-                        child: IconButton(
-                          onPressed: onSave,
-                          icon: const Icon(
-                            Icons.bookmark_border_rounded,
-                            color: AppColors.secondaryText,
-                            size: 22,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 36,
-                            minHeight: 36,
-                          ),
+                    // Le favori est le SEUL point d'entrée du tap sur cette
+                    // ligne. Avant, on empilait trois gestionnaires concurrents
+                    // au même endroit : ce `GestureDetector` de la carte
+                    // (onTap), celui du `GestureDetector` de `PressableButton`
+                    // (qui déclarait onTapDown/up/cancel SANS onTap) et celui de
+                    // l'`IconButton`. L'arène de gestes pouvait faire gagner
+                    // l'ARÈNE à la carte, et l'appui sur le favori ouvrait la
+                    // fiche au lieu de sauvegarder. Un seul `onPressed`, et une
+                    // seule icône cliquable de 44 (voir plus bas).
+                    PressableButton(
+                      child: IconButton(
+                        onPressed: onSave,
+                        icon: const Icon(
+                          Icons.bookmark_border_rounded,
+                          color: AppColors.secondaryText,
+                          size: 22,
+                        ),
+                        // `tooltip` = nom accessible explicite : c'est lui que
+                        // le lecteur d'écran annonce à la place de « bouton ».
+                        tooltip: 'Sauvegarder cette offre',
+                        // 44 et non 36 : le minimum Material est 48 et les
+                        // Human Interface Guidelines (Apple) / WCAG 2.5.5
+                        // recommandent 44. Le `padding` horizontal NÉGATIF de
+                        // `styleFrom` rend les 4 px gagnés de chaque côté hors
+                        // du bouton : l'icône reste centrée dans les 44 px et
+                        // la date garde son alignement optique, mais la zone
+                        // de tap, elle, fait bien 44.
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        style: IconButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: -4),
                         ),
                       ),
                     ),
@@ -214,7 +231,9 @@ class JobFeedCard extends StatelessWidget {
                   icon: const Icon(Icons.arrow_forward_rounded, size: 18),
                   label: const Text('Voir l\'offre'),
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(40),
+                    // 44 : la valeur 40 était sous le minimum Material (48) et
+                    // sous le plancher 44 des guidelines d'accessibilité.
+                    minimumSize: const Size.fromHeight(44),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(11),
                     ),

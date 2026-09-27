@@ -39,8 +39,13 @@
 .message-bubble-outgoing time{color:rgba(255,255,255,.5)}
 
 .message-compose{display:flex;gap:10px;padding:16px 24px;border-top:1px solid #e8eef2;background:#fff;align-items:flex-end}
-.message-compose textarea{flex:1;resize:none;border:1px solid #dce6ed;border-radius:8px;padding:10px 12px;font-family:inherit;font-size:13px;color:var(--ink);outline:none;transition:border .2s}
-.message-compose textarea:focus{border-color:var(--accent)}
+/* `outline:none` a été retiré : il supprimait l'indicateur de focus clavier
+   (règle `:focus-visible` globale de `globals.css`, specificity 0,1,1 ici,
+   donc un `outline:none` local la neutralisait). Le focus se signale
+   désormais par la bordure ET par un halo, comme les autres champs du
+   projet (`dashboard.css`, `.job-form-field input:focus`). */
+.message-compose textarea{flex:1;resize:none;border:1px solid #dce6ed;border-radius:8px;padding:10px 12px;font-family:inherit;font-size:13px;color:var(--ink);transition:border .2s}
+.message-compose textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(8,121,217,.12)}
 .message-compose textarea::placeholder{color:#b0bec5}
 .message-compose .button{flex-shrink:0}
 
@@ -52,8 +57,9 @@
 
 .message-subject-field{display:flex;flex-direction:column;gap:4px;padding:0 24px;margin-bottom:8px}
 .message-subject-field span{font-size:11px;font-weight:600;color:var(--muted)}
-.message-subject-field input{border:1px solid #dce6ed;border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;color:var(--ink);outline:none;transition:border .2s}
-.message-subject-field input:focus{border-color:var(--accent)}
+/* Idem : `outline:none` retiré, focus signalé par bordure + halo. */
+.message-subject-field input{border:1px solid #dce6ed;border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;color:var(--ink);transition:border .2s}
+.message-subject-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(8,121,217,.12)}
 .message-subject-field input::placeholder{color:#b0bec5}
 
 .message-compose-area{border-top:1px solid #e8eef2;padding-top:12px}
@@ -79,27 +85,41 @@
 .candidate-avatar img{width:100%;height:100%;object-fit:cover}
 .candidate-avatar.large{width:42px;height:42px;font-size:14px}
 
-.button{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all .2s;font-family:inherit}
-.button:disabled{opacity:.5;cursor:not-allowed}
-.button-primary{background:var(--navy);color:#fff}
-.button-primary:hover:not(:disabled){background:#0a2d54}
-.button-outline{background:transparent;border:1px solid #dce6ed;color:var(--navy)}
-.button-outline:hover:not(:disabled){background:#f5fbfc}
-.button-small{padding:6px 12px;font-size:11px}
+/* ── Primitives : NE PAS LES REDÉCLARER ICI ──
+   Les blocs `.button`, `.button:disabled`, `.button-primary`,
+   `.button-outline`, `.button-small`, `.jobs-search`,
+   `.dashboard-page-heading`, `.dashboard-eyebrow`, `.dashboard-state` et
+   `.dashboard-error` qui étaient déclarés dans ce fichier ont été SUPPRIMÉS.
 
-.jobs-search{display:flex;align-items:center;gap:8px;border:1px solid #dce6ed;border-radius:8px;padding:8px 12px;background:#f9fbfc;transition:border .2s}
-.jobs-search:focus-within{border-color:var(--accent)}
-.jobs-search input{flex:1;border:none;background:none;font-size:12px;color:var(--ink);outline:none}
-.jobs-search input::placeholder{color:#b0bec5}
-.jobs-search svg{color:var(--muted);flex-shrink:0}
+   POURQUOI : ce fichier est importé par `app/dashboard/layout.tsx:4`, donc
+   il s'applique à TOUT le segment `/dashboard` — 15 pages — alors que ces
+   primitives sont déjà définies, une seule fois, dans `app/globals.css`
+   (`.button` ligne 20, `.dashboard-page-heading`/`.dashboard-state` ligne 33,
+   `.jobs-search` ligne 38). Les feuilles de segment étant chargées APRÈS
+   `globals.css` et à spécificité égale, ces redéclarations l'emportaient et
+   écrasaient le design sur toutes les pages du dashboard :
+     - `.button` (padding 8px 16px, rayon 8px, 13px) écrasait le bouton
+       canonique (padding 14px 22px, rayon 12px, 14px) : chaque bouton du
+       dashboard perdait ~15px de largeur et ~1px de taille, soit 51px → 36px
+       sur le bouton « Créer une nouvelle offre » et sur chaque action de ligne ;
+     - `.button-primary` (fond `var(--navy)` plat) écrasait le dégradé
+       `linear-gradient(135deg,var(--navy),var(--blue))` ET son `box-shadow` ;
+     - `.dashboard-page-heading h1` (22px fixe) écrasait le
+       `clamp(27px,3.2vw,42px)` : tous les titres de page du dashboard
+       perdaient les deux tiers de leur hiérarchie visuelle ;
+     - `.dashboard-state`/`.dashboard-error` écrasaient les états vides et
+       d'erreur, `.jobs-search` la barre de recherche du segment.
 
-.dashboard-page-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
-.dashboard-page-heading h1{margin:4px 0 0;color:var(--navy);font-size:22px}
-.dashboard-page-heading p{margin:4px 0 0;color:var(--muted);font-size:12px}
-.dashboard-eyebrow{display:block;font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.5px}
+   Règle suivie dans ce dépôt : les primitives (`globals.css`) à un seul
+   endroit, chaque feuille de segment n'ajoute que ce qui lui est propre
+   (`.messages-workspace`, `.message-row`, `.message-bubble`…). Si une
+   variante de bouton est un jour nécessaire ICI, ce doit être une classe
+   sémantique à portée locale (`msg-…`), jamais un `.button` re-défini.
 
-.dashboard-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:40px;text-align:center}
-.dashboard-error{color:var(--muted)}
+   Les deux règles qui n'étaient pas des redéclarations — un état, absent de
+   `globals.css` — ont été remontées à leur étage canonique, dans
+   `globals.css` : `.button:disabled` et `.jobs-search:focus-within` (le
+   conteneur doit garder son indicateur de focus sur tout le dashboard). */
 
 @media(max-width:768px){
   .messages-workspace{grid-template-columns:1fr;min-height:auto}

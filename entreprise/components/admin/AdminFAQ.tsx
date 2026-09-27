@@ -1,12 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { apiRequest, type FAQItem } from '@/lib/api';
 
 export default function AdminFAQ() {
   const [items, setItems] = useState<FAQItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [answerText, setAnswerText] = useState<Record<string, string>>({});
+  // Remplace les `alert` / `confirm` natifs : même composant et même bandeau
+  // que dans `components/admin/AdminFeedback.tsx`, l'erreur est annoncée par
+  // `role="alert"` et la suppression passe par une confirmation au clavier.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<FAQItem | null>(null);
+  const [busy, setBusy] = useState(false);
 
   function load() {
     setLoading(true);
@@ -21,6 +28,8 @@ export default function AdminFAQ() {
   async function handleAnswer(id: string) {
     const answer = answerText[id]?.trim();
     if (!answer) return;
+    setBusy(true);
+    setActionError(null);
     try {
       await apiRequest(`/admin/faq/${id}`, {
         method: 'PUT',
@@ -28,18 +37,29 @@ export default function AdminFAQ() {
       });
       setAnswerText((prev) => ({ ...prev, [id]: '' }));
       load();
-    } catch {
-      alert('Impossible de répondre.');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Impossible de répondre.');
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Supprimer cette question ?')) return;
+  // Appelé par le bouton de confirmation, pas au clic : une question publiée
+  // disparaît de la FAQ publique, la suppression n'a pas à être un simple
+  // second clic.
+  async function runDelete() {
+    const target = pendingDelete;
+    if (!target) return;
+    setPendingDelete(null);
+    setBusy(true);
+    setActionError(null);
     try {
-      await apiRequest(`/admin/faq/${id}`, { method: 'DELETE' });
+      await apiRequest(`/admin/faq/${target.id}`, { method: 'DELETE' });
       load();
-    } catch {
-      alert('Impossible de supprimer.');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Impossible de supprimer.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -52,6 +72,16 @@ export default function AdminFAQ() {
           <p>Répondez aux questions des entreprises.</p>
         </div>
       </div>
+
+      {actionError && (
+        <div className="admin-alert admin-alert-error" role="alert">
+          <div>
+            <strong>{actionError}</strong>
+            <span>Vérifiez que le service Admin est joignable, puis réessayez.</span>
+          </div>
+          <button type="button" className="admin-button admin-button-secondary" onClick={() => setActionError(null)}>Fermer</button>
+        </div>
+      )}
 
       {loading ? (
         <p style={{ color: 'var(--muted)', fontSize: '12px' }}>Chargement...</p>
@@ -72,7 +102,14 @@ export default function AdminFAQ() {
                   <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '6px', fontSize: '9px', fontWeight: 700, background: item.isPublished ? '#e9f2fe' : '#fff6e7', color: item.isPublished ? 'var(--accent)' : '#a66b0b' }}>
                     {item.isPublished ? 'Publié' : 'En attente'}
                   </span>
-                  <button onClick={() => handleDelete(item.id)} style={{ padding: '3px 8px', border: '1px solid #f2d7d5', borderRadius: '6px', background: '#fff8f7', color: '#a53d38', fontSize: '9px', fontWeight: 700, cursor: 'pointer' }}>Supprimer</button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => { setActionError(null); setPendingDelete(item); }}
+                    style={{ minHeight: '44px', padding: '3px 8px', border: '1px solid #f2d7d5', borderRadius: '6px', background: '#fff8f7', color: '#a53d38', fontSize: '9px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Supprimer
+                  </button>
                 </div>
               </div>
 
@@ -91,12 +128,24 @@ export default function AdminFAQ() {
                     onKeyDown={(e) => e.key === 'Enter' && handleAnswer(item.id)}
                     style={{ flex: 1, padding: '10px 12px', border: '1px solid #dde5ea', borderRadius: '8px', fontSize: '12px' }}
                   />
-                  <button onClick={() => handleAnswer(item.id)} className="button button-primary button-small">Répondre</button>
+                  <button type="button" disabled={busy} onClick={() => handleAnswer(item.id)} className="button button-primary button-small">Répondre</button>
                 </div>
               )}
             </div>
           ))}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Supprimer cette question ?"
+          message={`« ${pendingDelete.question} » sera définitivement retirée de la FAQ publique. Cette action est irréversible.`}
+          confirmLabel="Supprimer"
+          tone="danger"
+          busy={busy}
+          onConfirm={() => { void runDelete(); }}
+          onClose={() => { if (!busy) setPendingDelete(null); }}
+        />
       )}
     </div>
   );

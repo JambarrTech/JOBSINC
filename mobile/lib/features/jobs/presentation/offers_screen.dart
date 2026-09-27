@@ -162,7 +162,10 @@ class _OffersScreenState extends ConsumerState<OffersScreen> {
                   ),
                   const SizedBox(height: 12),
                   SizedBox(
-                    height: 38,
+                    // 44 : le `height: 38` d'origine imposait une piste ET une
+                    // zone de tap de 38 px, sous le plancher d'accessibilité,
+                    // sur les seuls filtres de la liste.
+                    height: 44,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: _contracts.length,

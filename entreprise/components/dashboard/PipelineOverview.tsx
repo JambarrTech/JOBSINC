@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { DragEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { DragEvent, useEffect, useMemo, useState } from 'react';
 import Icon from '@/components/ui/Icon';
 import { apiRequest, DashboardData, getCompanyApplications } from '@/lib/api';
 import { useDashboard } from './DashboardContext';
@@ -17,6 +17,21 @@ const STAGES: Array<[Stage, string, string, string]> = [
   ['REJECTED', 'Refusée', 'Candidatures non retenues', '#6b7280'],
 ];
 
+// Table de transitions, RÉPLIQUE de `app/dashboard/applications/[id]/page.tsx`
+// (lignes 17-23). Le glisser-déposer est une interaction POINTEUR : une
+// candidature ne pouvait donc pas changer d'étape au clavier ni avec une
+// technologie d'assistance. Cette table est la même que celle déjà utilisée
+// par la vue détail, qui knew quelles transitions le backend accepte depuis
+// chaque statut — on ne réécrit pas une liste divergente, on réutilise celle
+// qui fait foi.
+const TRANSITIONS: Record<Stage, Stage[]> = {
+  RECEIVED: ['UNDER_REVIEW', 'INTERVIEW', 'ACCEPTED', 'REJECTED'],
+  UNDER_REVIEW: ['INTERVIEW', 'ACCEPTED', 'REJECTED'],
+  INTERVIEW: ['ACCEPTED', 'REJECTED'],
+  ACCEPTED: [],
+  REJECTED: [],
+};
+
 function candidateName(application: Application) { return application.candidateName || application.name || 'Candidat'; }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'C'; }
 function formatDate(value?: string) { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.valueOf()) ? '' : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); }
@@ -30,27 +45,36 @@ function statusToStage(status?: string): Stage {
 }
 
 export default function PipelineOverview() {
-  const { data, loading: dashboardLoading, error: dashboardError, reload } = useDashboard();
-  const [ownApplications, setOwnApplications] = useState<Application[]>([]);
+  // SOURCE DE VÉRITÉ : `/company/applications`. La fusion
+  // `ownApplications.length ? own : data.applications` était non déterministe
+  // (deux tableaux concurrents, le premier non vide gagnait) ET perdait des
+  // lignes : `/company/dashboard` limite son champ `applications` à `take: 10`
+  // alors que `/company/applications` est paginé à 20. Voir le même commentaire
+  // dans `ApplicationsOverview`.
+  const { loading: dashboardLoading, error: dashboardError, reload } = useDashboard();
+  const [applications, setApplications] = useState<Application[]>([]);
   const [ownLoading, setOwnLoading] = useState(false);
   const [ownError, setOwnError] = useState(false);
   const [query, setQuery] = useState('');
   const [jobFilter, setJobFilter] = useState('all');
   const [draggedId, setDraggedId] = useState<string | number | null>(null);
+  // Candidature dont le panneau « Déplacer » est ouvert : UN SEUL panneau à
+  // la fois, pour que la tabulation ne traverse pas quatre menus par carte.
+  const [movePanelFor, setMovePanelFor] = useState<string | number | null>(null);
   const [notice, setNotice] = useState('');
   const [updatingId, setUpdatingId] = useState<string | number | null>(null);
 
   useEffect(() => {
     let active = true;
     setOwnLoading(true);
+    setOwnError(false);
     getCompanyApplications()
-      .then((result) => { if (active && result) setOwnApplications(result as Application[]); })
+      .then((result) => { if (active && result) setApplications(result as Application[]); })
       .catch(() => { if (active) setOwnError(true); })
       .finally(() => { if (active) setOwnLoading(false); });
     return () => { active = false; };
   }, []);
 
-  const applications = ownApplications.length ? ownApplications : (data?.applications || []) as Application[];
   const loading = dashboardLoading || ownLoading;
   const error = dashboardError || ownError;
   const jobs = useMemo(() => Array.from(new Set(applications.map((app) => app.title || app.jobTitle || 'Poste non renseigné'))), [applications]);
@@ -84,6 +108,8 @@ export default function PipelineOverview() {
       setUpdatingId(null);
     }
   }
+
+  function stageLabel(stage: Stage) { return STAGES.find(([value]) => value === stage)?.[1] ?? stage; }
 
   function drop(event: DragEvent<HTMLElement>, stage: Stage) {
     event.preventDefault();
@@ -159,6 +185,15 @@ export default function PipelineOverview() {
                   <div className="pipeline-column-body">
                     {items.map((application) => {
                       const name = candidateName(application);
+                      const currentStage = statusToStage(application.status);
+                      // Seules les transitions autorisées depuis le statut
+                      // courant sont proposées : la liste est donc la même
+                      // que celle de la vue détail, donc la même que celle
+                      // que le backend accepte.
+                      const targets = (TRANSITIONS[currentStage] ?? []).filter((target) => target !== currentStage);
+                      const cardId = application.id;
+                      const panelId = cardId === undefined ? undefined : `pipeline-move-${cardId}`;
+                      const panelOpen = cardId !== undefined && movePanelFor === cardId;
                       return (
                         <article
                           key={application.id}
@@ -174,6 +209,37 @@ export default function PipelineOverview() {
                             </div>
                           </div>
                           <span className="pipeline-card-date">{formatDate(application.date)}</span>
+                          {targets.length > 0 ? (
+                            <div className="pipeline-card-move">
+                              <button
+                                type="button"
+                                className="pipeline-move-trigger"
+                                aria-expanded={panelOpen}
+                                aria-controls={panelOpen ? panelId : undefined}
+                                onClick={() => setMovePanelFor(panelOpen ? null : (cardId ?? null))}
+                              >
+                                <Icon name="arrow" size={13} />
+                                Déplacer {name}
+                              </button>
+                              {panelOpen ? (
+                                <div className="pipeline-move-panel" id={panelId} role="group" aria-label={`Passer ${name} à une autre étape`}>
+                                  {targets.map((target) => (
+                                    <button
+                                      key={target}
+                                      type="button"
+                                      className="pipeline-move-option"
+                                      disabled={updatingId === application.id}
+                                      onClick={() => { setMovePanelFor(null); moveApplication(application.id, target); }}
+                                    >
+                                      Passer à l&apos;étape {stageLabel(target)}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="pipeline-move-final">Étape finale : aucun changement possible.</p>
+                          )}
                         </article>
                       );
                     })}

@@ -299,6 +299,13 @@ exports.finish = async (req, res) => {
     const context = await loadAuthorizedContext(req, req.params.id);
     if (!context.application) return res.status(404).json({ error: 'Candidature introuvable.' });
 
+    // Seul le recruteur propriétaire clôt l'entretien. Sans ce garde, un candidat
+    // peut marquer son propre entretien TERMINE : `finishedAt` est figé et
+    // `schedule` refuse ensuite de le re-planifier (dossier bloqué définitivement).
+    if (context.side !== 'company') {
+      return res.status(403).json({ error: 'Seul le recruteur peut terminer l\'entretien.' });
+    }
+
     const interview = context.application.interview;
     if (!interview) return res.status(404).json({ error: 'Aucun entretien pour cette candidature.' });
     if (interview.status === 'TERMINE') {

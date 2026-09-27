@@ -23,37 +23,60 @@ final applicationsProvider = FutureProvider<List<HomeApplication>>(
 );
 
 class ApplyState {
-  const ApplyState({this.isLoading = false, this.error, this.success = false});
+  const ApplyState({this.isLoading = false, this.error, this.application});
+
   final bool isLoading;
   final String? error;
-  final bool success;
+
+  /// Candidature créée par la dernière soumission réussie (null sinon).
+  final HomeApplication? application;
 
   ApplyState loading() => const ApplyState(isLoading: true);
-  ApplyState done() => const ApplyState(success: true);
-  ApplyState failed(String e) => ApplyState(error: e);
+}
+
+/// Résultat d'une soumission de candidature.
+///
+/// Il porte à la fois la candidature créée et le message d'erreur : l'écran
+/// de candidature relisait `applyProvider` APRÈS l'`await`, ce qui était
+/// peu fiable — le notifier étant `autoDispose`, il pouvait être détruit
+/// pendant l'appel et renégocier un `ApplyState` vierge, d'où un message
+/// d'erreur perdu remplacé par « Une erreur est survenue. ».
+class ApplyResult {
+  const ApplyResult.success(HomeApplication this.application) : error = null;
+  const ApplyResult.failure(String this.error) : application = null;
+
+  final HomeApplication? application;
+  final String? error;
+
+  bool get isSuccess => application != null;
 }
 
 class ApplyController extends AutoDisposeNotifier<ApplyState> {
   @override
   ApplyState build() => const ApplyState();
 
-  Future<bool> apply(String jobId, {String? cvUrl, String? coverLetter}) async {
+  /// Soumet la candidature et renvoie la candidature créée par le backend
+  /// (`applicationController.create` répond `201` avec le DTO complet), ce
+  /// qui permet de rediriger vers le suivi de CETTE candidature.
+  Future<ApplyResult> apply(
+    String jobId, {
+    String? cvUrl,
+    String? coverLetter,
+  }) async {
     final token = ref.read(authProvider).user?.token;
     if (token == null || token.isEmpty) {
-      state = const ApplyState(error: 'Non connecté.');
-      return false;
+      return _fail('Non connecté.');
     }
 
     if (jobId.isEmpty) {
-      state = const ApplyState(error: 'Identifiant de l\'offre manquant.');
-      return false;
+      return _fail('Identifiant de l\'offre manquant.');
     }
 
     state = state.loading();
 
     try {
       final api = ApiClient();
-      await api.post(
+      final response = await api.post(
         '/applications/jobs/$jobId',
         {
           if (cvUrl != null) 'cvUrl': cvUrl,
@@ -61,19 +84,28 @@ class ApplyController extends AutoDisposeNotifier<ApplyState> {
         },
         token: token,
       );
-      state = state.done();
+
+      // Le DTO est renvoyé à plat ; on tolère aussi un éventuel `{ data: … }`.
+      final payload = response['data'] is Map<String, dynamic>
+          ? response['data'] as Map<String, dynamic>
+          : response;
+      final application = HomeApplication.fromJson(payload);
+
+      state = ApplyState(application: application);
       ref.invalidate(applicationsProvider);
-      return true;
+      return ApplyResult.success(application);
     } on ApiException catch (e) {
-      state = ApplyState(error: e.message);
-      return false;
+      return _fail(e.message);
     } on TimeoutException catch (_) {
-      state = const ApplyState(error: 'Le serveur met trop de temps à répondre. Vérifiez votre connexion et réessayez.');
-      return false;
+      return _fail('Le serveur met trop de temps à répondre. Vérifiez votre connexion et réessayez.');
     } catch (e) {
-      state = ApplyState(error: 'Erreur : ${e.toString()}');
-      return false;
+      return _fail('Erreur : ${e.toString()}');
     }
+  }
+
+  ApplyResult _fail(String message) {
+    state = ApplyState(error: message);
+    return ApplyResult.failure(message);
   }
 
   void reset() => state = const ApplyState();

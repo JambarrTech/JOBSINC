@@ -1,197 +1,104 @@
-# JOBSINC - Frontend Entreprise
+# JOBSINC — Frontend Entreprise
 
-Bienvenue dans le frontend entreprise de JOBSINC, la plateforme de recrutement moderne et performante.
+Vitrine publique, espace recruteur et console d'administration de la plateforme
+JOBSINC. Le backend est un service séparé (`backend/`, Node + Express + Prisma) ;
+ce dépôt ne constitue **pas** une frontière de sécurité.
 
 ## 🚀 Technologies
 
-- **Next.js 16.3.0** - Framework React avec SSR/SSG
-- **React 19.2.8** - Bibliothèque UI
-- **TypeScript** - Typage statique
-- **Tailwind CSS 4** - Utilitaires CSS
-- **ESLint** - Linting du code
+- **Next.js 16.3.0** — App Router, `proxy.ts` (l'ex-`middleware`, renommé et
+  désormais obligatoire dans cette version), APIs de requête asynchrones
+- **React 19.2.8**
+- **TypeScript** (`strict: true`)
+- **CSS artisanal** — voir la note ci-dessous
+- **ESLint 9** (flat config)
 
-## 📁 Structure du Projet
+### Note sur Tailwind
+
+Tailwind 4 est installé et enregistré dans PostCSS, mais **aucune classe
+utilitaire n'est utilisée dans le code** : la seule directive présente est
+`@import "tailwindcss"` dans `app/globals.css`, qui ne sert qu'au *preflight*
+(le reset CSS).
+
+Le style est un design system maison : jetons dans `:root`
+(`app/globals.css`), puis 16 feuilles CSS scopées par espacio
+(`app/dashboard/*.css`, `app/admin/*.css`). Une part importante de l'UI
+récente utilise en plus des `style={{...}}` en ligne.
+
+Soit on adopter réellement Tailwind (migrer les feuilles), soit on le retire
+des dépendances. L'état actuel est le pire des deux : une dépendance et une
+config présents pour zéro classe écrite.
+
+## 📁 Structure
 
 ```
 entreprise/
 ├── app/
-│   ├── page.tsx              # Page d'accueil
-│   ├── layout.tsx            # Layout principal
-│   ├── globals.css           # Styles globaux
-│   ├── login/page.tsx        # Page de connexion
-│   └── register/page.tsx     # Page d'inscription
+│   ├── page.tsx                    # Accueil public
+│   ├── layout.tsx                  # Layout racine (lang="fr")
+│   ├── globals.css                 # Jetons de design + site public
+│   ├── error.tsx / not-found.tsx   # États d'erreur partagés (SectionError)
+│   ├── login/ · register/          # Authentification
+│   ├── jobs/[id]/                  # Offre publique (server component)
+│   ├── api/auth/cookie/            # SEULE route handler : pose/efface
+│   │                               #   le cookie HttpOnly du frontend
+│   ├── dashboard/…                 # Espace recruteur (14 routes)
+│   └── admin/…                     # Console admin (12 routes)
 ├── components/
-│   ├── layout/
-│   │   ├── Header.tsx        # En-tête avec navigation
-│   │   └── Footer.tsx        # Pied de page
-│   ├── home/
-│   │   ├── Hero.tsx          # Section héro
-│   │   ├── Stats.tsx         # Section statistiques
-│   │   ├── Solutions.tsx     # Section solutions
-│   │   ├── HowItWorks.tsx    # Section processus
-│   │   ├── CompanyCarousel.tsx # Carousel entreprises
-│   │   ├── WhyJobsinc.tsx    # Section avantages
-│   │   └── FinalCTA.tsx      # Appel à l'action final
-│   └── ui/
-│       └── Button.tsx        # Composant bouton réutilisable
+│   ├── home/ · layout/ · auth/     # Site public
+│   ├── dashboard/                  # 17 écrans de l'espace recruteur
+│   ├── admin/                      # Console admin (data, layout, ui)
+│   ├── company-registration/
+│   └── ui/                         # Icon, SectionError, useDialogFocus
 ├── lib/
-│   └── api.js               # Configuration API (prêt pour backend)
-├── public/
-│   ├── logo.png             # Logo JOBSINC
-│   └── images/              # Images du site
-└── package.json
-
+│   ├── api.ts                      # Client HTTP + types métier (~25 DTO)
+│   ├── admin-api.ts                # Endpoints admin
+│   ├── admin-roles.ts              # Rôles admin — source de vérité partagée
+│   ├── admin-resources.ts          # Catalogue des 22 sections admin
+│   ├── session.ts                  # Déconnexion fiable (DELETE BFF)
+│   └── socket.ts                   # Socket.IO (signaux uniquement)
+├── proxy.ts                        # Garde de routes (serveur)
+└── next.config.ts                  # CSP, HSTS, images distantes
 ```
 
-## 🎨 Identité Visuelle
+## 🔐 Authentification
 
-Palette de couleurs JOBSINC :
+Le frontend ne constitue pas une frontière de sécurité. Le jeton d'accès vit
+dans un cookie **HttpOnly posé par le backend**, sur le domaine du backend.
 
-- **Bleu principal** : `#0B5FE0`
-- **Bleu nuit (navy)** : `#071D3A`
-- **Bleu clair (accent)** : `#3B8BFF`
-- **Fond** : `#F4F7FB`
-- **Blanc** : `#FFFFFF`
-- **Sémantique conservée** : rouge (`#E74C3C`) erreurs/rejets, ambre (`#F7B731`) alertes/avertissements.
+- `proxy.ts` intercepte `/admin*` et `/dashboard*` : il lit
+  `jobsinc_token` (cookie du **frontend**, posé via `POST /api/auth/cookie`),
+  puis interroge `/auth/me` côté serveur. `cache: 'no-store'`, 3 s de timeout,
+  **fail-closed** : une panne backend renvoie « non valide » plutôt que de
+  valider localement le JWT.
+- Les requêtes métier partent **directement vers le backend**, en
+  cross-origin, avec `credentials: 'include'`. Elles ne sont donc PAS
+  passantes par le proxy Next.js : l'authentification repose sur le cookie que
+  le backend a posé sur son propre domaine (`SameSite=None; Secure` en prod).
+- `/api/auth/cookie` est protégé par une vérification d'origine (le
+  `SameSite=Lax` du cookie limite l'*envoi*, pas la *pose*).
+- Rôles admin : `lib/admin-roles.ts` est importé **à la fois** par
+  `proxy.ts` (serveur) et `lib/admin-api.ts` (client). Les deux listes
+  avaient divergé auparavant, provoquant une boucle de redirection sur
+  `SUPER_ADMIN`.
 
-## 🏠 Sections de la Page d'Accueil
+## 📡 Temps réel
 
-### 1. **Header**
-Navigation sticky avec menu responsive et CTAs
+`lib/socket.ts` ne transporte que des **signaux**
+(`message:new`, `interview:update`) ; le contenu est rechargé en REST. Aucun
+corps de message ne transite par le socket.
 
-### 2. **Hero**
-Message principal : "Connectez les bons talents à vos ambitions"
-- Sous-titre explicatif
-- CTAs principales (Créer un compte, Découvrir)
-- Illustration de plateforme
+## 🚀 Démarrage
 
-### 3. **Statistiques**
-Chiffres clés avec animations :
-- +1 000 candidats
-- +150 entreprises
-- +300 offres
-- +500 recrutements
+Prérequis : **Node.js 20.9+** (Next.js 16 refuse les versions antérieures).
 
-### 4. **Solutions**
-4 fonctionnalités principales :
-- Publier vos offres
-- Gérer vos candidatures
-- Identifier les meilleurs profils
-- Suivre votre recrutement
-
-### 5. **Processus (How It Works)**
-Timeline 4 étapes :
-1. Créez votre espace entreprise
-2. Publiez vos opportunités
-3. Recevez les candidatures
-4. Trouvez votre talent
-
-### 6. **Carousel Entreprises**
-Défilement automatique des logos clients
-
-### 7. **Pourquoi JOBSINC**
-6 avantages majeurs avec emojis
-
-### 8. **Appel à l'Action Final**
-Section CTA avec boutons d'action
-
-### 9. **Footer**
-- Logo et description
-- Sections de navigation
-- Liens légaux
-- Réseaux sociaux
-- Copyright
-
-## 📱 Responsive Design
-
-La page est entièrement responsive pour :
-- Desktop (1440px+)
-- Laptop (1280px)
-- Tablette (768px)
-- Mobile (375-390px)
-
-## 🚀 Installation
-
-### Prérequis
-- Node.js 18+
-- npm ou yarn
-
-### Installation
 ```bash
-cd entreprise
 npm install
-```
-
-### Développement
-```bash
-npm run dev
-```
-L'application sera accessible à `http://localhost:3000`
-
-### Build Production
-```bash
+npm run dev     # http://localhost:3000
 npm run build
-```
-
-### Linting
-```bash
 npm run lint
 ```
 
-## 📝 Métadonnées SEO
-
-- Title: "JOBSINC — Connecter les talents & les opportunités"
-- Description: "JOBSINC aide les entreprises à recruter les meilleurs talents..."
-- Keywords: recrutement, emploi, talents, plateforme RH, candidats
-- Open Graph configuré
-
-## 🔗 Routes Disponibles
-
-- `/` - Page d'accueil
-- `/login` - Connexion (placeholder)
-- `/register` - Inscription (placeholder)
-
-## 🎯 Prochaines Étapes
-
-Cette première version propose la landing page complète. Les prochaines étapes incluront :
-
-- [ ] Dashboard entreprise
-- [ ] Gestion des candidatures
-- [ ] Recherche de candidats
-- [ ] Pipeline de recrutement
-- [ ] Intégration avec le backend
-
-## 🔐 Architecture Backend
-
-La plateforme est préparée pour se connecter à :
-- `http://localhost:5000/api`
-
-Structure préparée dans `lib/api.js` pour les futures appels API.
-
-## ✨ Détails Techniques
-
-### Animations
-- Transitions fluides (200ms)
-- Respect de `prefers-reduced-motion`
-- Scroll behavior smoothe
-- Hover states discrets
-
-### Accessibilité
-- HTML sémantique
-- Alt text sur les images
-- Navigation au clavier
-- Contraste suffisant
-
-### Performance
-- Optimisé avec Next.js (SSG/SSR)
-- Images optimisées
-- CSS purgé
-- Code-splitting automatique
-
-## 📄 Licence
-
-JOBSINC © 2026 - Tous droits réservés
-
----
-
-**Développé avec ❤️ pour les entreprises modernes**
+Variables : voir `.env.example`. Seules des variables `NEXT_PUBLIC_*` sont
+lues — **ne jamais y placer de secret backend** (elles sont inlinées dans le
+bundle client).

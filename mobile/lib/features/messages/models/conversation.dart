@@ -97,4 +97,34 @@ class Conversation {
       applicationStatus: applicationStatus,
     );
   }
+
+  /// Égalité et hachage par IDENTITÉ DE CONVERSATION (`id`).
+  ///
+  /// `chatProvider` est un `NotifierProvider.family` parametrizé par la
+  ///Conversation ENTIÈRE (messages_provider.dart). Or, sans `==`, deux
+  /// conversations de même `id` — ce qui arrive à chaque `refreshQuietly()`,
+  /// puisque la liste est reconstruite depuis le JSON — sont deux clés
+  /// différentes. Conséquences SilentIEUSES :
+  ///
+  ///   - deux `ChatState` distincts pour la même conversation : l'historique
+  ///     chargé dans l'un est invisible dans l'autre ;
+  ///   - position de scroll perdue à chaque rafraîchissement de la liste ;
+  ///   - familles de providers orphelines jamais libérées.
+  ///
+  /// `lastMessageAt` et `preview` sont EXCLUS de l'identité : ils changent à
+  /// chaque nouveau message, et les inclure recréerait la famille en boucle à
+  /// chaque message reçu — exactement le bug inverse.
+  ///
+  /// C'est le même correctif que celui déjà appliqué à `AuthState`/`AuthUser`.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Conversation && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => 'Conversation($id)';
 }

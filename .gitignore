@@ -1,0 +1,56 @@
+# ============================================================
+# .gitignore — racine du monorepo
+# ============================================================
+#
+# POURQUOI CE FICHIER EST À LA RACINE
+#
+# Aucun `.gitignore` n'existait à la racine. Le dépôt contient trois
+# applications (`backend/`, `entreprise/`, `mobile/`) et chacune avait son
+# propre `.gitignore` — mais celle du dossier Flutter n'est pas inheritance :
+# `mobile/.gitignore` ne s'applique qu'à `mobile/`.
+#
+# Deux fichiers d'artefacts se retrouvaient donc versionnés parce que
+# personne ne les ignorait au bon endroit :
+#   - `mobile/android/build/reports/problems/problems-report.html`
+#     (rapport Gradle généré, régénéré à chaque build, propre à une machine)
+#   - `mobile/build/**` en général
+#
+# Le `.gitignore` est ici une BARRIÈRE DE SECONDAIRE : il protège contre
+# l'oubli d'extension (`git add -A`) pour les artefacts génériques. Les
+# fichiers spécifiques restent gérés par les `.gitignore` locaux, qui sont
+# plus précis et plus utiles à lire.
+# ============================================================
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- Dart / Flutter ---
+# `mobile/.gitignore` couvre déjà Flutter, mais ces chemins sont listés ici
+# parce que des builds lancés depuis la racine déposent des artefacts dans des
+# chemins non couverts.
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# --- Gradle / Android ---
+# Le wrapper (`gradlew`, `gradle-wrapper.jar`) est volontairement SUIVI : sans
+# lui, un clone frais ne peut pas builder l'APK. Voir `mobile/android/.gitignore`
+# pour pourquoi ces trois lignes y avaient été retirées.
+*.iml
+.gradle/
+local.properties
+
+# --- Divers ---
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

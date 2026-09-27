@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import Icon from '@/components/ui/Icon';
 import { getCompanyApplications } from '@/lib/api';
@@ -40,28 +41,61 @@ function StatusBadge({ status }: { status?: string }) {
 }
 
 export default function ApplicationsOverview() {
-  const { data, loading: dashboardLoading, error: dashboardError, reload } = useDashboard();
-  const [ownApplications, setOwnApplications] = useState<Application[]>([]);
+  // SOURCE DE VÉRITÉ : `/company/applications`, pas le contexte.
+  //
+  // Le code faisait :
+  //     const applications = ownApplications.length ? ownApplications : data.applications
+  // c'est-à-dire « le wins si non vide, sinon l'autre » — deux sources de vérité
+  // concurrentes dont le résultat dépendait d'un aller-retour réseau. Le rendu
+  // pouvait donc changer d'une ligne à l'autre sans action de l'utilisateur.
+  //
+  // Les deux ne sont de surcroît PAS équivalents : `/company/dashboard` renvoie
+  // son champ `applications` avec `take: 10` (companyController.js:183), alors
+  // que `/company/applications` est paginé à 20 par défaut
+  // (utils/pagination.js). Se rabattre sur le contexte faisait donc perdre la
+  // moitié de la liste. On garde l'endpoint dédié, qui est le plus complet, et
+  // on supprime la fusion non déterministe.
+  //
+  // Le contexte reste chargé par le shell (il alimente les compteurs et les
+  // graphiques du tableau de bord) ; il n'est simplement plus utilisé comme
+  // source de secours des LIGNES de cette page.
+  const { loading: dashboardLoading, error: dashboardError, reload } = useDashboard();
+  const [applications, setApplications] = useState<Application[]>([]);
   const [ownLoading, setOwnLoading] = useState(false);
   const [ownError, setOwnError] = useState(false);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
 
+  // Filtre par offre, transmis par « Voir les candidatures » depuis le détail
+  // d'une offre (`/dashboard/applications?job=<id>`). Le paramètre était
+  // produit et lié, mais JAMAIS lu : la page ne déclarait aucune prop et le
+  // composant ne consultait pas l'URL. Le lien était donc un no-op silencieux
+  // qui affichait toutes les candidatures au lieu de celles de l'offre.
+  const searchParams = useSearchParams();
+  const jobFilter = searchParams.get('job');
+
   useEffect(() => {
     let active = true;
     setOwnLoading(true);
+    setOwnError(false);
     getCompanyApplications()
-      .then((result) => { if (active && result) setOwnApplications(result as Application[]); })
+      .then((result) => { if (active && result) setApplications(result as Application[]); })
       .catch(() => { if (active) setOwnError(true); })
       .finally(() => { if (active) setOwnLoading(false); });
     return () => { active = false; };
   }, []);
 
-  const applications = ownApplications.length ? ownApplications : (data?.applications || []) as Application[];
   const filtered = useMemo(() => applications.filter((application) => {
     const text = `${candidateName(application)} ${application.title || application.jobTitle || ''}`.toLowerCase();
-    return text.includes(query.toLowerCase()) && (!status || application.status === status);
-  }), [applications, query, status]);
+    if (!text.includes(query.toLowerCase())) return false;
+    if (status && application.status !== status) return false;
+    if (jobFilter) {
+      const applicationJobId = application.jobId
+        ?? (application as { job?: { id?: unknown } }).job?.id;
+      if (String(applicationJobId ?? '') !== jobFilter) return false;
+    }
+    return true;
+  }), [applications, query, status, jobFilter]);
 
   const loading = dashboardLoading || ownLoading;
   const error = dashboardError || ownError;

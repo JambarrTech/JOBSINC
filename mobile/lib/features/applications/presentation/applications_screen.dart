@@ -950,19 +950,29 @@ class _ErrorState extends StatelessWidget {
 // ============================================================
 
 class ApplicationSuccessScreen extends StatelessWidget {
-  const ApplicationSuccessScreen({super.key});
+  const ApplicationSuccessScreen({super.key, this.application});
+
+  /// Candidature qui vient d'être envoyée. `null` si l'écran est atteint sans
+  /// `extra` (deep-link, restauration de pile) : les boutons retombent alors
+  /// sur la liste plutôt que d'ouvrir un suivi inexistant.
+  final HomeApplication? application;
 
   @override
   Widget build(BuildContext context) {
+    final application = this.application;
+    final jobTitle = application?.jobTitle;
+
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
           children: [
-            const HeroBanner(
+            HeroBanner(
               assetPath: AppAssets.heroRecruitment,
               title: 'Candidature envoyée !',
-              subtitle: 'Votre candidature a bien été transmise à l\'entreprise.',
+              subtitle: jobTitle != null
+                  ? 'Votre candidature pour « $jobTitle » a bien été transmise.'
+                  : 'Votre candidature a bien été transmise à l\'entreprise.',
               height: 270,
               semanticLabel: 'Poignée de main lors d\'un entretien professionnel',
             ),
@@ -1004,7 +1014,22 @@ class ApplicationSuccessScreen extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
+              // Suivi de CETTE candidature (détail + frise d'avancement).
+              // `Navigator.pop()` ramenait à l'écran de candidature précédent :
+              // l'utilisateur retombait sur le formulaire, pouvait le
+              // resubmettre (rejet 409 « déjà postulé ») et n'arrivait jamais
+              // à son suivi. Le remplacement conserve la pile (retour vers
+              // l'offre d'origine) au lieu de la vider comme le ferait `go`.
+              onPressed: () {
+                if (application == null) {
+                  context.go('/candidate/applications');
+                  return;
+                }
+                context.pushReplacement(
+                  '/applications/${application.id}',
+                  extra: application,
+                );
+              },
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1013,7 +1038,9 @@ class ApplicationSuccessScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             OutlinedButton(
-              onPressed: () => context.go('/candidate/home'),
+              // `go('/candidate/home')` ouvrait l'accueil alors que le libellé
+              // promet la liste des candidatures.
+              onPressed: () => context.go('/candidate/applications'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1042,7 +1069,15 @@ class RecruitmentConfirmedScreen extends StatelessWidget {
               title: 'Félicitations !',
               subtitle: 'Votre parcours professionnel évolue avec JOBSINC.',
               buttonLabel: 'Accéder à mon espace employé',
-              onPressed: () => Navigator.of(context).pop(),
+              // Le bouton disait « Accéder à mon espace employé » mais faisait
+              // `Navigator.pop()`. Sur `/recruitment/confirmed`,_pushé par
+              // go_router, il n'y a rien à dépiler : le tap était donc un
+              // NO-OP ABSOLU, sans le moindre effet visible. Le libellé
+              // promettait une navigation que le code ne faisait pas.
+              //
+              // `go('/employee/dashboard')` réalise enfin ce qui est annoncé.
+              // (La route existe : cf. `router.dart`, `/employee/dashboard`.)
+              onPressed: () => GoRouter.of(context).go('/employee/dashboard'),
               height: 286,
               semanticLabel: 'Poignée de main après une réussite professionnelle',
             ),

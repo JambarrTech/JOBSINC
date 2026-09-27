@@ -32,6 +32,31 @@ async function api(path, { method = 'GET', token, body } = {}) {
   return { status: response.status, json };
 }
 
+/**
+ * Envoi multipart minimal, pour exercer le vrai chemin d'upload de CV.
+ *
+ * Le test NE POSE PAS `cvUrl` via `PUT /candidate/profile`, et c'est
+ * volontaire : `updateProfile` ignore volontairement ce champ (cf.
+ * `candidateController.updateProfile`, qui déstructure une liste blanche sans
+ * `cvUrl`). Autoriser son écriture serait une régression de sécurité — un
+ * candidat pourrait s'attribuer le chemin `/uploads/cvs/...` d'un autre et
+ * passer ensuite le contrôle d'appartenance de `POST /applications/jobs/:id`.
+ * Le CV ne peut donc être rattaché au profil que par l'endpoint d'upload
+ * authentifié, et c'est ce chemin que le test doit couvrir.
+ */
+async function uploadCv(token, { filename, contentType = 'application/pdf', body }) {
+  const form = new FormData();
+  form.append('cv', new Blob([body], { type: contentType }), filename);
+  const response = await fetch(`${BASE}/candidate/cv`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  let json = null;
+  try { json = await response.json(); } catch { /* vide */ }
+  return { status: response.status, json };
+}
+
 async function main() {
   // Le serveur doit tourner : sonde une route publique.
   const health = await api('/jobs');
@@ -65,13 +90,11 @@ async function main() {
     assert.strictEqual(updated.isApproved, true);
   });
 
-  // Le dépôt de candidature vérifie désormais que le fichier CV existe
-  // physiquement sur disque : on pose deux fichiers factices.
-  const cvsDir = path.join(__dirname, '..', 'uploads', 'cvs');
-  fs.mkdirSync(cvsDir, { recursive: true });
-  const cvFiles = [path.join(cvsDir, 'e2e-a.pdf'), path.join(cvsDir, 'e2e-b.pdf')];
-  cvFiles.forEach((file, index) => fs.writeFileSync(file, `cv-factice-${index}`));
-
+  // Plus de fichiers CV factices posés à la main : le test dépose désormais les
+  // CV via `POST /candidate/cv`, qui les écrit réellement sur le disque ET
+  // rattache le chemin au profil. Poser les fichiers à la main laissait
+  // `candidate.cvUrl` vide, ce que le contrôle d'appartenance refuse — c'était
+  // la cause des 11 échecs en cascade.
   await check('Login refusé avec mauvais mot de passe (401)', async () => {
     const login = await api('/auth/login/company', { method: 'POST', body: { email: `rec-${SUFFIX}`, password: 'wrong' } });
     assert.ok(login.status === 401 || login.status === 400);
@@ -91,9 +114,44 @@ async function main() {
     assert.strictEqual(bad.status, 400);
   });
 
+  // `POST /applications/jobs/:id` vérifie désormais que le CV référencé
+  // APPARTIENT au candidat (`candidate.cvUrl === cvUrl`, cf.
+  // applicationController.js). C'est un contrôle de sécurité réel : sans lui, un
+  // candidat pouvait postuler avec l'URL du CV d'un autre — URL qui lui apparaît
+  // dans une candidature existante — et usurpait un parcours de recrutement.
+  //
+  // Les CV sont donc déposés via le VRAI endpoint d'upload authentifié, comme
+  // le fait l'application mobile. Ils sont ensuite récupérés depuis la réponse
+  // plutôt que codés en dur : c'est l'URL que le serveur a réellement stockée
+  // qu'il faut ré-utiliser, pas une convention devinée.
+  // PDF minimal mais VALIDE : l'upload vérifie les magic bytes
+  // (`uploadValidation.js` : `application/pdf` doit commencer par `%PDF`), donc
+  // un contenu texte factice serait rejeté — ce que faisait l'ancien test en
+  // écrivant les fichiers directement sur disque, ce qui contournait la
+  // validation. Le test couvre désormais le vrai chemin : magic bytes +
+  // écriture disque + rattachement au profil.
+  const FAKE_PDF = '%PDF-1.4\n%e2e3c\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n';
+
+  let cvUrlA; let cvUrlB;
+  await check('Dépôt du CV des deux candidats via /candidate/cv', async () => {
+    const a = await uploadCv(tokenA, { filename: 'cv-a.pdf', body: FAKE_PDF });
+    const b = await uploadCv(tokenB, { filename: 'cv-b.pdf', body: FAKE_PDF });
+    assert.strictEqual(a.status, 200, JSON.stringify(a.json));
+    assert.strictEqual(b.status, 200, JSON.stringify(b.json));
+    cvUrlA = a.json.cvUrl || a.json.url;
+    cvUrlB = b.json.cvUrl || b.json.url;
+    assert.ok(cvUrlA && cvUrlB, `URL de CV absentes : ${JSON.stringify(a.json)} / ${JSON.stringify(b.json)}`);
+  });
+
+  await check('Candidature avec le CV d’un autre candidat refusée (400)', async () => {
+    // Non-régression du contrôle d'appartenance : le CV de A n'est pas celui de B.
+    const stolen = await api(`/applications/jobs/${jobId}`, { method: 'POST', token: tokenB, body: { cvUrl: cvUrlA, coverLetter: 'Intéressé.' } });
+    assert.strictEqual(stolen.status, 400, JSON.stringify(stolen.json));
+  });
+
   await check('Candidatures des deux candidats (201)', async () => {
-    const a = await api(`/applications/jobs/${jobId}`, { method: 'POST', token: tokenA, body: { cvUrl: '/uploads/cvs/e2e-a.pdf', coverLetter: 'Motivée.' } });
-    const b = await api(`/applications/jobs/${jobId}`, { method: 'POST', token: tokenB, body: { cvUrl: '/uploads/cvs/e2e-b.pdf', coverLetter: 'Intéressé.' } });
+    const a = await api(`/applications/jobs/${jobId}`, { method: 'POST', token: tokenA, body: { cvUrl: cvUrlA, coverLetter: 'Motivée.' } });
+    const b = await api(`/applications/jobs/${jobId}`, { method: 'POST', token: tokenB, body: { cvUrl: cvUrlB, coverLetter: 'Intéressé.' } });
     assert.strictEqual(a.status, 201, JSON.stringify(a.json));
     assert.strictEqual(b.status, 201, JSON.stringify(b.json));
     applicationAId = a.json.id || a.json.application?.id;

@@ -351,7 +351,48 @@ function scoreOther(profile) {
 
 /**
  * Calcule le match complet d'un profil pour une offre.
- * Les critères inconnus sont exclus et les poids renormalisés.
+ *
+ * ============================================================
+ * COUVERTURE : POURQUOI LE SCORE N'EST PLUS UNE SIMPLE MOYENNE
+ * ============================================================
+ * Le moteur exclut les critères inconnus et RENORMALISE les poids restants
+ * (les poids de `config.js` somment à 1, `knownWeight` est donc une fraction de
+ * 1). Cette renormalisation, seule, produisait un signal PERVERS :
+ *
+ *   - chaque critère retourne `known:false` quand la donnée manque
+ *     (`scoreSkills:154,157`, `scoreExperience:212`, `scoreEducation:244,273`,
+ *     `scoreContract:311,313,316`) ;
+ *   - `scoreOther:347` est `known:true` INCONDITIONNELLEMENT, donc
+ *     `knownWeight` n'est jamais 0 et l'ancien garde `weightTotal > 0` était mort ;
+ *   - un profil ne renseigne QUE `location` (100 si même ville) et `other` (80 si
+ *     CV déposé) obtenait donc (100×0.10 + 80×0.05) / 0.15 = 93 → « Excellent
+ *     match ».
+ *
+ * Concrètement, un candidat qui ne renseigne RIEN était mieux classé qu'un
+ * candidat qui répond honnêtement et se trompe : 93 contre 27 pour un poste
+ * React/Node à Paris. Le tri de `/company/matching` se fait sur ce chiffre, donc
+ * la promesse produit était inversée.
+ *
+ * Le correctif CONSERVE la renormalisation — elle est utile : un profil qui n'a
+ * que de vraies compétences ne doit pas être écrasé par des critères
+ * d'éducation que le formulaire n'a pas collects — mais MULTIPLIE le résultat par
+ * la COUVERTURE, c'est-à-dire la part du barème effectivement mesurée :
+ *
+ *     scoreFinal = scoreRenormalisé × couverture
+ *
+ * Un profil complet (couverture 1) n'est pas pénalisé. Un profil qui ne
+ * renseigne que 15 % du barème ne peut plus revendiquer 93 % de compatibilité.
+ * La couverture est exposée dans le DTO pour que l'UI puisse afficher la
+ * confiance, et pas seulement un pourcentage.
+ *
+ * Effet sur le cas limite (poste React/Node, CDI, Paris) :
+ *
+ *   profil vide             brut 93  couverture 0,15 → 14  (muet)
+ *   liste des mauvaises     brut 27  couverture 0,55 → 15  (informatif)
+ *   compétences parfaites   brut 93  couverture 0,55 → 51  (informatif et juste)
+ *
+ * Le candidat informatif passe devant le candidat muet, et aucun des deux ne peut
+ * plus être présenté comme un excellent match.
  */
 function computeMatch(job, profile, context = {}) {
   const company = context.company || null;
@@ -367,7 +408,7 @@ function computeMatch(job, profile, context = {}) {
 
   const details = {};
   let weightedSum = 0;
-  let weightTotal = 0;
+  let knownWeight = 0;
   for (const [key, weight] of Object.entries(weights)) {
     const result = criteria[key]();
     const known = Boolean(result.known);
@@ -378,16 +419,26 @@ function computeMatch(job, profile, context = {}) {
     }
     if (known) {
       weightedSum += result.score * weight;
-      weightTotal += weight;
+      knownWeight += weight;
     }
   }
 
-  const score = weightTotal > 0 ? Math.round(weightedSum / weightTotal) : 0;
+  // Part du barème réellement mesurée, entre 0 et 1 (les poids somment à 1).
+  const coverage = knownWeight;
+  const renormalized = knownWeight > 0 ? weightedSum / knownWeight : 0;
+  const score = Math.round(renormalized * coverage);
   const level = levelFor(score);
 
   return {
     score,
     matchScore: score,
+    // Score renormalisé AVANT application de la couverture, et la couverture
+    // elle-même. Les deux sont utiles : `renormalizedScore` dit « à qualité
+    // égale, ce candidat est à X % », `coverage` dit « et on ne connaît que Y %
+    // de son dossier ». Sans `coverage`, un 51 % paraît faible alors qu'il
+    // signifie « très bon sur les compétences, dossier incomplet ailleurs ».
+    renormalizedScore: Math.round(renormalized),
+    coverage: Math.round(coverage * 100) / 100,
     level: level.key,
     levelLabel: level.label,
     details,
@@ -454,7 +505,7 @@ function cacheSet(key, value) {
 
 /** Match mis en cache ; la clé inclut updatedAt → invalidation auto. */
 async function matchFor(job, profile, application, company) {
-  const key = `${job.id}|${profile.id}|${new Date(job.updatedAt).getTime()}|${new Date(profile.updatedAt).getTime()}`;
+  const key = matchCacheKey(job, profile);
   const cached = await cacheGet(key);
   if (cached) return cached;
   const computed = computeMatch(job, profile, { applicationId: application?.id ?? null, company });
@@ -462,9 +513,78 @@ async function matchFor(job, profile, application, company) {
   return computed;
 }
 
+function matchCacheKey(job, profile) {
+  return `${job.id}|${profile.id}|${new Date(job.updatedAt).getTime()}|${new Date(profile.updatedAt).getTime()}`;
+}
+
+/**
+ * Précharge les matches d'un lot en UNE passe Redis (MGET) au lieu d'un
+ * aller-retour par paire.
+ *
+ * Le chemin précédent faisait jusqu'à 500 `GET` Redis quasi séquentiels par
+ * appel à `/company/matching` ou `/company/jobs/:id/matches` : sur une
+ * connexion réseau grand public, chaque aller-retour coûte un RTT, la réponse
+ * prenait donc plusieurs secondes et saturait le pool de connexions.
+ */
+async function prefetchMatches(pairs) {
+  if (!pairs.length) return new Map();
+  const keys = pairs.map(({ job, profile }) => matchCacheKey(job, profile));
+  const found = new Map();
+
+  // Passe 1 : L1, synchrone.
+  const misses = [];
+  for (let i = 0; i < keys.length; i += 1) {
+    const local = cacheLocalGet(keys[i]);
+    if (local) found.set(keys[i], local);
+    else misses.push(i);
+  }
+  if (!misses.length) return found;
+
+  // Passe 2 : L2, un seul MGET.
+  if (isRedisAvailable()) {
+    try {
+      const raws = await getRedis().mget(...misses.map((i) => redisMatchKey(keys[i])));
+      misses.forEach((keyIndex, position) => {
+        const raw = raws[position];
+        if (!raw) return;
+        try {
+          const value = JSON.parse(raw);
+          cacheLocalSet(keys[keyIndex], value);
+          found.set(keys[keyIndex], value);
+        } catch (_) {
+          // Entrée corrompue : on la recalcule.
+        }
+      });
+    } catch (_) {
+      // Redis indisponible : on recalcule tout, le cache L1 est déjà à jour.
+    }
+  }
+  return found;
+}
+
+/**
+ * Construit les recommandations d'un lot en réutilisant les matches déjà
+ * chargés (L1 + L2) et en ne calculant que les vrais manques.
+ */
+async function buildRecommendations(tasks, company) {
+  const prefetched = await prefetchMatches(tasks);
+  return Promise.all(
+    tasks.map(({ job, profile, application }) => {
+      const cached = prefetched.get(matchCacheKey(job, profile));
+      if (cached) return toRecommendationFromMatch(job, profile, application, cached);
+      return toRecommendation(job, profile, application, company);
+    }),
+  );
+}
+
 /** Format « recommandation » consommé par le dashboard entreprise. */
 async function toRecommendation(job, profile, application, company) {
   const match = await matchFor(job, profile, application, company);
+  return toRecommendationFromMatch(job, profile, application, match);
+}
+
+/** Assemblage de la recommandation à partir d'un match déjà calculé/chargé. */
+function toRecommendationFromMatch(job, profile, application, match) {
   return {
     id: application ? application.id : `${job.id}-${profile.id}`,
     applicationId: application ? application.id : null,
@@ -549,16 +669,29 @@ async function getCompanyMatches(companyId, filters = {}, company = null) {
       const profile = application.candidate;
       if (!profile || seen.has(`${job.id}:${profile.id}`)) continue;
       seen.add(`${job.id}:${profile.id}`);
-      tasks.push(toRecommendation(job, profile, application, company));
+      tasks.push({ job, profile, application });
     }
   }
-  const all = await Promise.all(tasks);
+  // Précharge les matches en une passe Redis au lieu d'un GET par paire.
+  const all = await buildRecommendations(tasks, company);
   const recommendations = all.filter((r) => passesFilters(r, filters));
   recommendations.sort((a, b) => b.score - a.score);
   return recommendations.slice(0, 50);
 }
 
-/** Recommandations pour une offre précise (après contrôle de propriété). */
+/**
+ * Recommandations pour une offre précise (après contrôle de propriété).
+ *
+ * Deux bornes qui manquaient :
+ *  - `JOB_MATCH_POOL_LIMIT` : une offre à 5 000 candidatures ne déclenche plus
+ *    ni 5 000 calculs de match, ni une réponse de 5 000 éléments. La
+ *    recommandation est triée par score décroissant, donc le plafond ne retire
+ *    que les moins bons scores — et le tri est fait AVANT le slice.
+ *  - même plafond que `getCompanyMatches` pour que le contrat de réponse soit
+ *    identique quelle que soit l'entrée.
+ */
+const JOB_MATCH_POOL_LIMIT = 500;
+
 async function getJobMatches(companyId, jobId, filters = {}, company = null) {
   const job = await prisma.job.findFirst({ where: { id: jobId, companyId } });
   if (!job) return null;
@@ -566,12 +699,16 @@ async function getJobMatches(companyId, jobId, filters = {}, company = null) {
     where: { jobId: job.id },
     include: { candidate: true },
     orderBy: { createdAt: 'desc' },
+    // Plafond de sécurité sur le nombre de candidats mis en correspondance.
+    take: JOB_MATCH_POOL_LIMIT,
   });
-  const tasks = applications.filter((a) => a.candidate).map((a) => toRecommendation(job, a.candidate, a, company));
-  const all = await Promise.all(tasks);
+  const tasks = applications
+    .filter((a) => a.candidate)
+    .map((a) => ({ job, profile: a.candidate, application: a }));
+  const all = await buildRecommendations(tasks, company);
   const recommendations = all.filter((r) => passesFilters(r, filters));
   recommendations.sort((a, b) => b.score - a.score);
-  return recommendations;
+  return recommendations.slice(0, 50);
 }
 
 /**

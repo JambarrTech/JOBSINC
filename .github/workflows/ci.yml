@@ -9,10 +9,21 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# `contents: read` suffit : la CI ne publie rien sur GitHub. La permission par
+# défaut du dépôt pouvait être `write`, ce qui exposait `GITHUB_TOKEN` en
+# écriture pour chaque `actions/*` — y compris via une dépendance compromise.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend — prisma + unit + e2e
     runs-on: ubuntu-latest
+    # Plafond explicite : le défaut GitHub est 360 min. Un `prisma migrate
+    # deploy` bloqué sur la base de service, ou un e2e qui attend un serveur
+    # qui ne démarre jamais, immobiliserait un runner pendant 6 h sans jamais
+    # produire de diagnostic.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: backend
@@ -63,11 +74,16 @@ jobs:
           done
           curl -sf http://localhost:5000/health | cat
           npm run test:e2e
+          # `|| true` ASSUMÉ ici : c'est du NETTOYAGE, pas une porte de
+          # qualité. Le processus de test s'arrête lui-même, et `kill` sur un
+          # processus déjà mort ne doit pas faire échouer l'étape. Toutes les
+          # assertions de `test:e2e` sont, elles, bloquantes.
           kill $SRV_PID || true
 
   web:
     name: Web — lint + typecheck + build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: entreprise
@@ -85,21 +101,50 @@ jobs:
           cache: npm
           cache-dependency-path: entreprise/package-lock.json
       - run: npm ci
+      - name: Tests (non-régression)
+        run: npm test
       - name: Lint
-        run: npm run lint -- --max-warnings=0
-        # 30 warnings actuels tolérés en CI verte : passer à 0 après fix eslint
-        continue-on-error: true
+        # Ratchet : le budget d'avertissements est un PLAFOND qui peut échouer.
+        #
+        # Avant : `--max-warnings=0` combiné à `continue-on-error: true`, ce qui
+        # rendait la porte inerte (elle ne pouvait structurellement pas échouer).
+        # Plancher ramené de 81 à 64 : gardes client supprimés (et leurs
+        # `location.assign`), props mortes, `exhaustive-deps`, apostrophes.
+        #
+        # Les 64 restants sont trois familles identifiées et assumées :
+        #   - `@typescript-eslint/no-explicit-any` (38) : frontières de réponse
+        #     API (`lib/api.ts`, `MessagesOverview`). Le vrai correctif est un
+        #     jeu de DTO, pas un `any` de plus.
+        #   - `react-hooks/set-state-in-effect` (16) : effets de chargement de
+        #     données côté client, qui sont une synchronisation légitime. Les
+        #     convertir en état dérivé est un refactor de fond.
+        #   - `@next/next/no-img-element` (5) : images cross-origin servies par
+        #     le backend, déjà en `unoptimized` (l'allow-list d'origine est
+        #     appliquée par `assetUrl`). next/image n'apporterait aucune
+        #     optimisation ici, seulement une couche de requêtes.
+        #
+        # TODO : baisser `--max-warnings` à chaque campagne qui réduit la dette.
+        run: npm run lint -- --max-warnings=64
       - name: Typecheck
-        run: npx tsc --noEmit --skipLibCheck
+        run: npm run typecheck
       - name: Build
         run: npm run build
 
   mobile:
     name: Mobile — analyze + test
     runs-on: ubuntu-latest
+    # `flutter pub get` + analyze + test + build APK debug : le build APK est
+    # l'étape lente (minutes sur runner froid). 45 min laisse de la marge
+    # sans immobiliser un runner indéfiniment.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: mobile
+    # Declare au niveau du JOB : le contexte `env` n'est pas resolu pour le `if`
+    # d'un step qui definit lui-meme sa propre variable ( meme piege que le
+    # KEYSTORE_BASE64 du workflow CD ).
+    env:
+      GOOGLE_SERVICES_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_BASE64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -108,12 +153,27 @@ jobs:
           # 3.22.x (Dart 3.4) ne pouvait pas résoudre pubspec.lock, qui exige
           # `dart: >=3.12.0` / `flutter: >=3.44.0` : `flutter pub get` échouait
           # avant même l'analyse. La version doit suivre celle utilisée en local.
-          flutter-version: '3.47.x'
+          # PIN EXACT (`3.47.5`), plus un range `3.47.x` : le range flotte, donc
+          # un bump de patch publié entre deux runs changeait le toolchain
+          # SANS DIFF dans le dépôt — même arbitre que le `sdk:` de
+          # mobile/pubspec.yaml, qui doit rester cohérent avec ce pin.
+          flutter-version: '3.47.5'
           cache: true
       - run: flutter pub get
+      - name: Restore Firebase config
+        # `google-services.json` n'est plus versionné : chaque environnement
+        # doit fournir le sien. Sans ce fichier, `flutter build apk` échoue :
+        # d'où la restauration AVANT le build, et non après.
+        # secret ANDROID_GOOGLE_SERVICES_BASE64 = base64 du fichier (une seule ligne).
+        if: env.GOOGLE_SERVICES_BASE64 != ''
+        # PAS de bloc `env:` ici : la variable est au niveau du job (bloc
+        # `env:` juste au-dessus). La redéclarer donnerait l'illusion que
+        # c'est ce bloc qui alimente le `if`, alors que c'est précisément le
+        # piège que ce job documente.
+        run: echo "$GOOGLE_SERVICES_BASE64" | base64 -d > android/app/google-services.json
       - name: Analyze
         run: flutter analyze --no-pub
       - name: Tests
-        run: flutter test --no-pub || echo "no tests yet"
+        run: flutter test --no-pub
       - name: Build APK debug (smoke)
         run: flutter build apk --debug --no-pub

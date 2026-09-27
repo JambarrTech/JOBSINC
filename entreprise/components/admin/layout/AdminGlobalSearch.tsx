@@ -29,6 +29,14 @@ export default function AdminGlobalSearch() {
   const [results, setResults] = useState<SearchResult>(emptyResult);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Le minuteur de fermeture doit survivre au blur (il se déclenche 150 ms plus
+  // tard) mais mourir au démontage : sans ce nettoyage, il rappelait `setOpen`
+  // sur un composant démonté.
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
 
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
@@ -100,8 +108,15 @@ export default function AdminGlobalSearch() {
           placeholder="Rechercher dans JOBSINC"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onFocus={() => { if (closeTimer.current) clearTimeout(closeTimer.current); setOpen(true); }}
+          // Le délai de 150 ms laisse le temps au clic sur un résultat de se
+          // déclencher avant la fermeture. Le minuteur doit être ANNULÉ à chaque
+          // nouveau blur et au démontage : sinon il survit au composant et
+          // rappelle `setOpen` sur un composant démonté.
+          onBlur={() => {
+            if (closeTimer.current) clearTimeout(closeTimer.current);
+            closeTimer.current = setTimeout(() => setOpen(false), 150);
+          }}
         />
         <kbd>Ctrl K</kbd>
       </div>

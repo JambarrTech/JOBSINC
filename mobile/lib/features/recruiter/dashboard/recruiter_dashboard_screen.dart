@@ -6,6 +6,7 @@ import '../../../core/widgets/app_shell.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../messages/presentation/messages_screen.dart';
 import '../applications/recruiter_applications_screen.dart';
+import '../jobs/recruiter_jobs_screen.dart';
 import '../data/recruiter_provider.dart';
 import '../../profile/presentation/profile_screen.dart';
 
@@ -33,9 +34,12 @@ class _RecruiterDashboardScreenState extends ConsumerState<RecruiterDashboardScr
   }
 
   Widget _buildBody(String displayName) {
-    if (_tab == 1) return const RecruiterApplicationsScreen();
-    if (_tab == 2) return const MessagesScreen(isCompanySide: true);
-    if (_tab == 3) return const ProfileScreen();
+    // Index alignés sur les destinations de `AppShell(recruiter: true)` :
+    // 0 Accueil, 1 Offres, 2 Candidatures, 3 Messages, 4 Profil.
+    if (_tab == 1) return const RecruiterJobsScreen();
+    if (_tab == 2) return const RecruiterApplicationsScreen();
+    if (_tab == 3) return const MessagesScreen(isCompanySide: true);
+    if (_tab == 4) return const ProfileScreen();
 
     final dashboard = ref.watch(recruiterDashboardProvider);
 

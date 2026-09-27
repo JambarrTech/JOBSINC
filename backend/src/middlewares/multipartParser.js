@@ -104,24 +104,32 @@ function getEffectiveDir(uploadDir) {
 }
 
 async function saveFile(file, uploadDir) {
-  // Si S3 activé, on upload direct vers S3 et on retourne le nom (l'URL sera construite par l'appelant)
+  // Si S3 activé, on upload direct vers S3 et on retourne le chemin applicatif
   if ((process.env.STORAGE_DRIVER || 'local') === 's3') {
     const { saveS3 } = require('../services/storageService');
     const filename = generateFilename(file.mimetype);
     const sub = path.basename(uploadDir); // cvs, candidates, companies
-    const key = `${sub}/${filename}`;
-    const s3Url = await saveS3(file.buffer, key, file.mimetype);
-    // On retourne une structure spéciale pour que l'appelant sache qu'il a une URL S3
-    // Pour compat on encode l'URL complète dans le filename avec un préfixe
-    // Mais on va plutôt retourner l'URL directement via un objet
-    // Astuce: on retourne s3Url encodé comme filename et l'appelant détectera http
-    return { filename, s3Url };
+    // saveS3 retourne désormais `/uploads/<sub>/<filename>` : le bucket est
+    // privé, l'URL reste donc relative et l'autorisation /uploads/cvs
+    // s'applique sur les deux drivers.
+    const storedUrl = await saveS3(file.buffer, `${sub}/${filename}`, file.mimetype);
+    return { filename, s3Url: storedUrl };
   }
   const effectiveDir = getEffectiveDir(uploadDir);
   await fs.mkdir(effectiveDir, { recursive: true });
   const filename = generateFilename(file.mimetype);
   await fs.writeFile(path.join(effectiveDir, filename), file.buffer, { flag: 'wx' });
   return filename;
+}
+
+/** Normalise le retour de saveFile() en URL applicative relative. */
+function resolveStoredUrl(result, uploadDir) {
+  const prefix = `/uploads/${path.basename(uploadDir)}/`;
+  if (typeof result === 'string') return `${prefix}${result}`;
+  if (result && typeof result === 'object' && result.s3Url) return result.s3Url;
+  if (result && typeof result === 'object' && result.url) return result.url;
+  if (result && typeof result === 'object' && result.filename) return `${prefix}${result.filename}`;
+  return null;
 }
 
 function createUploadMiddleware(config) {
@@ -153,16 +161,8 @@ function createUploadMiddleware(config) {
         const savedFiles = await Promise.all(
           matchedFiles.map(async (file) => {
             const result = await saveFile(file, uploadDir);
-            // saveFile retourne soit une string (local legacy) soit {filename, s3Url}
-            let url;
-            if (result && typeof result === 'object' && result.s3Url) {
-              url = result.s3Url;
-            } else if (typeof result === 'string') {
-              url = `/uploads/${path.basename(uploadDir)}/${result}`;
-            } else {
-              // futur: result.url
-              url = result.url || `/uploads/${path.basename(uploadDir)}/${result.filename}`;
-            }
+            const url = resolveStoredUrl(result, uploadDir);
+            if (!url) throw badRequest('Impossible d\'enregistrer le fichier.');
             return { 
               url,
               originalName: file.originalname,
@@ -215,10 +215,8 @@ async function handleCompanyUpload(req, res, next) {
       
       req.companyImages = await Promise.all(photos.map(async (file, index) => {
         const result = await saveFile(file, uploadDir);
-        let url;
-        if (result && typeof result === 'object' && result.s3Url) url = result.s3Url;
-        else if (typeof result === 'string') url = `/uploads/companies/${result}`;
-        else url = result.url || `/uploads/companies/${result.filename}`;
+        const url = resolveStoredUrl(result, uploadDir);
+        if (!url) throw badRequest('Impossible d\'enregistrer l\'image.');
         return { url, isPrimary: index === 0, sortOrder: index };
       }));
     }
@@ -226,10 +224,8 @@ async function handleCompanyUpload(req, res, next) {
     if (logos.length === 1) {
       validateFiles(logos, ['image/jpeg', 'image/png', 'image/webp'], { maxSize: 5 * 1024 * 1024, maxFiles: 1 });
       const result = await saveFile(logos[0], uploadDir);
-      let url;
-      if (result && typeof result === 'object' && result.s3Url) url = result.s3Url;
-      else if (typeof result === 'string') url = `/uploads/companies/${result}`;
-      else url = result.url || `/uploads/companies/${result.filename}`;
+      const url = resolveStoredUrl(result, uploadDir);
+      if (!url) throw badRequest('Impossible d\'enregistrer le logo.');
       req.companyLogo = { url };
     }
 

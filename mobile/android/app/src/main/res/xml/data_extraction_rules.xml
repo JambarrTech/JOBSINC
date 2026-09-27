@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Règles d'extraction de données (Android 12+ / API 31+).
+
+  Sauvegardecloud et transfert d'appareil à appareil sont EXCLUS pour
+  l'ensemble de l'application. `android:allowBackup="false"` couvre déjà le
+  cloud, mais pas le transfert d'appareil à appareil, qui suit ces règles.
+
+  Ce qui est exclu, et pourquoi :
+   - les données de session et le profil candidat, qui vivent dans
+     FlutterSecureStorage. Les clés du keystore ne sont pas sauvegardées :
+     une restauration produirait un profil illisible et forcerait une
+     reconnexion. Mieux vaut l'exclure explicitement que de laisser le
+     système tenter une restauration partiellement corrompue.
+   - SharedPreferences, qui contient `user_id` et `account_status` —
+     des identifiants stables, sans PII directe, mais rattachables à une
+     personne.
+
+  Aucune exclusion n'est tolérée : l'application ne conserve que des données
+  reconstructibles depuis le serveur, et la session est volontairement
+  volatil.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

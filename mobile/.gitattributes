@@ -1,0 +1,8 @@
+# `gradlew` est désormais versionné (android/.gitignore ne l'exclut plus).
+# Il doit IMPÉRATIVEMENT rester en fins de ligne LF : c'est un script
+# `#!/usr/bin/env bash`, et un CRLF le fait échouer sur le moindre runner Unix
+# par `\r: command not found` — donc sur le build CI/CD lui-même. Avec
+# `core.autocrlf=true` (défaut Windows) et sans cette règle, un simple checkout
+# sur poste de travail réintroduisait ce CRLF.
+gradlew text eol=lf
+gradlew.bat text eol=crlf

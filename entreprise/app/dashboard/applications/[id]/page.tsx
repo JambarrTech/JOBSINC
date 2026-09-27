@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-import { apiRequest, ensureConversation, DashboardData, startInterview, finishInterview, cancelInterview } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiRequest, ensureConversation, DashboardData, startInterview, finishInterview, cancelInterview, cvHref } from '@/lib/api';
 import { useDashboard } from '@/components/dashboard/DashboardContext';
 import { getMessagesSocket } from '@/lib/socket';
+import { useDialogFocus } from '@/components/ui/useDialogFocus';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const STATUS_LABELS: Record<string, string> = {
   RECEIVED: 'Reçue', UNDER_REVIEW: 'En cours d\'examen', INTERVIEW: 'Entretien', ACCEPTED: 'Acceptée', REJECTED: 'Refusée',
@@ -51,13 +53,20 @@ function formatInterviewTime(value?: string | null) {
 
 // Modal JOBSYNC : Google Meet interdit l'affichage en iframe, la salle
 // s'ouvre donc dans un nouvel onglet depuis cette modale d'information.
+//
+// `aria-modal="true"` était posé SANS gestion du focus : la tabulation
+// continuait derrière l'écran recouvert, Échap ne fermait rien, et le focus
+// n'était pas restitué au bouton déclencheur. `useDialogFocus` corrige les
+// trois points.
 function MeetingJoinModal({ interview, companyName, candidateName, onClose }: {
   interview: NonNullable<any>;
   companyName?: string | null;
   candidateName?: string;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const meetUrl = interview.meetUrl || interview.streamingUrl || '';
+  useDialogFocus(dialogRef, onClose);
   return (
     <div
       role="presentation"
@@ -65,8 +74,10 @@ function MeetingJoinModal({ interview, companyName, candidateName, onClose }: {
       style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label="Entretien vidéo"
         onClick={(event) => event.stopPropagation()}
         style={{ width: '100%', maxWidth: '440px', background: '#fff', borderRadius: '18px', padding: '24px', boxShadow: '0 24px 64px rgba(0,0,0,.25)' }}
       >
@@ -123,6 +134,9 @@ function InterviewVideoCard({ interview, jobTitle, online, meetUrl, canStart, op
   busy: boolean;
   onStart: () => void;
   onFinish: () => void;
+  /** Ouvre la confirmation d'annulation gérée par la page (plus bas) : le
+   *  `window.confirm` qui était ici bloquait le thread, ne rendait pas la main
+   *  au contexte de tabulation et imposait un rendu système non stylable. */
   onCancel: () => void;
   onJoin: () => void;
 }) {
@@ -274,7 +288,7 @@ function InterviewVideoCard({ interview, jobTitle, online, meetUrl, canStart, op
         <button
           type="button"
           disabled={busy}
-          onClick={() => { if (window.confirm('Annuler cet entretien ? Le candidat sera notifié.')) onCancel(); }}
+          onClick={onCancel}
           style={{
             padding: '11px 18px', borderRadius: '10px', border: '1px solid #fecaca',
             background: '#fff', color: '#dc2626', cursor: busy ? 'not-allowed' : 'pointer',
@@ -444,8 +458,19 @@ export default function ApplicationDetailsPage() {
   const [showInterviewForm, setShowInterviewForm] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  // L'annulation d'un entretien notifie le candidat : elle passe par le
+  // `ConfirmDialog` partagé au lieu de `window.confirm`, qui était
+  // synchrone, bloquant et sans restitution de focus.
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [interviewBusy, setInterviewBusy] = useState(false);
   const router = useRouter();
+
+  // `onClose` mémoïsé : `useDialogFocus` dépend de l'identité du callback de
+  // fermeture. Passé en arrow function inline, il changeait à chaque rendu et
+  // l'effet était remonté en boucle — le focus revenait sans cesse sur le
+  // premier bouton de la modale, rendant la tabulation inutilisable.
+  const closeJoinModal = useCallback(() => setShowJoinModal(false), []);
+  const closeCancelModal = useCallback(() => setShowCancelModal(false), []);
 
   useEffect(() => {
     if (contextApplication || !id) return;
@@ -554,7 +579,11 @@ export default function ApplicationDetailsPage() {
   const cvUrl = application?.cvUrl;
   const coverLetter = application?.coverLetter;
   const interview = (application as any).interview;
-  const cvHref = cvUrl ? (cvUrl.startsWith('http') ? cvUrl : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'https://jobsinc.onrender.com'}${cvUrl}`) : null;
+  // Utilise le helper durci de lib/api.ts. La version locale d'origine
+  // testait `startsWith('http')` (qui accepte `httpx://`, `httpfoo://`),
+  // ne rejetait pas la traversée `..` et n'appliquait pas le préfixe
+  // /uploads/cvs/ : c'était une surface XSS stockée / open-redirect.
+  const resolvedCvHref = cvHref(cvUrl);
   const currentStatus = application.status || 'RECEIVED';
   const allowedTransitions = TRANSITIONS[currentStatus] || [];
 
@@ -667,7 +696,7 @@ export default function ApplicationDetailsPage() {
               marginTop: '12px', padding: '10px 18px', borderRadius: '10px', border: 'none',
               background: '#3b8bff', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
             }}
-          >Planifier l'entretien</button>
+          >Planifier l&apos;entretien</button>
         </div>
       )}
 
@@ -684,7 +713,7 @@ export default function ApplicationDetailsPage() {
             busy={interviewBusy}
             onStart={() => runInterviewAction('start')}
             onFinish={() => runInterviewAction('finish')}
-            onCancel={() => runInterviewAction('cancel')}
+            onCancel={() => setShowCancelModal(true)}
             onJoin={() => setShowJoinModal(true)}
           />
         );
@@ -697,11 +726,11 @@ export default function ApplicationDetailsPage() {
         </div>
       )}
 
-      {cvHref && (
+      {resolvedCvHref && (
         <div className="dashboard-panel" style={{ marginTop: '1.5rem' }}>
           <h2>CV</h2>
           <a
-            href={cvHref}
+            href={resolvedCvHref}
             target="_blank"
             rel="noopener noreferrer"
             className="button button-outline"
@@ -713,12 +742,24 @@ export default function ApplicationDetailsPage() {
         </div>
       )}
 
+      {showCancelModal && interview && (
+        <ConfirmDialog
+          title="Annuler cet entretien ?"
+          message={`Le candidat sera notifié de l'annulation de l'entretien « ${application?.jobTitle || application?.title || 'sans titre'} ».`}
+          confirmLabel="Annuler l'entretien"
+          tone="danger"
+          busy={interviewBusy}
+          onConfirm={() => { setShowCancelModal(false); void runInterviewAction('cancel'); }}
+          onClose={closeCancelModal}
+        />
+      )}
+
       {showJoinModal && interview && (
         <MeetingJoinModal
           interview={{ ...interview, jobTitle: application.jobTitle || application.title || interview.jobTitle }}
           companyName={data?.company?.name}
           candidateName={name}
-          onClose={() => setShowJoinModal(false)}
+          onClose={closeJoinModal}
         />
       )}
     </section>

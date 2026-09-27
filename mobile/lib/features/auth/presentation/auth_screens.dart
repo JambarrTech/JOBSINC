@@ -16,6 +16,28 @@ import '../../../core/widgets/app_text_field.dart';
 import '../models/auth_user.dart';
 import '../providers/auth_provider.dart';
 
+/// Route d'accueil correspondant au statut de compte.
+///
+/// Source de vérité UNIQUE de cette correspondance. Elle était écrite trois
+/// fois dans ce fichier, dont une fois CORRECTEMENT (login) et une fois
+/// FAUSSEMENT (inscription, qui renvoyait toujours vers `/candidate/home`) :
+/// un compte recruteur créé depuis le formulaire d'inscription atterrissait sur
+/// l'accueil candidat, et le `redirect` du routeur le renvoyait ensuite vers
+/// `/recruiter/dashboard` — deux allers-retours et un flash d'écran pour rien.
+///
+/// Le `redirect` de `app/router.dart` applique la même règle : gardez les deux
+/// cohérents.
+String _homeRouteFor(AccountStatus status) {
+  switch (status) {
+    case AccountStatus.recruiter:
+      return '/recruiter/dashboard';
+    case AccountStatus.employee:
+      return '/employee/dashboard';
+    case AccountStatus.candidate:
+      return '/candidate/home';
+  }
+}
+
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -45,13 +67,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     if (auth.status == AuthStatus.authenticated && auth.user != null) {
       final status = auth.user!.status;
 
-      if (status == AccountStatus.recruiter) {
-        context.go('/recruiter/dashboard');
-      } else if (status == AccountStatus.employee) {
-        context.go('/employee/dashboard');
-      } else {
-        context.go('/candidate/home');
-      }
+      context.go(_homeRouteFor(status));
     } else {
       if (storage.onboardingCompleted) {
         context.go('/login');
@@ -324,13 +340,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    if (user.status == AccountStatus.candidate) {
-      context.go('/candidate/home');
-    } else if (user.status == AccountStatus.recruiter) {
-      context.go('/recruiter/dashboard');
-    } else {
-      context.go('/employee/dashboard');
-    }
+    // La destination dépend du rôle RÉELLEMENT renvoyé par le serveur, pas
+    // d'une route candidate codée en dur : voir `_homeRouteFor`.
+    context.go(_homeRouteFor(ref.read(authProvider).user?.status ?? AccountStatus.candidate));
   }
 
   @override

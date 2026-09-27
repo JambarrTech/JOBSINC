@@ -100,7 +100,11 @@ class _RecruiterApplicationsScreenState extends ConsumerState<RecruiterApplicati
                         ),
                         const SizedBox(height: 14),
                         SizedBox(
-                          height: 34,
+                          // 44 : le `height: 34` d'origine imposait une zone
+                          // de tap de 34 px sur les seules chips de filtre, et
+                          // ce `GestureDetector` n'était ni focusable ni
+                          // exposé au lecteur d'écran.
+                          height: 44,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: _filters.length,
@@ -108,17 +112,22 @@ class _RecruiterApplicationsScreenState extends ConsumerState<RecruiterApplicati
                             itemBuilder: (_, index) {
                               final f = _filters[index];
                               final selected = _filter == f.value;
-                              return GestureDetector(
-                                onTap: () => setState(() => _filter = f.value),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: selected ? AppColors.primary : Colors.white,
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(color: selected ? AppColors.primary : AppColors.background),
+                              return Semantics(
+                                label: 'Filtrer par ${f.label}',
+                                selected: selected,
+                                child: GestureDetector(
+                                  onTap: () => setState(() => _filter = f.value),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: selected ? AppColors.primary : Colors.white,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(color: selected ? AppColors.primary : AppColors.background),
+                                    ),
+                                    child: Text(f.label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.text)),
                                   ),
-                                  child: Text(f.label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.text)),
                                 ),
                               );
                             },
@@ -174,6 +183,138 @@ class _RecruiterApplicationsScreenState extends ConsumerState<RecruiterApplicati
 // APPLICATION CARD
 // ============================================================
 
+// ============================================================
+// ALTERNATIVE NON TACTILE AU DRAG-AND-DROP
+// ============================================================
+
+/// Action « Déplacer vers <étape suivante> », sans glisser-déposer.
+///
+/// Le board de candidatures était manipulable par DRAG-AND-DROP seulement. Or
+/// un glisser-déposer n'est réalisable ni au doigt, ni à la voix, ni au clavier,
+/// ni avec un écran de lecteur d'écran : sur mobile — la seule plateforme de
+/// cette app — un recruteur ne pouvait littéralement pas faire avancer une
+/// candidature. C'est un perdant fonctionnel, pas une Ergonomie.
+///
+/// Ce menu expose EXACTEMENT les mêmes transitions que la feuille de détail
+/// (`_nextStatuses`), donc il ne déverrouille aucune écriture qui n'était déjà
+/// possible. Les statuts sont ceux du backend
+/// (`applicationController.updateStatus` : UNDER_REVIEW, INTERVIEW, ACCEPTED,
+/// REJECTED), et `RECEIVED` n'est proposé par personne côté Transitions, puisque
+/// le backend le refuse en entrée.
+class _MoveMenu extends StatelessWidget {
+  const _MoveMenu({
+    required this.candidateName,
+    required this.currentStatusLabel,
+    required this.transitions,
+    required this.statusColors,
+    required this.statusLabels,
+    required this.onSelected,
+  });
+
+  final String candidateName;
+  final String currentStatusLabel;
+  final List<String> transitions;
+  final Map<String, Color> statusColors;
+  final Map<String, String> statusLabels;
+  final Future<void> Function(String) onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      // PAS de `button: true` ici : `PopupMenuButton` fournit déjà son nœud
+      // bouton via l'`InkWell` interne. Le remettre ici recréait exactement le
+      // « bouton dans un bouton » que `PressableButton` vient d'éliminer.
+      label: 'Déplacer la candidature de $candidateName, '
+          'actuellement $currentStatusLabel, vers une autre étape',
+      child: PopupMenuButton<String>(
+        tooltip: 'Déplacer vers une autre étape',
+        position: PopupMenuPosition.under,
+        onSelected: (status) => onSelected(status),
+        itemBuilder: (context) => [
+          for (final status in transitions)
+            PopupMenuItem<String>(
+              value: status,
+              // 44 de haut : un `PopupMenuItem` de ~32 est impossible à viser
+              // au doigt et échoue aux guidelines d'accessibilité.
+              child: Row(
+                children: [
+                  Icon(
+                    _ApplicationCardIcon.forStatus(status),
+                    size: 18,
+                    color: statusColors[status] ?? AppColors.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Déplacer vers ${statusLabels[status] ?? status}',
+                      style: const TextStyle(fontSize: 14, color: AppColors.text),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        // Enfant de 44 de haut : le `PopupMenuButton` par défaut rétrécit la
+        // zone de tap à la taille du contenu quand il reçoit un `child`.
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.drive_file_move_outlined,
+                size: 16,
+                color: AppColors.secondaryText,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Déplacer vers…',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.secondaryText,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 18,
+                color: AppColors.secondaryText,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Icône d'étape, extraite de `_ApplicationCard._iconForStatus` pour être
+/// réutilisée par le menu sans dupliquer la table.
+class _ApplicationCardIcon {
+  const _ApplicationCardIcon._();
+
+  static IconData forStatus(String status) {
+    switch (status) {
+      case 'UNDER_REVIEW':
+        return Icons.search_rounded;
+      case 'INTERVIEW':
+        return Icons.videocam_outlined;
+      case 'ACCEPTED':
+        return Icons.check_circle_outline;
+      case 'REJECTED':
+        return Icons.cancel_outlined;
+      default:
+        return Icons.arrow_forward_rounded;
+    }
+  }
+}
+
 class _ApplicationCard extends StatelessWidget {
   const _ApplicationCard({
     required this.application,
@@ -194,75 +335,103 @@ class _ApplicationCard extends StatelessWidget {
     final status = application.status as String? ?? 'RECEIVED';
     final color = statusColors[status] ?? AppColors.secondaryText;
     final label = statusLabels[status] ?? status;
+    final transitions = nextStatuses[status] ?? const <String>[];
 
-    return GestureDetector(
-      onTap: () => _showActions(context, status),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: .25)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: .25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Zone « ouvrir le détail ». Elle était un `GestureDetector` Nu :
+          // ni focusable, ni exposé aux lecteurs d'écran, donc la seule façon
+          // d'atteindre la feuille de détail était le doigt. `InkWell` apporte
+          // le nœud de sémantique `button` ET le focus clavier (Entrée) — la
+          // feuille de détail reste donc accessible sans tactile.
+          InkWell(
+            onTap: () => _showActions(context, status),
+            borderRadius: BorderRadius.circular(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: AppColors.navy.withValues(alpha: .08),
-                  child: Text(
-                    application.candidateName.toString().isNotEmpty ? application.candidateName.toString()[0].toUpperCase() : '?',
-                    style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy, fontSize: 15),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        application.candidateName.toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.text),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: AppColors.navy.withValues(alpha: .08),
+                      child: Text(
+                        application.candidateName.toString().isNotEmpty ? application.candidateName.toString()[0].toUpperCase() : '?',
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy, fontSize: 15),
                       ),
-                      const SizedBox(height: 2),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            application.candidateName.toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.text),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            application.jobTitle?.toString() ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, color: AppColors.secondaryText),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+                    ),
+                  ],
+                ),
+                if (application.date != null) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_today_outlined, size: 13, color: AppColors.secondaryText),
+                      const SizedBox(width: 5),
                       Text(
-                        application.jobTitle?.toString() ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, color: AppColors.secondaryText),
+                        _formatDate(application.date!),
+                        style: const TextStyle(fontSize: 12, color: AppColors.secondaryText),
                       ),
                     ],
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-                ),
+                ],
               ],
             ),
-            if (application.date != null) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Icon(Icons.calendar_today_outlined, size: 13, color: AppColors.secondaryText),
-                  const SizedBox(width: 5),
-                  Text(
-                    _formatDate(application.date!),
-                    style: const TextStyle(fontSize: 12, color: AppColors.secondaryText),
-                  ),
-                ],
-              ),
-            ],
+          ),
+          // Le menu de transition est HORS de l'`InkWell` ci-dessus : les deux
+          // sont des cibles tactiles, et les empiler aurait remis deux
+          // recognizers concurrents sur la même arène de gestes — le bug
+          // exact que `PressableButton` vient de subir.
+          if (transitions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            const Divider(height: 17),
+            _MoveMenu(
+              candidateName: application.candidateName.toString(),
+              currentStatusLabel: label,
+              transitions: transitions,
+              statusColors: statusColors,
+              statusLabels: statusLabels,
+              onSelected: onStatusChanged,
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -394,20 +563,8 @@ class _ApplicationCard extends StatelessWidget {
     );
   }
 
-  static IconData _iconForStatus(String status) {
-    switch (status) {
-      case 'UNDER_REVIEW':
-        return Icons.search_rounded;
-      case 'INTERVIEW':
-        return Icons.videocam_outlined;
-      case 'ACCEPTED':
-        return Icons.check_circle_outline;
-      case 'REJECTED':
-        return Icons.cancel_outlined;
-      default:
-        return Icons.arrow_forward_rounded;
-    }
-  }
+  static IconData _iconForStatus(String status) =>
+      _ApplicationCardIcon.forStatus(status);
 
   static String _formatDate(DateTime date) {
     final months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];

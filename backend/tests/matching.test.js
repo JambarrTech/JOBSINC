@@ -28,6 +28,35 @@ const baseProfile = {
   educationField: null, desiredContracts: null, availableFrom: null,
 };
 
+// Offre et profil qui couvrent TOUS les critères du barème.
+//
+// `baseJob` ne spécifie ni fourchette d'expérience, ni niveau de formation,
+// ni date de début : ces trois critères sont alors INCONNUS par construction
+// (l'offre ne demande rien, donc il n'y a rien à comparer), et `baseProfile`
+// ne renseigne que les compétences, la localisation et le CV — soit 0.55 de
+// couverture. C'est volontaire : ces deux fixtures servent à tester le
+// comportement sur un dossier PARTIEL.
+//
+// `fullJob` / `fullProfile` existent pour le cas inverse, qui doit rester
+// possible : un dossier complet qui obtient 100. Sans eux, impossible de
+// distinguer « la couverture n'a abaissé que les scores excessifs » de
+// « la couverture a abaissé tous les scores, y compris les justes ».
+const fullJob = {
+  ...baseJob,
+  minExperienceYears: 2,
+  maxExperienceYears: 5,
+  educationLevel: 'Master',
+  startsAt: new Date('2026-09-01'),
+};
+const fullProfile = {
+  ...baseProfile,
+  experienceYears: 3,
+  educationLevel: 'Master',
+  educationField: 'Informatique',
+  desiredContracts: 'CDI',
+  availableFrom: new Date('2026-08-15'),
+};
+
 const scoreOf = (job, profile) => computeMatch(job, profile).score;
 
 console.log('— Compétences —');
@@ -136,17 +165,38 @@ check('Disponibilité alignée sur la date de début → 100', () => {
 });
 
 console.log('— Agrégation & cas limites —');
-check('Score final borné 0-100 et cohérent avec les poids', () => {
+// Ces trois tests verrouillent le contrat « score = renormalisé × couverture ».
+// Ils ont été réécrits : ils assertaient l'ancien contrat (moyenne
+// renormalisée seule), longtemps après que `computeMatch` a introduit la
+// couverture. Cf. le commentaire de couverture dans `matchingService.js`
+// (`computeMatch`) pour le défaut corrigé : un profil qui ne renseignait que
+// 55 % du barème — et le faisait à 100 % sur ces critères — était présenté
+// comme « Excellent match », devant un candidat complet et honnêtement en
+// dessous. Un de ces tests doit échouer si la couverture est retirée.
+check('Score final borné 0-100 = renormalisé × couverture', () => {
   const m = computeMatch(baseJob, baseProfile);
   assert.ok(m.score >= 0 && m.score <= 100);
-  // Critères connus attendus : skills(100), location(100), other(100)
-  const expected = Math.round((100 * 0.4 + 100 * 0.1 + 100 * 0.05) / (0.4 + 0.1 + 0.05));
-  assert.strictEqual(m.score, expected);
+  // Critères connus de `baseProfile` : skills(.40), location(.10), other(.05)
+  // = 0.55 de couverture, tous à 100.
+  assert.strictEqual(m.coverage, 0.55);
+  // Renormalisé = 100, puis multiplié par la couverture : 55. L'ancien test
+  // attendait 100, c'est-à-dire « compatibilité parfaite » pour un profil que
+  // personne n'a evalué sur l'expérience, la formation, le contrat ni la
+  // disponibilité.
+  assert.strictEqual(m.score, Math.round(100 * 0.55));
+  assert.strictEqual(m.score, 55);
 });
-check('Offre sans compétences : le score s’appuie sur les autres critères', () => {
-  const m = computeMatch({ ...baseJob, skills: '' }, baseProfile);
-  assert.strictEqual(m.details.skills.known, false);
-  assert.ok(m.score > 0);
+check('Couverture complète : le score n’est PAS pénalisé', () => {
+  // La contrepartie obligatoire de la couverture : un profil qui renseigne
+  // TOUT le barème doit obtenir 100, sinon la correction aurait simplement
+  // abaissé tous les scores. Aucune assertion ne verrouillait ce cas.
+  const m = computeMatch(fullJob, fullProfile);
+  assert.strictEqual(m.coverage, 1);
+  assert.strictEqual(m.score, 100);
+  assert.strictEqual(m.levelLabel, 'Excellent match');
+  for (const [key, detail] of Object.entries(m.details)) {
+    assert.strictEqual(detail.known, true, `le critère ${key} doit être connu`);
+  }
 });
 check('Profil quasi vide → score plancher 0 mais calculable', () => {
   const empty = { ...baseProfile, skills: '', city: '', country: '', cvUrl: null };
@@ -154,9 +204,20 @@ check('Profil quasi vide → score plancher 0 mais calculable', () => {
   assert.strictEqual(m.score, 0); // seul « autres » connu et vide
 });
 check('Niveaux de compatibilité corrects', () => {
-  assert.strictEqual(computeMatch(baseJob, baseProfile).levelLabel, 'Excellent match');
+  // « Excellent match » est réservé aux profils COMPLETS : c'est la garantie
+  // produit du score. `baseProfile` n'en est pas un (couverture 0.55), donc
+  // l'assertion porte sur `fullProfile`/`fullJob`.
+  assert.strictEqual(computeMatch(fullJob, fullProfile).levelLabel, 'Excellent match');
+  // Dossier complet mais compétences hors sujet : la couverture est là, donc
+  // seul le score réel doit baisser — 60, soit « Match intéressant ».
+  const mismatched = computeMatch(fullJob, { ...fullProfile, skills: 'Cuisine' });
+  assert.strictEqual(mismatched.coverage, 1);
+  assert.strictEqual(mismatched.score, 60);
+  assert.strictEqual(mismatched.levelLabel, 'Match intéressant');
+  // Profil quasi vide : plancher, pas « excellent ».
   const weak = computeMatch(baseJob, { ...baseProfile, skills: 'Cuisine' });
-  assert.ok(['Faible compatibilité', 'Match faible'].includes(weak.levelLabel));
+  assert.ok(['Faible compatibilité', 'Match faible', 'Match intéressant'].includes(weak.levelLabel));
+  assert.notStrictEqual(weak.levelLabel, 'Excellent match');
 });
 check('Candidat sans CV signalé dans « autres »', () => {
   const m = computeMatch(baseJob, { ...baseProfile, cvUrl: null });

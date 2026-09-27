@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,18 +12,14 @@ import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_cached_image.dart';
 import '../../../core/widgets/app_feedback.dart';
-import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/app_states.dart';
 import '../../../core/widgets/pressable_button.dart';
-import '../../applications/presentation/applications_screen.dart';
 import '../../applications/providers/applications_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../jobs/models/job_offer.dart';
 import '../../jobs/providers/saved_jobs_provider.dart';
 import '../../jobs/widgets/job_feed_card.dart';
-import '../../messages/presentation/messages_screen.dart';
 import '../../notifications/providers/notifications_provider.dart';
-import '../../profile/presentation/profile_screen.dart';
 import '../../profile/providers/candidate_stats_provider.dart';
 import 'data/home_repository.dart';
 import 'providers/home_provider.dart';
@@ -49,8 +45,17 @@ class _KeepAliveWrapperState extends State<KeepAliveWrapper>
   }
 }
 
+/// Onglet « accueil » de l'espace candidat.
+///
+/// Auparavant ce widget portait sa propre bottom navigation via un `int _tab` et
+/// exposait les écrans siblings comme onglets. L'onglet actif est désormais
+/// géré par `StatefulShellRoute` (donc par l'URL) — voir
+/// `app/candidate_shell.dart`. Ce widget ne rend plus que le contenu accueil.
 class CandidateHomeScreen extends ConsumerStatefulWidget {
-  const CandidateHomeScreen({super.key});
+  const CandidateHomeScreen({super.key, required this.onOpenProfile});
+
+  /// Navigation vers l'onglet Profil (géré par la coquille).
+  final VoidCallback onOpenProfile;
 
   @override
   ConsumerState<CandidateHomeScreen> createState() =>
@@ -61,8 +66,6 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
   final _searchController = TextEditingController();
   final _locationController = TextEditingController();
   final _bucket = PageStorageBucket();
-
-  int _tab = 0;
   StreamSubscription<Map<String, dynamic>>? _interviewSub;
 
   @override
@@ -106,42 +109,14 @@ class _CandidateHomeScreenState extends ConsumerState<CandidateHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppShell(
-      currentIndex: _tab,
-      onDestinationSelected: (value) {
-        setState(() => _tab = value);
-      },
-      body: PageStorage(
-        bucket: _bucket,
-        child: IndexedStack(
-          index: _tab,
-          children: [
-            KeepAliveWrapper(
-              child: _HomeTab(
-                key: const PageStorageKey('candidate_home_tab'),
-                searchController: _searchController,
-                onSearchSubmit: _submitSearch,
-                onOpenProfile: () => setState(() => _tab = 3),
-              ),
-            ),
-            const KeepAliveWrapper(
-              child: ApplicationsScreen(
-                key: PageStorageKey('candidate_applications_tab'),
-              ),
-            ),
-            const KeepAliveWrapper(
-              child: MessagesScreen(
-                key: PageStorageKey('candidate_messages_tab'),
-                isCompanySide: false,
-              ),
-            ),
-            const KeepAliveWrapper(
-              child: ProfileScreen(
-                key: PageStorageKey('candidate_profile_tab'),
-              ),
-            ),
-          ],
-        ),
+    return PageStorage(
+      bucket: _bucket,
+      child: _HomeTab(
+        key: const PageStorageKey('candidate_home_tab'),
+        searchController: _searchController,
+        locationController: _locationController,
+        onSearchSubmit: _submitSearch,
+        onOpenProfile: widget.onOpenProfile,
       ),
     );
   }
@@ -151,11 +126,13 @@ class _HomeTab extends ConsumerWidget {
   const _HomeTab({
     super.key,
     required this.searchController,
+    required this.locationController,
     required this.onSearchSubmit,
     required this.onOpenProfile,
   });
 
   final TextEditingController searchController;
+  final TextEditingController locationController;
   final VoidCallback onSearchSubmit;
   final VoidCallback onOpenProfile;
 
@@ -188,6 +165,7 @@ class _HomeTab extends ConsumerWidget {
           data: data,
           unreadCount: ref.watch(notificationsProvider).unreadCount,
           searchController: searchController,
+          locationController: locationController,
           onSearchSubmit: onSearchSubmit,
           onOpenProfile: onOpenProfile,
         ),
@@ -207,6 +185,7 @@ class _HomeContent extends ConsumerWidget {
     required this.data,
     this.unreadCount = 0,
     required this.searchController,
+    required this.locationController,
     required this.onSearchSubmit,
     required this.onOpenProfile,
   });
@@ -216,6 +195,7 @@ class _HomeContent extends ConsumerWidget {
   final HomeDashboardData data;
   final int unreadCount;
   final TextEditingController searchController;
+  final TextEditingController locationController;
   final VoidCallback onSearchSubmit;
   final VoidCallback onOpenProfile;
 
@@ -247,10 +227,10 @@ class _HomeContent extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
             children: [
-              // 🔴 Bandeau entretien en cours (priorité absolue sur le reste).
+              // ?? Bandeau entretien en cours (priorité absolue sur le reste).
               const _LiveInterviewBanner(),
 
-              // 🏢 Entreprises suggérées
+              // ?? Entreprises suggérées
               if (data.companies.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 const _SectionHeader(
@@ -309,7 +289,7 @@ class _HomeContent extends ConsumerWidget {
                   ),
                 ),
 
-              // 💾 Offres sauvegardées
+              // ?? Offres sauvegardées
               const _SavedJobsSection(),
 
               const SizedBox(height: 18),
@@ -843,7 +823,9 @@ class _SectionHeader extends StatelessWidget {
                   ? FilledButton.tonal(
                       onPressed: onAction,
                       style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 36),
+                        // 44 : le `Size(0, 36)` d'origine était sous le plancher
+                        // d'accessibilité (48 Material / 44 guidelines).
+                        minimumSize: const Size(0, 44),
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
@@ -970,7 +952,10 @@ class CompanyFeedCard extends StatelessWidget {
                     child: OutlinedButton(
                       onPressed: onViewOffers,
                       style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(34),
+                        // 44 : le `fromHeight(34)` d'origine était sous le
+                        // plancher d'accessibilité, sur un bouton de navigation
+                        // principal de la carte entreprise.
+                        minimumSize: const Size.fromHeight(44),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),

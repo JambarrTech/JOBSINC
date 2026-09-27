@@ -18,7 +18,19 @@ typedef TokenRefreshCallback = Future<String?> Function();
 
 class ApiClient {
   ApiClient({http.Client? client, this.onTokenRefresh})
-      : _client = client ?? http.Client();
+      : _client = client ?? sharedClient,
+        _ownsClient = client == null;
+
+  /// Client HTTP partagé par toutes les instances créées sans client injecté.
+  ///
+  /// Auparavant, chaque `ApiClient()` créait son PROPRE `http.Client` : le code
+  /// appelant en instancie 28 (dont 4 seulement appelaient `close()`), ce qui
+  /// fuyait des sockets à chaque navigation, chaque fetch de provider, et même
+  /// à chaque appui sur un favori (le client était construit dans un callback
+  /// de widget). Le partage rend ces 24 appels oubliés sans conséquence, tout en
+  /// laissant l'injection d'un client dédié (tests) créer un client possédé que
+  /// l'appelant doit fermer.
+  static final http.Client sharedClient = http.Client();
 
   /// Registre GLOBAL branché par l'auth provider (une seule fois, au
   /// bootstrap). Permet à TOUTES les instances ApiClient des repositories
@@ -38,6 +50,10 @@ class ApiClient {
   static const _baseUrl = AppConfig.apiBaseUrl;
   static final _serverBase = _baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
   final http.Client _client;
+
+  /// Vrai seulement si cette instance a créé son propre client (client injecté).
+  /// Le client partagé ne doit jamais être fermé par une instance.
+  final bool _ownsClient;
 
   static String get baseUrl => _baseUrl;
   static String get serverBaseUrl => _serverBase;
@@ -214,7 +230,11 @@ class ApiClient {
     return body;
   }
 
-  void close() => _client.close();
+  /// Ferme le client SI ET SEULEMENT si cette instance le possède (client
+  /// injecté). Fermer le client partagé casserait toutes les autres instances.
+  void close() {
+    if (_ownsClient) _client.close();
+  }
 
   /// Refresh access token using refresh token (appel direct, sans retry).
   /// Returns new {'accessToken', 'refreshToken'} or throws.

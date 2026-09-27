@@ -21,7 +21,7 @@ export default function SettingsOverview() {
   const [saved, setSaved] = useState(false);
 
   function savePreferences() { setSaved(true); window.setTimeout(() => setSaved(false), 2500); }
-  const user = data?.user; const name = displayUser(user); const tabs = [['account', 'Compte', 'users'], ['notifications', 'Notifications', 'mail'], ['preferences', 'Préférences', 'chart'], ['security', 'Sécurité', 'lock']] as const;
+  const user = data?.user; const tabs = [['account', 'Compte', 'users'], ['notifications', 'Notifications', 'mail'], ['preferences', 'Préférences', 'chart'], ['security', 'Sécurité', 'lock']] as const;
 
   if (loading) return <section className="settings-page"><div className="settings-loading-heading" /><div className="settings-loading-layout"><div /><div /></div></section>;
   if (error) return <section className="settings-page"><div className="dashboard-state dashboard-error"><strong>Impossible de charger vos paramètres.</strong><button type="button" className="button button-outline button-small" onClick={reload}>Réessayer</button></div></section>;
@@ -54,7 +54,6 @@ function AccountSection({ user, fallbackCompany, onSaved }: { user?: { name?: st
   const [feedback, setFeedback] = useState<{ kind: 'ok' | 'error'; message: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const justSavedRef = useRef(false);
-  const [logoTick, setLogoTick] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -92,7 +91,7 @@ function AccountSection({ user, fallbackCompany, onSaved }: { user?: { name?: st
     setLogoBusy(true); setFeedback(null);
     try {
       const updated = await uploadCompanyLogo(file);
-      setProfile(updated); justSavedRef.current = true; setLogoTick((t) => t + 1); onSaved();
+      setProfile(updated); justSavedRef.current = true; onSaved();
       setFeedback({ kind: 'ok', message: 'Logo mis à jour.' });
     } catch (error) {
       setFeedback({ kind: 'error', message: error instanceof Error ? error.message : "Impossible d'uploader le logo." });
@@ -107,7 +106,13 @@ function AccountSection({ user, fallbackCompany, onSaved }: { user?: { name?: st
   return <section className="dashboard-panel settings-section">
     <div className="settings-section-heading"><div><span className="dashboard-eyebrow">Profil entreprise</span><h2>Informations du compte</h2><p>Ces informations sont visibles par les candidats sur vos offres.</p></div><div className="settings-avatar">{initials(name)}</div></div>
     <div className="settings-logo-row">
-      <span className="settings-logo-preview" aria-hidden>{logoUrl ? <img src={`${logoUrl}${logoUrl.includes('?') ? '&' : '?'}v=${logoTick}`} alt={`Logo ${profile?.name || name}`} /> : initials(profile?.name || name)}</span>
+      {/* Pas de cache-busting `?v=` sur l'URL du logo. Le backend stocke chaque
+          logo sous un NOM DE FICHIER UUID4 ET le supprime quand il est
+          remplacé : l'URL renvoyée par `uploadCompanyLogo` change donc à chaque
+          envoi, et le navigateur ne peut pas servir une version périmée. Le
+          `?v=${logoTick}` qui était ici ne{forçait un rechargement réseau à
+          chaque rendu, et disparaissait en plus au changement de page. */}
+      <span className="settings-logo-preview" aria-hidden>{logoUrl ? <img src={logoUrl} alt={`Logo ${profile?.name || name}`} /> : initials(profile?.name || name)}</span>
       <span>
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) handleLogo(file); }} />
         <button type="button" className="button button-outline button-small" disabled={logoBusy} onClick={() => fileRef.current?.click()}>{logoBusy ? 'Envoi…' : 'Changer le logo'}</button>

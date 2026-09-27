@@ -44,6 +44,21 @@ class AuthState {
   final AuthStatus status;
   final AuthUser? user;
   final String? message;
+
+  // AuthState n'avait pas d'égalité : AuthRouterNotifier.update() comparait donc
+  // par identité, la condition `if (_authState == newState) return;` ne
+  // déclenchait jamais, et chaque notification déclenchait une réévaluation de
+  // redirect() — y compris pour des états strictement identiques.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AuthState &&
+          other.status == status &&
+          other.user == user &&
+          other.message == message;
+
+  @override
+  int get hashCode => Object.hash(status, user, message);
 }
 
 class AuthController extends Notifier<AuthState> {
@@ -125,8 +140,24 @@ class AuthController extends Notifier<AuthState> {
     state = AuthState.authenticated(patch(current));
   }
 
+  bool _initializing = false;
+
   Future<void> initialize() async {
+    if (_initializing) return;
+    _initializing = true;
+    try {
+      await _initializeOnce();
+    } finally {
+      _initializing = false;
+    }
+  }
+
+  Future<void> _initializeOnce() async {
     final session = await _sessionService();
+
+    // Le profil est stocké chiffré (secure storage) et lu via un cache
+    // mémoire : il doit être hydraté AVANT toute lecture des getters.
+    await _storage?.hydrate();
 
     final token = await session.authToken;
 
@@ -319,43 +350,6 @@ class AuthController extends Notifier<AuthState> {
         AuthSessionService.messageFor(error),
       );
 
-      return false;
-    }
-  }
-
-  @Deprecated('Inscription entreprise désactivée sur mobile — utiliser le web (entreprise). Conservé pour compat API.')
-  Future<bool> registerCompany({
-    required String companyName,
-    required String email,
-    required String password,
-  }) async {
-    try {
-      state = const AuthState.loading();
-
-      final response = await _api.post(
-        '/auth/register/company',
-        {
-          'companyName': companyName.trim(),
-          'email': email.trim(),
-          'password': password,
-        },
-      );
-
-      final rawUser = response['user'] as Map<String, dynamic>?;
-      final token = response['token']?.toString();
-      final refreshToken = response['refreshToken']?.toString();
-
-      if (rawUser == null || token == null || token.isEmpty) {
-        throw const ApiException('Réponse d\'inscription invalide.');
-      }
-
-      final session = await _sessionService();
-      final user = session.userFromApi(rawUser, token, refreshToken: refreshToken);
-      await session.saveSession(user);
-      state = AuthState.authenticated(user);
-      return true;
-    } catch (error) {
-      state = AuthState.error(AuthSessionService.messageFor(error));
       return false;
     }
   }

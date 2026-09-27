@@ -13,13 +13,13 @@
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^10.0.10",
+    "rate-limit-redis": "^6.0.1",
     "socket.io": "^4.8.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
-    "prisma": "^5.22.0",
-    "socket.io-client": "^4.8.3"
+    "prisma": "^5.22.0"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -30,11 +30,24 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "vercel-build": "prisma generate",
     "postinstall": "prisma generate",
     "build": "prisma generate",
     "start:render": "npx prisma migrate deploy && node server.js",
-    "test": "node tests/matching.test.js",
+    "test": "npm run test:matching && npm run test:auth && npm run test:ratelimit && npm run test:ratelimitstore && npm run test:uploadauth && npm run test:uploadrouting && npm run test:presence && npm run test:authTiming && npm run test:lockout && npm run test:appgraph && npm run test:cors && npm run test:jobinput && npm run test:security && npm run test:exports",
+    "test:matching": "node tests/matching.test.js",
+    "test:auth": "node tests/conversationAuth.test.js",
+    "test:ratelimit": "node tests/rateLimitKeys.test.js",
+    "test:ratelimitstore": "node tests/rateLimitStore.test.js",
+    "test:uploadauth": "node tests/uploadAuth.test.js",
+    "test:uploadrouting": "node tests/uploadRouting.test.js",
+    "test:appgraph": "node tests/appGraph.test.js",
+    "test:cors": "node tests/web-cors.test.js",
+    "test:jobinput": "node tests/jobInput.test.js",
+    "test:security": "node tests/securityRegressions.test.js",
+    "test:exports": "node tests/companyControllerExports.test.js",
+    "test:presence": "node tests/presence.test.js",
+    "test:authTiming": "node tests/authTiming.test.js",
+    "test:lockout": "node tests/loginLockout.test.js",
     "test:e2e": "node tests/api.e2e.test.js"
   }
 }

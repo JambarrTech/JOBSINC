@@ -1,18 +1,15 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/prisma');
+const { getAccessTokenFromCookies } = require('../utils/tokenCookies');
 
 function getTokenFromRequest(req) {
   const authHeader = req.headers.authorization;
   if (authHeader) {
     return authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
   }
-  // Fallback HttpOnly cookie (web BFF) — supporte migration localStorage -> cookie
-  if (req.cookies) {
-    if (req.cookies.jobsinc_token) return req.cookies.jobsinc_token;
-    if (req.cookies.accessToken) return req.cookies.accessToken;
-    if (req.cookies.token) return req.cookies.token;
-  }
-  return null;
+  // Fallback HttpOnly cookie (web BFF) — la liste des noms vit dans
+  // utils/tokenCookies pour rester alignée avec le guard CSRF de app.js.
+  return getAccessTokenFromCookies(req.cookies);
 }
 
 module.exports = async (req, res, next) => {
@@ -27,9 +24,24 @@ module.exports = async (req, res, next) => {
 
     const userId = decoded.userId || decoded.id;
 
+    // Le rôle est RELU EN BASE, et non pris du JWT.
+    //
+    // Prendre `decoded.role` revenait à faire confiance au contenu du jeton
+    // pendant toute sa durée de vie (15 min, `ACCESS_TOKEN_TTL`). Une
+    // rétrogradation de rôle faite directement en base laissait donc l'ancien
+    // rôle actif jusqu'à expiration — alors que le rôle est utilisé pour
+    // AUTORISER (`adminMiddleware`, `companyController`, `applicationController`,
+    // `interviewController`…).
+    //
+    // `uploadAuth.js` faisait déjà la bonne chose (`select: { tokenVersion, role }`).
+    // On aligne le middleware d'authentification sur ce modèle : une seule
+    // requête, deux champs, et aucune fenêtre de désynchronisation.
+    //
+    // Le coût est nul : la requête existait déjà pour `tokenVersion`, on
+    // demande simplement une colonne de plus.
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { tokenVersion: true },
+      select: { tokenVersion: true, role: true },
     });
 
     if (!user) {
@@ -42,7 +54,8 @@ module.exports = async (req, res, next) => {
 
     req.user = {
       userId,
-      role: decoded.role,
+      // Rôle de la base, source de vérité. Le rôle du JWT est ignoré.
+      role: user.role,
       tokenVersion: decoded.tokenVersion,
     };
 

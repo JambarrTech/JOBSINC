@@ -39,6 +39,49 @@ class AuthUser {
   final String? cvUrl;
   final String? skills;
 
+  // AuthUser est utilisé comme clé de comparaison dans AuthState.==, lui-même
+  // utilisé par AuthRouterNotifier pour ne pas notifier le GoRouter quand rien
+  // n'a changé. Sans cette égalité, l'identité d'objet était comparée et la
+  // déduplication n'avait jamais lieu.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AuthUser &&
+          other.id == id &&
+          other.firstName == firstName &&
+          other.lastName == lastName &&
+          other.email == email &&
+          other.status == status &&
+          other.phone == phone &&
+          other.birthDate == birthDate &&
+          other.country == country &&
+          other.city == city &&
+          other.token == token &&
+          other.refreshToken == refreshToken &&
+          other.companyId == companyId &&
+          other.photoUrl == photoUrl &&
+          other.cvUrl == cvUrl &&
+          other.skills == skills;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        firstName,
+        lastName,
+        email,
+        status,
+        phone,
+        birthDate,
+        country,
+        city,
+        token,
+        refreshToken,
+        companyId,
+        photoUrl,
+        cvUrl,
+        skills,
+      );
+
   AuthUser copyWith({String? firstName, String? lastName, String? phone, String? country, String? city, String? photoUrl, String? cvUrl, String? skills, String? token, String? refreshToken}) {
     return AuthUser(
       id: id,

@@ -3,9 +3,9 @@
     "short_name": "JOBSINC",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F4F7FB",
+    "theme_color": "#0B5FE0",
+    "description": "JOBSINC : la plateforme de recrutement qui relie candidats et entreprises. Trouvez des offres, suivez vos candidatures et échangez avec les recruteurs.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

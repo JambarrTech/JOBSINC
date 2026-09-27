@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { cache } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import Icon, { type IconName } from '@/components/ui/Icon';
@@ -8,10 +9,16 @@ import { getJob, assetUrl } from '@/lib/api';
 
 type Props = { params: Promise<{ id: string }> };
 
+// Mémoïsé par requête : `generateMetadata` et la page appelaient tous deux
+// `getJob()`, ce qui déclenchait deux requêtes réseau (apiRequest force
+// `cache: 'no-store'`, ce qui désactive la mémoïsisation de fetch de React).
+// `cache()` de React déduplique les deux appels sur un même rendu.
+const getJobCached = cache(async (id: string) => getJob(id));
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   try {
-    const job = await getJob(id);
+    const job = await getJobCached(id);
     return { title: `${job.title} — JOBSINC`, description: (job.description || '').slice(0, 160) };
   } catch {
     return { title: 'Offre introuvable — JOBSINC' };
@@ -45,7 +52,7 @@ export default async function JobDetailPage({ params }: Props) {
   const { id } = await params;
   let job: any;
   try {
-    job = await getJob(id);
+    job = await getJobCached(id);
   } catch {
     notFound();
   }
@@ -102,7 +109,24 @@ export default async function JobDetailPage({ params }: Props) {
               </div>
 
               <div className="job-detail-actions">
-                <Link href="/register" className="button button-primary">Postuler à cette offre</Link>
+                {/*
+                  Le CTA ne doit PAS pointer vers `/register` : cette route est
+                  `components/company-registration/RegistrationForm`, un
+                  formulaire d'inscription ENTREPRISE en 4 étapes
+                  (identity, entreprise, galerie, récapitulatif). Un candidat
+                  arrivant sur une offre publique était donc redirigé vers un
+                  parcours qui crée un compte recruteur — le pire des deux
+                  mondes : il ne pouvait pas postuler, et il polluait le compte.
+
+                  La candidature passe par l'application mobile, où il existe un
+                  vrai parcours candidat (`/jobs/:id` → candidature, avec dépôt
+                  de CV). Le seul renvoi honnête depuis ce site, qui n'a pas de
+                  parcours candidat, est donc de le dire — plutôt que de
+                  promettre un formulaire qui ne correspond pas à l'utilisateur.
+                */}
+                <p className="job-detail-apply-note">
+                  Pour postuler à cette offre, utilisez l’application mobile JOBSINC&nbsp;: le parcours de candidature
+                  (dépôt du CV, lettre de motivation) s’y déroule directement depuis l’annonce.                </p>
               </div>
             </div>
 

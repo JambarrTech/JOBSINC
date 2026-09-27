@@ -11,6 +11,17 @@ serviceAccountKey.json
 uploads/
 backups/
 
+# Scripts d'export SQL
+#
+# `scripts/migrate-to-neon.sql` a été SUIVI par Git alors qu'il contient 4
+# adresses email réelles et leurs hashes bcrypt (lignes 8-11), dont deux
+# comptes partagent le MÊME hash — donc le même mot de passe. Un dump
+# d'export ne peut pas être committé « en attendant de le nettoyer » : il faut
+# le retirer du suivi ET de l'historique (voir `../DEPLOY.md`), car le
+# supprimer du working tree ne l'efface d'aucun commit précédent.
+*.sql
+scripts/*.sql
+
 # Vercel
 .vercel
 .tmp

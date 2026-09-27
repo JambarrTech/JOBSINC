@@ -1,7 +1,10 @@
 const prisma = require('../config/prisma');
 const fs = require('fs/promises');
 const path = require('path');
-const { getCached, setCache } = require('../utils/cache');
+const { getCached, setCache, invalidate } = require('../utils/cache');
+// Même sonde que `/health` : la page d'état ne peut plus afficher un « ok »
+// codé en dur que la sonde réelle contredirait.
+const { probe } = require('../utils/healthCheck');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const DAY_MS = 86400000;
@@ -279,6 +282,30 @@ exports.companies = async (req, res) => {
   }
 };
 
+/**
+ * Invalide les caches dont la valeur dépend de `Company.isApproved`.
+ *
+ * Ces deux clés étaient les SEULES du projet à porter une donnée dépendant de
+ * l'approbation, et ni `approveCompany` ni `rejectCompany` ne les touchaient.
+ * Effet observé, avant correction : un admin approuve une entreprise, recharge
+ * `/admin` — le compteur « Entreprises à valider » (`admin:overview`, TTL 60 s)
+ * affichait encore l'entreprise comme en attente, et la page d'accueil publique
+ * (`stats:global`, TTL 30 s) ne comptait ni l'entreprise ni ses offres, puisque
+ * les deux requêtes filtrent sur `isApproved: true`
+ * (`controllers/statsController.js:10-11`).
+ *
+ * Le symptôme le plus coûteux n'était pas le décalage de 30 s : c'est que
+ * l'admin, qui venait de modérer, voyait sa décisionAPPERSEIGNÉE AVEC ÉCHEC.
+ * Il refaisait donc la même action, et l'interface encourageait à le faire.
+ *
+ * `invalidate()` diffuse aussi via Redis (voir `utils/cache.js`), donc les
+ * autres instances Render ne servent pas non plus la valeur périmée.
+ */
+function invalidateApprovalCaches() {
+  invalidate('admin:overview');
+  invalidate('stats:global');
+}
+
 exports.approveCompany = async (req, res) => {
   try {
     const company = await prisma.company.findUnique({ where: { id: req.params.id } });
@@ -289,6 +316,8 @@ exports.approveCompany = async (req, res) => {
       data: { isApproved: true },
       include: { user: { select: { email: true } } },
     });
+
+    invalidateApprovalCaches();
 
     res.json({ message: 'Entreprise approuvée.', id: updated.id, name: updated.name, isApproved: updated.isApproved });
   } catch (error) {
@@ -307,6 +336,8 @@ exports.rejectCompany = async (req, res) => {
       data: { isApproved: false },
       include: { user: { select: { email: true } } },
     });
+
+    invalidateApprovalCaches();
 
     res.json({ message: 'Entreprise rejetée.', id: updated.id, name: updated.name, isApproved: updated.isApproved });
   } catch (error) {
@@ -649,8 +680,35 @@ exports.system = async (req, res) => {
       }
     }
 
-    res.json([
-      { id: 'api', label: 'API JOBSINC', status: 'operational', latency: '<1 ms', checkedAt },
+    // L'indicateur « API » est désormais MESURÉ, et non plus écrit en dur.
+  //
+  // Il affichait `status: 'operational', latency: '<1 ms'` en littéral. Les deux
+  // voisins étant réellement sondés (Postgres ligne 658, stockage ligne 673), ce
+  // déséquilibre rendait le tableau entier suspect : l'admin apprenait à se
+  // méfier d'un écran censé l'informer.
+  //
+  // La sonde est la même fonction que celle de `/health` (`utils/healthCheck.js`),
+  // donc le vert affiché ici et le code HTTP renvoyé à un orchestrateur externe
+  // ne peuvent pas diverger. Elle est aussi bornée : `probe()` court-circuite si
+  // la base est tombée, donc cette page ne peut pas rester bloquée.
+  const apiProbe = await probe();
+  const apiDegraded = apiProbe.status === 'degraded';
+
+  res.json([
+      {
+        id: 'api',
+        label: 'API JOBSINC',
+        status: apiDegraded ? 'degraded' : 'operational',
+        // La latence affichée est celle de la dépendance la plus lente
+        // rencontrée, donc une valeur réelle et non un plancher-fiction.
+        latency: apiProbe.dbLatencyMs === null ? '—' : `${apiProbe.dbLatencyMs} ms`,
+        checkedAt,
+        // Détail utile quand le service n'est pas totalement sain : sans lui,
+        // `degraded` ne disait pas CE QUI était en panne.
+        detail: apiDegraded
+          ? `Base : ${apiProbe.db} · Cache : ${apiProbe.redis}`
+          : null,
+      },
       { id: 'database', label: 'Base de données PostgreSQL', status: dbStatus, latency: dbLatency, checkedAt },
       { id: 'storage', label: 'Stockage des fichiers', status: storageStatus, latency: '—', checkedAt },
     ]);

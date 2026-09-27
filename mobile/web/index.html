@@ -16,12 +16,29 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <!--
+    Description réelle : le placeholder "A new Flutter project." de `flutter
+    create` était indexé tel quel par les moteurs de recherche et affiché dans
+    le partage de lien / l'aperçu d'installation PWA. Elle annonce donc la
+    "marque" Flutter à tous les utilisateurs de l'app installée.
+  -->
+  <meta name="description" content="JOBSINC : la plateforme de recrutement qui relie candidats et entreprises. Trouvez des offres, suivez vos candidatures et échangez avec les recruteurs.">
+
+  <!-- Couleur de la barre système en mode PWA installée (Android/Chrome).
+       Doit refléter AppColors.primary (lib/core/theme/app_colors.dart) : sans
+       ce meta, le navigateur en déduit une couleur de son propre thème (souvent
+       le blanc par défaut), d'où une barre d'adresse qui jure avec la charte. -->
+  <meta name="theme-color" content="#0B5FE0">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="mobile">
+  <!--
+    Nom affiché sous l'icône sur l'écran d'accueil iOS. Valait "mobile" (le nom
+    du projet `flutter create`) : l'app s'installait donc sous le nom « mobile »
+    chez tous les utilisateurs iOS.
+  -->
+  <meta name="apple-mobile-web-app-title" content="JOBSINC">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
@@ -37,7 +54,11 @@
     body {
       margin: 0;
       min-height: 100%;
-      background-color: #FFFFFF;
+      /* Aligné sur `background_color` du manifest (AppColors.background) et sur
+         le fond réel des écrans : le #FFFFFF de `flutter create` produisait un
+         écran de saut BLANC suivi immédiatement d'un #F4F7FB, soit un flash
+         visible à chaque ouverture. */
+      background-color: #F4F7FB;
           background-size: 100% 100%;
     }
 
@@ -89,7 +110,9 @@
 
     @media (prefers-color-scheme: dark) {
       body {
-        background-color: #1A1A2E;
+        /* AppColors.navy, et non le #1A1A2E de `flutter create` : le fond
+           sombre doit rester dans la charte. */
+        background-color: #071D3A;
           }
     }
   </style>
@@ -100,7 +123,14 @@
       document.body.style.background = "transparent";
     }
   </script>
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+  <!--
+    Viewport : `maximum-scale=1.0, user-scalable=no` (défaut `flutter create`)
+    désactive le pinch-zoom, ce qui viole le critère WCAG 1.4.4 (Resize Text) et
+    empêche tout utilisateur ayant une basse vision de grossir l'interface.
+    Seul `width=device-width, initial-scale=1` est conservé — exactement comme
+    entreprise/app/layout.tsx côté web.
+  -->
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
 </head>
 <body>
   <!--

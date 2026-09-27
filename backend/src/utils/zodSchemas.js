@@ -1,39 +1,39 @@
-const { z } = require('zod');
+// ============================================================
+// SCHÉMAS ZOD
+// ============================================================
+//
+// `candidateRegisterSchema`, `companyRegisterSchema` et `paginationSchema`
+// étaient exportés ici sans AUCUN appelant (vérifié par grep sur tout `src/`) :
+// l'inscription passait par la validation de `services/authService.js`, et la
+// pagination par `utils/pagination.js`.
+//
+// Ils ont été SUPPRIMÉS, et non branchés, pour trois raisons vérifiables :
+//
+//   1. Ils étaient DIVERGENTS du code réellement exécuté, donc les brancher
+//      aurait cassé l'inscription :
+//      - `companyRegisterSchema` attend `name`, alors que l'API lit
+//        `companyName` (et que le client web envoie `companyName`) ;
+//      - `candidateRegisterSchema` déclarait `phone`, `country`, `city` et
+//        `birthDate` comme OPTIONNELS, alors que `createCandidate` les exige
+//        via `validateRequired`. Les brancher aurait AFFAIBLI la validation.
+//
+//   2. La validation existante est au moins équivalente, souvent plus stricte :
+//      `validateAge` applique la même borne 16-100 avec un calcul d'âge exact
+//      (là où le `.refine` de zod approximait l'âge par une durée en
+//      millisecondes), et `validateLength` borne chaque champ.
+//
+//   3. Superposer une seconde couche de validation devant une couche qui
+//      fonctionne crée deux sources de vérité sur les règles d'inscription —
+//      exactement la duplication qui a produit le bypass d'autorisation des
+//      uploads (`getEffectiveDir`) et l'injection d'en-tête Host
+//      (`absoluteUrl`).
+//
+// La frontière de validation reste donc unique : `services/authService.js` pour
+// les comptes, `utils/pagination.js` pour les listes. Seul `jobCreateSchema`
+// est branché — sur la route de création d'offre, qui n'avait pas d'équivalent.
+// ============================================================
 
-const emailSchema = z.string().email('Email invalide').max(254);
-const passwordSchema = z.string().min(8, '8 caractères minimum').max(128);
-const phoneSchema = z.string().regex(/^\+?[0-9\s\-().]{7,20}$/, 'Téléphone invalide');
-const nameSchema = z.string().trim().min(1).max(120);
-
-const candidateRegisterSchema = z.object({
-  email: emailSchema,
-  password: passwordSchema,
-  firstName: nameSchema,
-  lastName: nameSchema,
-  phone: phoneSchema.optional(),
-  birthDate: z.coerce.date().refine((d) => {
-    const age = Math.floor((Date.now() - d.getTime()) / 31557600000);
-    return age >= 16 && age <= 100;
-  }, 'Âge 16-100').optional(),
-  country: z.string().max(80).optional(),
-  city: z.string().max(80).optional(),
-  skills: z.string().max(2000).optional(),
-  experienceYears: z.coerce.number().int().min(0).max(50).optional(),
-  educationField: z.string().max(120).optional(),
-});
-
-const companyRegisterSchema = z.object({
-  email: emailSchema,
-  password: passwordSchema,
-  name: nameSchema,
-  sector: z.string().max(80).optional(),
-  size: z.string().max(40).optional(),
-  country: z.string().max(80).optional(),
-  city: z.string().max(80).optional(),
-  address: z.string().max(200).optional(),
-  website: z.string().url().max(200).optional().or(z.literal('')),
-  description: z.string().max(5000).optional(),
-});
+const z = require('zod');
 
 const jobCreateSchema = z.object({
   title: z.string().trim().min(3).max(200),
@@ -58,13 +58,6 @@ const jobCreateSchema = z.object({
   path: ['salaryMax'],
 });
 
-const paginationSchema = z.object({
-  page: z.coerce.number().int().min(1).max(1000).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  q: z.string().max(200).optional(),
-  status: z.string().max(40).optional(),
-});
-
 function validate(schema, data) {
   const res = schema.safeParse(data);
   if (!res.success) {
@@ -76,9 +69,6 @@ function validate(schema, data) {
 }
 
 module.exports = {
-  candidateRegisterSchema,
-  companyRegisterSchema,
   jobCreateSchema,
-  paginationSchema,
   validate,
 };

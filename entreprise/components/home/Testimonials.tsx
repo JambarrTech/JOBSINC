@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getPublicFeedback, isApiConfigured, type FeedbackItem } from '@/lib/api';
+import { getPublicFeedback, type FeedbackItem } from '@/lib/api';
 
 function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
@@ -12,7 +12,6 @@ export default function Testimonials() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isApiConfigured()) { setLoading(false); return; }
     getPublicFeedback()
       .then((data) => setItems(data))
       .catch(() => setItems([]))

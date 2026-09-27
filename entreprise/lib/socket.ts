@@ -1,6 +1,7 @@
 'use client';
 
 import { io, type Socket } from 'socket.io-client';
+import { API_ORIGIN } from '@/lib/api-url';
 
 // Singleton Socket.IO pour la messagerie temps réel.
 // Le contenu des messages n'est PAS transporté par le socket :
@@ -14,8 +15,10 @@ export function getMessagesSocket(): Socket | null {
 
   if (socket) return socket;
 
-  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://jobsinc.onrender.com/api').replace(/\/$/, '');
-  const url = apiUrl.replace(/\/api$/, '');
+  // Origine du backend : source de vérité unique (`lib/api-url.ts`).
+  // `API_ORIGIN` a déjà retiré un éventuel suffixe `/api` et gère un
+  // sous-emplacement, là où un simple `replace(/\/api$/, '')` ne le faisait pas.
+  const url = API_ORIGIN;
 
   socket = io(url, {
     withCredentials: true,
@@ -28,8 +31,10 @@ export function getMessagesSocket(): Socket | null {
   return socket;
 }
 
+/** Ferme le socket et libère le singleton (appelé à la déconnexion). */
 export function disconnectSocket() {
   if (socket) {
+    socket.removeAllListeners();
     socket.disconnect();
     socket = null;
   }

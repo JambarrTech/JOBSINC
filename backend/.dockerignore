@@ -1,0 +1,68 @@
+# ============================================================
+# .dockerignore — backend
+# ============================================================
+#
+# POURQUOI CE FICHIER EXISTE ALORS QUE LE DOCKERFILE A ÉTÉ SUPPRIMÉ
+#
+# `backend/Dockerfile` a été retiré : la cible de déploiement est Render (voir
+# le Blueprint racine `render.yaml`). Le risque identifié n'a pas disparu pour
+# autant — le `COPY . .` d'un Dockerfile ligne 11 est la cause classique de fuite
+# de secrets dans une image, et le dossier contenait `serviceAccountKey.json`
+# (clé privée RSA Firebase), `.env`, et `scripts/migrate-to-neon.sql` (4 emails
+# réels + hashes bcrypt).
+#
+# L'intérêt de ce fichier est donc une BARRIÈRE : si un Dockerfile est
+# réintroduit (plateforme différente, image de CI, scan de dépendances), ce
+# fichier exclut d'emblée ces fichiers de l'image. Il ne dispense pas de
+# vérifier.
+#
+# Le même raisonnement s'applique au `.gitignore` de `backend/`, mais celui-ci
+# protège Git, pas un `docker build`. Les deux listes ne se recouvrent pas.
+# ============================================================
+
+# --- Secrets (le cœur du fichier) ---
+# NE JAMAIS « ouvrir » ces motifs : une image Docker est poussée sur un
+# registre accessible en lecture à quiconque a le droit de pull.
+.env
+.env.*
+*.env
+serviceAccountKey.json
+*ServiceAccount*.json
+*-service-account*.json
+*.pem
+*.key
+*.keystore
+android/
+node_modules/
+
+# --- Données personnelles ---
+uploads/
+backups/
+scripts/migrate-to-neon.sql
+*.sql
+
+# --- Tests et rapports ---
+# Inutiles dans une image de production et volumineux.
+tests/
+coverage/
+*.log
+npm-debug.log*
+
+# --- Fichiers de déploiement ( Render est la cible ) ---
+render.yaml
+vercel.json
+Dockerfile
+.dockerignore
+RENDER.md
+VERCEL.md
+
+# --- Git et CI ---
+.git/
+.gitignore
+.github/
+
+# --- Divers ---
+.vscode/
+.idea/
+README.md
+migrate-deploy.md

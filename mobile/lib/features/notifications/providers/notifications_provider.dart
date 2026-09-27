@@ -124,12 +124,27 @@ class NotificationsController extends Notifier<NotificationsState> {
 
     try {
       await _repo.deleteNotification(token, id);
-      final removed = state.notifications.firstWhere((n) => n.id == id);
-      state = state.copyWith(
-        notifications: state.notifications.where((n) => n.id != id).toList(),
-        unreadCount: removed.isRead ? state.unreadCount : (state.unreadCount - 1).clamp(0, 999),
-      );
-    } catch (_) {}
+    } catch (_) {
+      // Échec réseau : on ne retire rien localement, la notification reste
+      // visible et l'utilisateur peut réessayer.
+      return;
+    }
+
+    // `firstWhere` levait une `StateError` si l'identifiant avait déjà
+    // disparu de la liste (double appui, rafraîchissement entre-temps), et le
+    // `catch` global l'avalait en silence : la ligne retirée de l'écran
+    // réapparaissait au rafraîchissement suivant, sans aucune erreur visible.
+    // On cherche donc sans lever, et on retire dans tous les cas.
+    final matches = state.notifications.where((n) => n.id == id);
+    if (matches.isEmpty) return;
+    final wasUnread = matches.any((n) => !n.isRead);
+    state = state.copyWith(
+      notifications: state.notifications.where((n) => n.id != id).toList(),
+      unreadCount: wasUnread ? state.unreadCount - 1 : state.unreadCount,
+    );
+    if (state.unreadCount < 0) {
+      state = state.copyWith(unreadCount: 0);
+    }
   }
 
   void restoreNotification(AppNotification notification, {int? index}) {

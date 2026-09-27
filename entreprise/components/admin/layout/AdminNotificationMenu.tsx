@@ -1,7 +1,8 @@
-'use client';
+﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/api';
+import { useEscapeToClose } from '@/components/ui/useDialogFocus';
 
 type AdminNotification = { id: string; title: string; message: string; category: string; read: boolean; recipient: string | null; createdAt: string };
 
@@ -10,6 +11,10 @@ export default function AdminNotificationMenu() {
   const [items, setItems] = useState<AdminNotification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  // Meme correction que les autres menus : fermeture au clavier et restitution
+  // du focus au declencheur.
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEscapeToClose(menuRef, () => setOpen(false), open);
   useEffect(() => {
     if (!open) return;
     let active = true;
@@ -25,5 +30,5 @@ export default function AdminNotificationMenu() {
     return () => { active = false; window.clearTimeout(timer); };
   }, [open]);
   const unread = items.filter((item) => !item.read).length;
-  return <div className="admin-notification-wrap"><button className="admin-icon-button" onClick={() => setOpen((value) => !value)} aria-label={unread > 0 ? `${unread} notifications non lues` : 'Notifications'} aria-expanded={open}>{unread > 0 ? <b>{unread}</b> : '○'}</button>{open ? <div className="admin-notification-dropdown"><strong>Notifications</strong>{loading ? <p>Chargement…</p> : error ? <p>Impossible de charger les notifications.</p> : items.length === 0 ? <p>Aucune notification sur la plateforme.</p> : <ul>{items.slice(0, 8).map((item) => <li key={item.id} style={{ fontWeight: item.read ? 400 : 700 }}><span>{item.title}</span><small>{item.recipient || 'Destinataire inconnu'} · {new Date(item.createdAt).toLocaleDateString('fr-FR')}</small></li>)}</ul>}<small>{items.length > 0 ? `${items.length} notification(s) récente(s)` : 'API notifications Admin connectée'}</small></div> : null}</div>;
+  return <div className="admin-notification-wrap" ref={menuRef}><button className="admin-icon-button" onClick={() => setOpen((value) => !value)} aria-label={unread > 0 ? `${unread} notifications non lues` : 'Notifications'} aria-expanded={open}>{unread > 0 ? <b>{unread}</b> : '○'}</button>{open ? <div className="admin-notification-dropdown"><strong>Notifications</strong>{loading ? <p>Chargement…</p> : error ? <p>Impossible de charger les notifications.</p> : items.length === 0 ? <p>Aucune notification sur la plateforme.</p> : <ul>{items.slice(0, 8).map((item) => <li key={item.id} style={{ fontWeight: item.read ? 400 : 700 }}><span>{item.title}</span><small>{item.recipient || 'Destinataire inconnu'} · {new Date(item.createdAt).toLocaleDateString('fr-FR')}</small></li>)}</ul>}<small>{items.length > 0 ? `${items.length} notification(s) récente(s)` : 'API notifications Admin connectée'}</small></div> : null}</div>;
 }

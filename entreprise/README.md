@@ -6,7 +6,7 @@ Le backend et l’application mobile sont hors de ce dossier et ne doivent pas �
 
 ## Démarrage
 
-Prérequis : Node.js 18+ et npm.
+Prérequis : Node.js 20.9+ et npm. (Next.js 16 refuse de s'installer sur une version antérieure : sur Node 18 l'installation choue.)
 
 ```bash
 npm install
@@ -78,15 +78,28 @@ NEXT_PUBLIC_MATCHING_ENDPOINT=/companies/me/matching
 # Auth et données Admin — uniquement si ces routes existent côté backend
 NEXT_PUBLIC_ADMIN_LOGIN_ENDPOINT=/auth/login/admin
 NEXT_PUBLIC_ADMIN_SESSION_ENDPOINT=/auth/me
-NEXT_PUBLIC_ADMIN_ROLES=ADMIN,SUPER_ADMIN,SYSTEM_ADMIN
+NEXT_PUBLIC_ADMIN_ROLES=ADMIN
 NEXT_PUBLIC_ADMIN_DASHBOARD_ENDPOINT=/admin/overview
 NEXT_PUBLIC_ADMIN_USERS_ENDPOINT=/admin/users
 NEXT_PUBLIC_ADMIN_USER_ENDPOINT=/admin/users/[id]
 ```
 
-Les routes Admin de ressources sont optionnelles et ne sont appelées que si leur variable est configurée : `CANDIDATES`, `EMPLOYEES`, `COMPANIES`, `ADMINISTRATORS`, `JOBS`, `APPLICATIONS`, `INTERVIEWS`, `RECRUITMENTS`, `REPORTS`, `MODERATION`, `ANALYTICS`, `TRENDS`, `REPORTS_ANALYTICS`, `ACTIVITY`, `AUDIT`, `SESSIONS`, `LOGINS`, `SECURITY_ALERTS`, `CONTENT`, `NOTIFICATIONS`, `SYSTEM`, `MAINTENANCE`.
+`NEXT_PUBLIC_ADMIN_ROLES` ne doit contenir que des rôles présents dans `enum Role`
+du schéma Prisma (`CANDIDATE | EMPLOYEE | RECRUITER | ADMIN`). Un rôle absent du
+schéma fait passer `proxy.ts` — donc la page s'affiche — puis le backend répond
+403 via `adminMiddleware`.
+
+Les routes Admin de ressources sont optionnelles et ne sont appelées que si leur variable est configurée. **Règle de nommage :** `NEXT_PUBLIC_ADMIN_` + nom de section SANS ponctuation, en majuscules, + `_ENDPOINT` — c'est-à-dire `section.replace(/[^a-zA-Z]/g, '').toUpperCase()`. L'underscore d'une section camelCase est donc SUPPRIMÉ :
+
+`CANDIDATES`, `EMPLOYEES`, `COMPANIES`, `ADMINISTRATORS`, `JOBS`, `APPLICATIONS`, `INTERVIEWS`, `RECRUITMENTS`, `REPORTS`, `MODERATION`, `ANALYTICS`, `TRENDS`, `REPORTSANALYTICS`, `ACTIVITY`, `AUDIT`, `SESSIONS`, `LOGINS`, **`SECURITYALERTS`** (et non `SECURITY_ALERTS`), `CONTENT`, `NOTIFICATIONS`, `SYSTEM`, `MAINTENANCE`.
 
 Exemple : `NEXT_PUBLIC_ADMIN_CANDIDATES_ENDPOINT=/admin/candidates`.
+
+> **Ces accès doivent rester des membres littéraux** (`process.env.NEXT_PUBLIC_X`).
+> Next.js n'inline pas les accès dynamiques `process.env[key]` : la table
+> `/admin/<section>` resterait vide, sans erreur ni log. La liste est dans
+> `lib/admin-api.ts` (`ADMIN_RESOURCE_ENDPOINTS`) et `tests/adminEndpoints.test.ts`
+> verrouille sa synchronisation avec le catalogue `lib/admin-resources.ts`.
 
 Le frontend ne crée aucune de ces routes. Le binôme backend doit confirmer les chemins, méthodes, permissions et formats réels avant configuration.
 
@@ -189,11 +202,14 @@ Les tableaux et graphiques restent vides si les données ne sont pas disponibles
 - `/admin/analytics`
 - `/admin/activity`
 - `/admin/sessions`
-- `/admin/security`
 - `/admin/notifications`
 - `/admin/system`
 - `/admin/maintenance`
-- `/admin/settings`
+
+> `/admin/security` et `/admin/settings` ont été retirés de cette liste : le
+> backend n'expose ni `/admin/settings` ni une ressource `security` (le
+> catalogue `lib/admin-resources.ts` renvoie désormais un 404 explicite au
+> lieu d'afficher silencieusement le tableau d'une autre section).
 
 ## Travail du binôme backend
 

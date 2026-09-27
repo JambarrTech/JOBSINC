@@ -116,7 +116,7 @@ class _ApplicationFlowScreenState
     });
 
     try {
-      final success = await ref
+      final result = await ref
           .read(applyProvider.notifier)
           .apply(
             widget.offer.id ?? '',
@@ -126,14 +126,15 @@ class _ApplicationFlowScreenState
 
       if (!mounted) return;
 
-      if (success) {
+      if (result.isSuccess) {
         // Navigation gérée par GoRouter : l'écran de succès est une vraie
         // route (/application/success), pas une page poussée à la main.
-        context.pushReplacement('/application/success');
+        // La candidature créée est passée en `extra` pour que l'écran de
+        // succès puisse rediriger vers SON suivi.
+        context.pushReplacement('/application/success', extra: result.application);
       } else {
-        final applyState = ref.read(applyProvider);
         setState(() {
-          _error = applyState.error ?? 'Une erreur est survenue.';
+          _error = result.error ?? 'Une erreur est survenue.';
           _isSubmitting = false;
         });
       }

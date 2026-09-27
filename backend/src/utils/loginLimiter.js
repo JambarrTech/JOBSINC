@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { getRedis, isRedisAvailable } = require('../config/redis');
 
 const MAX_ATTEMPTS = 5;
@@ -7,12 +8,26 @@ const LOCKOUT_TTL = Math.ceil(LOCKOUT_MS / 1000);
 // In-memory fallback for when Redis is not available
 const memoryStore = new Map();
 
-function getLockoutKey(email, ip) {
-  return `login:lockout:${email.toLowerCase()}:${ip}`;
+/**
+ * Clé de lockout.
+ *
+ * Elle est désormais centrée sur le COMPTE, pas sur le couple (email, IP).
+ * Avec l'IP dans la clé, un attaquant contournait le verrou en changeant
+ * simplement d'adresse source : le quota était infini par compte. Verrouiller
+ * par compte est ce qui protège réellement le mot de passe ; le rate limiting
+ * par IP, lui, est déjà assuré en amont par `authLimiter` / `sensitiveAuthLimiter`.
+ *
+ * L'email est haché dans la clé : les identifiants ne doivent pas apparaître
+ * en clair dans les clés Redis (visible via `KEYS`, les logs, les sauvegardes).
+ */
+function getLockoutKey(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  const digest = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 32);
+  return `login:lockout:${digest}`;
 }
 
-async function recordFailedAttempt(email, ip) {
-  const key = getLockoutKey(email, ip);
+async function recordFailedAttempt(email) {
+  const key = getLockoutKey(email);
   const now = Date.now();
 
   if (isRedisAvailable()) {
@@ -45,8 +60,8 @@ async function recordFailedAttempt(email, ip) {
   return record.count;
 }
 
-async function isLocked(email, ip) {
-  const key = getLockoutKey(email, ip);
+async function isLocked(email) {
+  const key = getLockoutKey(email);
 
   if (isRedisAvailable()) {
     try {
@@ -76,8 +91,8 @@ async function isLocked(email, ip) {
   return record.count >= MAX_ATTEMPTS;
 }
 
-async function clearAttempts(email, ip) {
-  const key = getLockoutKey(email, ip);
+async function clearAttempts(email) {
+  const key = getLockoutKey(email);
 
   if (isRedisAvailable()) {
     try {
@@ -92,8 +107,8 @@ async function clearAttempts(email, ip) {
   memoryStore.delete(key);
 }
 
-async function remainingSeconds(email, ip) {
-  const key = getLockoutKey(email, ip);
+async function remainingSeconds(email) {
+  const key = getLockoutKey(email);
 
   if (isRedisAvailable()) {
     try {
