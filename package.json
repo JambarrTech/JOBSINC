@@ -1,0 +1,42 @@
+{
+  "name": "jobsinc",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Racine de coordination : 3 deploiables sans workspace (backend/, entreprise/, mobile/). Voir DEPLOY.md.",
+  "license": "UNLICENSED",
+  "//": [
+    "Ce package.json n'installe AUCUNE dependance et ne compile rien.",
+    "Son unique role est de fournir une commande unique de verification, parce",
+    "qu'il existe trois gestionnaires de paquets distincts (npm x2, pub) et",
+    "qu'aucune commande ne les couvrait tous. Sans cela, 'lancer les tests'",
+    "signifiait lire DEPLOY.md ou memoriser trois commandes distinctes.",
+    "",
+    "`npm install` a la racine reste possible et sans effet : il n'existe pas de",
+    "lockfile racine, donc aucune dependance n'est installee. C'est volontaire :",
+    "un lockfile vide serait une fausse promesse.",
+    "",
+    "Les dependances reelles restent dans leurs projets. Ce fichier n'est pas un",
+    "workspace : les trois projets ne partagent aujourd'hui aucune dependance a",
+    "version unique, donc un workspace n'apporterait que de la complexite.",
+    "",
+    "`mobile` n'est volontairement pas dans `verify` : il exige le SDK Flutter.",
+    "Utiliser `npm run verify:all` pour l'inclure."
+  ],
+  "scripts": {
+    "install:all": "npm --prefix backend ci && npm --prefix entreprise ci && cd mobile && flutter pub get",
+    "test": "npm run test:backend && npm run test:web",
+    "test:backend": "npm --prefix backend test",
+    "test:web": "npm --prefix entreprise test",
+    "test:mobile": "cd mobile && flutter test",
+    "analyze:mobile": "cd mobile && flutter analyze",
+    "typecheck:web": "npm --prefix entreprise run typecheck",
+    "build:web": "npm --prefix entreprise run build",
+    "verify": "npm run typecheck:web && npm run test:backend && npm run test:web",
+    "verify:all": "npm run verify && npm run analyze:mobile && npm run test:mobile",
+    "migrate:uploads": "node backend/scripts/migrate-uploads-to-s3.js",
+    "migrate:uploads:apply": "node backend/scripts/migrate-uploads-to-s3.js --apply"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const logger = require('../utils/logger');
 
 exports.getNotifications = async (req, res) => {
   try {
@@ -18,7 +19,7 @@ exports.getNotifications = async (req, res) => {
 
     res.json({ data: notifications, unreadCount, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
   } catch (error) {
-    console.error('Erreur getNotifications:', error);
+    logger.exception(error, { message: 'Erreur getNotifications:', scope: 'notificationController' });
     res.status(500).json({ error: 'Impossible de récupérer les notifications.' });
   }
 };
@@ -35,7 +36,7 @@ exports.markAsRead = async (req, res) => {
     await prisma.notification.update({ where: { id }, data: { isRead: true } });
     res.json({ message: 'Notification marquée comme lue.' });
   } catch (error) {
-    console.error('Erreur markAsRead:', error);
+    logger.exception(error, { message: 'Erreur markAsRead:', scope: 'notificationController' });
     res.status(500).json({ error: 'Impossible de mettre à jour la notification.' });
   }
 };
@@ -48,7 +49,7 @@ exports.markAllAsRead = async (req, res) => {
     });
     res.json({ message: 'Toutes les notifications marquées comme lues.' });
   } catch (error) {
-    console.error('Erreur markAllAsRead:', error);
+    logger.exception(error, { message: 'Erreur markAllAsRead:', scope: 'notificationController' });
     res.status(500).json({ error: 'Impossible de mettre à jour les notifications.' });
   }
 };
@@ -65,7 +66,7 @@ exports.deleteNotification = async (req, res) => {
     await prisma.notification.delete({ where: { id } });
     res.json({ message: 'Notification supprimée.' });
   } catch (error) {
-    console.error('Erreur deleteNotification:', error);
+    logger.exception(error, { message: 'Erreur deleteNotification:', scope: 'notificationController' });
     res.status(500).json({ error: 'Impossible de supprimer la notification.' });
   }
 };

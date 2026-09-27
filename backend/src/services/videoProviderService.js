@@ -12,6 +12,7 @@
  */
 
 const crypto = require('crypto');
+const logger = require('../utils/logger');
 const provider = process.env.VIDEO_PROVIDER || ''; // '', 'daily', 'whereby', 'google'
 
 function isConfigured() {
@@ -52,7 +53,7 @@ async function createDailyRoom({ applicationId, scheduledAt, durationMinutes = 6
     },
   };
 
-  if (!apiKey) { console.warn('[Daily.co] DAILY_API_KEY manquant'); return null; }
+  if (!apiKey) { logger.warn({ message: '[Daily.co] DAILY_API_KEY manquant', scope: 'videoProviderService' }); return null; }
   try {
     const response = await fetch(`https://api.daily.co/v1/rooms`, {
       method: 'POST',
@@ -66,7 +67,7 @@ async function createDailyRoom({ applicationId, scheduledAt, durationMinutes = 6
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('[Daily.co] Erreur création salle:', response.status, error);
+      logger.exception(error, { message: `${'[Daily.co] Erreur création salle:'} HTTP ${response}`, scope: 'videoProviderService' });
       // Règle absolue : jamais de lien simulé. L'échec renvoie null et le
       // recruteur devra fournir son propre lien (streamingUrl).
       return null;
@@ -75,7 +76,7 @@ async function createDailyRoom({ applicationId, scheduledAt, durationMinutes = 6
     const data = await response.json();
     return { url: data.url, provider: 'daily', roomId: data.name };
   } catch (error) {
-    console.error('[Daily.co] Erreur réseau:', error.message);
+    logger.error({ message: `${'[Daily.co] Erreur réseau:'} ${error.message}`, scope: 'videoProviderService' });
     return null;
   }
 }
@@ -93,7 +94,7 @@ async function createWherebyRoom({ applicationId, scheduledAt, durationMinutes =
     fields: ['roomUrl', 'roomName'],
   };
 
-  if (!apiKey) { console.warn('[Whereby] WHEREBY_API_KEY manquant'); return null; }
+  if (!apiKey) { logger.warn({ message: '[Whereby] WHEREBY_API_KEY manquant', scope: 'videoProviderService' }); return null; }
   try {
     const response = await fetch(`https://api.whereby.dev/v1/meetings`, {
       method: 'POST',
@@ -107,20 +108,20 @@ async function createWherebyRoom({ applicationId, scheduledAt, durationMinutes =
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('[Whereby] Erreur création salle:', response.status, error);
+      logger.exception(error, { message: `${'[Whereby] Erreur création salle:'} HTTP ${response}`, scope: 'videoProviderService' });
       return null;
     }
 
     const data = await response.json();
     return { url: data.roomUrl, provider: 'whereby', roomId: data.roomName };
   } catch (error) {
-    console.error('[Whereby] Erreur réseau:', error.message);
+    logger.error({ message: `${'[Whereby] Erreur réseau:'} ${error.message}`, scope: 'videoProviderService' });
     return null;
   }
 }
 
 async function createGoogleMeetRoom({ applicationId, scheduledAt, durationMinutes = 60 }) {
-  console.warn('[Google Meet] Intégration non implémentée - nécessite Google Workspace et API Meet');
+  logger.warn({ message: '[Google Meet] Intégration non implémentée - nécessite Google Workspace et API Meet', scope: 'videoProviderService' });
   return null;
 }
 
@@ -145,7 +146,10 @@ async function createRoom({ applicationId, scheduledAt, durationMinutes = 60 }) 
     case 'google':
       return createGoogleMeetRoom({ applicationId, scheduledAt, durationMinutes });
     default:
-      console.warn(`[videoProviderService] Fournisseur "${provider}" inconnu`);
+      logger.warn({
+        message: `[videoProviderService] Fournisseur "${provider}" inconnu`,
+        scope: 'videoProvider',
+      });
       return null;
   }
 }
@@ -176,7 +180,7 @@ async function deleteRoom(roomId, providerName = provider) {
         return false;
     }
   } catch (error) {
-    console.error(`[${providerName}] Erreur suppression salle:`, error.message);
+    logger.error({ message: `${`[${providerName}] Erreur suppression salle:`} ${error.message}`, scope: 'videoProviderService' });
     return false;
   }
 }
@@ -206,7 +210,7 @@ async function getRoomInfo(roomId, providerName = provider) {
         return null;
     }
   } catch (error) {
-    console.error(`[${providerName}] Erreur info salle:`, error.message);
+    logger.error({ message: `${`[${providerName}] Erreur info salle:`} ${error.message}`, scope: 'videoProviderService' });
     return null;
   }
 }

@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const logger = require('../utils/logger');
 
 // ============================================================
 // TOKENS D'APPAREILS (push FCM)
@@ -31,7 +32,7 @@ exports.register = async (req, res) => {
     });
     res.json({ message: 'Appareil enregistré.' });
   } catch (error) {
-    console.error('Erreur devices.register:', error);
+    logger.exception(error, { message: 'Erreur devices.register:', scope: 'deviceController' });
     res.status(500).json({ error: "Impossible d'enregistrer l'appareil." });
   }
 };
@@ -47,7 +48,7 @@ exports.unregister = async (req, res) => {
     });
     res.json({ message: 'Appareil désenregistré.' });
   } catch (error) {
-    console.error('Erreur devices.unregister:', error);
+    logger.exception(error, { message: 'Erreur devices.unregister:', scope: 'deviceController' });
     res.status(500).json({ error: "Impossible de désenregistrer l'appareil." });
   }
 };

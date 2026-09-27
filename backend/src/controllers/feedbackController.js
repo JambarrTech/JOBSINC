@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const logger = require('../utils/logger');
 
 // ── Entreprise : laisser un feedback ──
 exports.create = async (req, res) => {
@@ -24,7 +25,7 @@ exports.create = async (req, res) => {
     });
     return res.status(201).json(feedback);
   } catch (error) {
-    console.error('Erreur Feedback create:', error);
+    logger.exception(error, { message: 'Erreur Feedback create:', scope: 'feedbackController' });
     return res.status(500).json({ error: 'Impossible de créer le témoignage.' });
   }
 };
@@ -42,7 +43,7 @@ exports.listByCompany = async (req, res) => {
     });
     return res.json(items);
   } catch (error) {
-    console.error('Erreur Feedback list:', error);
+    logger.exception(error, { message: 'Erreur Feedback list:', scope: 'feedbackController' });
     return res.status(500).json({ error: 'Impossible de charger les témoignages.' });
   }
 };
@@ -58,7 +59,7 @@ exports.listPublic = async (_req, res) => {
     });
     return res.json(items);
   } catch (error) {
-    console.error('Erreur Feedback public:', error);
+    logger.exception(error, { message: 'Erreur Feedback public:', scope: 'feedbackController' });
     return res.status(500).json({ error: 'Impossible de charger les témoignages.' });
   }
 };
@@ -72,7 +73,7 @@ exports.listAll = async (_req, res) => {
     });
     return res.json(items);
   } catch (error) {
-    console.error('Erreur Feedback admin list:', error);
+    logger.exception(error, { message: 'Erreur Feedback admin list:', scope: 'feedbackController' });
     return res.status(500).json({ error: 'Impossible de charger les témoignages.' });
   }
 };
@@ -88,7 +89,7 @@ exports.togglePublish = async (req, res) => {
     });
     return res.json(feedback);
   } catch (error) {
-    console.error('Erreur Feedback toggle:', error);
+    logger.exception(error, { message: 'Erreur Feedback toggle:', scope: 'feedbackController' });
     return res.status(500).json({ error: 'Impossible de modifier le témoignage.' });
   }
 };
@@ -99,7 +100,7 @@ exports.remove = async (req, res) => {
     await prisma.feedback.delete({ where: { id: req.params.id } });
     return res.json({ message: 'Témoignage supprimé.' });
   } catch (error) {
-    console.error('Erreur Feedback delete:', error);
+    logger.exception(error, { message: 'Erreur Feedback delete:', scope: 'feedbackController' });
     return res.status(500).json({ error: 'Impossible de supprimer le témoignage.' });
   }
 };

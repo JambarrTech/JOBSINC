@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/prisma');
+const logger = require('../utils/logger');
 
 // ============================================================
 // SOCKET SERVICE — Messagerie temps réel
@@ -55,7 +56,7 @@ function membershipFieldFor(role) {
 
 function init(httpServer, corsOrigins) {
   if (!corsOrigins.length) {
-    console.warn('⚠️ CORS origins vide — Socket.IO autorise toute origine (dev mobile). Restreindre CORS_ORIGINS en prod.');
+    logger.warn({ message: '⚠️ CORS origins vide — Socket.IO autorise toute origine (dev mobile). Restreindre CORS_ORIGINS en prod.', scope: 'socketService' });
   }
   io = new Server(httpServer, {
     path: '/socket.io',
@@ -172,7 +173,7 @@ function init(httpServer, corsOrigins) {
         await socket.join(`conversation:${conversationId}`);
         if (typeof ack === 'function') ack({ ok: true });
       } catch (error) {
-        console.error('Erreur socket.conversation:join:', error);
+        logger.exception(error, { message: 'Erreur socket.conversation:join:', scope: 'socketService' });
         if (typeof ack === 'function') ack({ ok: false });
       }
     });

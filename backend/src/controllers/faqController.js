@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const logger = require('../utils/logger');
 
 // ── Entreprise : poser une question ──
 exports.create = async (req, res) => {
@@ -17,7 +18,7 @@ exports.create = async (req, res) => {
     });
     return res.status(201).json(faq);
   } catch (error) {
-    console.error('Erreur FAQ create:', error);
+    logger.exception(error, { message: 'Erreur FAQ create:', scope: 'faqController' });
     return res.status(500).json({ error: 'Impossible de créer la question.' });
   }
 };
@@ -35,7 +36,7 @@ exports.listByCompany = async (req, res) => {
     });
     return res.json(items);
   } catch (error) {
-    console.error('Erreur FAQ list:', error);
+    logger.exception(error, { message: 'Erreur FAQ list:', scope: 'faqController' });
     return res.status(500).json({ error: 'Impossible de charger les questions.' });
   }
 };
@@ -51,7 +52,7 @@ exports.listPublic = async (_req, res) => {
     });
     return res.json(items);
   } catch (error) {
-    console.error('Erreur FAQ public:', error);
+    logger.exception(error, { message: 'Erreur FAQ public:', scope: 'faqController' });
     return res.status(500).json({ error: 'Impossible de charger la FAQ.' });
   }
 };
@@ -65,7 +66,7 @@ exports.listAll = async (_req, res) => {
     });
     return res.json(items);
   } catch (error) {
-    console.error('Erreur FAQ admin list:', error);
+    logger.exception(error, { message: 'Erreur FAQ admin list:', scope: 'faqController' });
     return res.status(500).json({ error: 'Impossible de charger les questions.' });
   }
 };
@@ -88,7 +89,7 @@ exports.answer = async (req, res) => {
     });
     return res.json(faq);
   } catch (error) {
-    console.error('Erreur FAQ answer:', error);
+    logger.exception(error, { message: 'Erreur FAQ answer:', scope: 'faqController' });
     return res.status(500).json({ error: 'Impossible de modifier la question.' });
   }
 };
@@ -99,7 +100,7 @@ exports.remove = async (req, res) => {
     await prisma.faq.delete({ where: { id: req.params.id } });
     return res.json({ message: 'Question supprimée.' });
   } catch (error) {
-    console.error('Erreur FAQ delete:', error);
+    logger.exception(error, { message: 'Erreur FAQ delete:', scope: 'faqController' });
     return res.status(500).json({ error: 'Impossible de supprimer la question.' });
   }
 };

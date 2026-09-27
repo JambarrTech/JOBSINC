@@ -1,5 +1,16 @@
 # JOBSINC — Plan de correction V2 (26/09/2026)
 
+> ⚠️ **DOCUMENT ARCHIVÉ — NE PAS UTILISER COMME ÉTAT COURANT.**
+>
+> L'état d'avancement fait foi : voir **[ETAT.md](ETAT.md)**.
+>
+> Les deux anciens documents d'état se contredisaient — le second
+> affirmait « tout exécuté, rien supposé » là où le premier comptait 16 points non
+> traités. Deux sources d'état contradictoires apprennent au prochain lecteur à
+> se méfier de tout ce qu'il lit. Ils sont conservés comme archive
+> historique, pas comme plan de travail.
+
+
 Analyse: code analyst + full-stack + UI/UX + DevOps.
 **Contrainte absolue : aucune nouvelle fonctionnalité.** Uniquement des corrections
 de bugs, de sécurité, de dette et de qualité de livraison.

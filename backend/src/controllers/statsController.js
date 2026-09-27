@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const { getCached, setCache } = require('../utils/cache');
+const logger = require('../utils/logger');
 
 exports.getStats = async (_req, res) => {
   const cached = getCached('stats:global');
@@ -18,7 +19,7 @@ exports.getStats = async (_req, res) => {
     // Fallback cache stale si DB lente
     const stale = getCached('stats:global');
     if (stale) return res.json(stale);
-    console.error('Erreur stats:', error);
+    logger.exception(error, { message: 'Erreur stats:', scope: 'statsController' });
     return res.status(503).json({ error: 'Service temporairement indisponible.' });
   }
 };
@@ -92,7 +93,7 @@ exports.getOverview = async (_req, res) => {
       activity: activityPct,
     });
   } catch (error) {
-    console.error('Erreur overview stats:', error);
+    logger.exception(error, { message: 'Erreur overview stats:', scope: 'statsController' });
     return res.status(500).json({ error: 'Impossible de charger l\'aperçu.' });
   }
 };

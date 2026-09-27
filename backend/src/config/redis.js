@@ -1,4 +1,5 @@
 const Redis = require('ioredis');
+const logger = require('../utils/logger');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const REDIS_TLS = process.env.REDIS_TLS === 'true';
@@ -23,14 +24,14 @@ function getRedis() {
     redis.on('error', (err) => {
       redisAvailable = false;
       if (!hasLoggedError) {
-        console.warn('[Redis] Not available:', err.message, '(suite en silencieux)');
+        logger.warn({ message: `${'[Redis] Not available:'} ${err.message} '(suite en silencieux)'`, scope: 'redis' });
         hasLoggedError = true;
       }
     });
 
     redis.on('connect', () => {
       redisAvailable = true;
-      console.log('[Redis] Connected');
+      logger.log({ message: '[Redis] Connected', scope: 'redis' });
     });
 
     redis.on('close', () => {
@@ -47,7 +48,7 @@ async function connectRedis() {
       await client.connect();
       redisAvailable = true;
     } catch (err) {
-      console.warn('[Redis] Connection failed, falling back to in-memory:', err.message);
+      logger.warn({ message: `${'[Redis] Connection failed, falling back to in-memory:'} ${err.message}`, scope: 'redis' });
       redisAvailable = false;
     }
   }

@@ -1,0 +1,88 @@
+# ============================================================
+# Normalisation des fins de ligne et types de fichiers
+# ============================================================
+#
+# POURQUOI CE FICHIER EXISTE
+# --------------------------
+# Il n'y en avait AUCUN, alors que `core.autocrlf=true` est positionné. Deux
+# conséquences, toutes deux constatées :
+#
+#   1. Huit fichiers sont `i/mixed` dans l'index (fins de ligne mélangées au
+#      sein d'un même fichier). Chaque modification de ces fichiers produit un
+#      diff illisible, et un fichier peut être CRLF sur un checkout et LF sur
+#      un autre selon la machine.
+#
+#   2. Un fichier EXÉCUTABLE en CRLF casse sur un runner Unix. C'est déjà
+#      arrivé : `mobile/android/gradlew` échouait avec `\r: command not found`.
+#      `mobile/.gitattributes` règle le cas des wrappers Gradle, mais rien ne
+#      couvrait le reste.
+#
+# `* text=auto` laisse Git détecter le type ; les règles qui suivent sont
+# explicites là où l'hypothèse doit être arrêtée.
+# ============================================================
+
+# Détection automatique : Git marque `text` ou `binary` selon le contenu, ce
+# qui évite de traiter un PNG comme du texte.
+* text=auto
+
+# --- Texte : LF obligatoire dans le dépôt -----------------------------
+# Le dépôt est developpé sous Windows (`core.autocrlf=true`) et construit sous
+# Linux (GitHub Actions). LF en stockage, CRLY à l/worktree si l'on veut.
+*.js    text eol=lf
+*.cjs   text eol=lf
+*.mjs   text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.md    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.dart  text eol=lf
+*.sql   text eol=lf
+*.sh    text eol=lf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# --- Fichiers sans extension, qui échappaient à toute liste -------------
+.gitignore      text eol=lf
+.gitattributes text eol=lf
+.dockerignore  text eol=lf
+.editorconfig  text eol=lf
+
+# --- Exécutables : le piège `\r: command not found` --------------------
+# `mobile/.gitattributes` couvre déjà les wrappers Gradle ; ces règles sont la
+# défense en profondeur au niveau racine, et couvrent tout script ajouté plus
+# tard sans qu'on ait à y penser.
+gradlew          text eol=lf
+gradlew.bat      text eol=crlf
+*.sh             text eol=lf
+
+# --- Android : XML et Kotlin passent par des outils sensibles aux CR ----
+*.xml   text eol=lf
+*.kt    text eol=lf
+*.kts   text eol=lf
+*.pro   text eol=lf
+
+# --- Binaire : ne jamais toucher ---------------------------------------
+# Le mode `-diff` évite qu'un diff tente de comparer deux fois 1 Mo de
+# données décodées, et protège le contenu si un motif `text` change un jour.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.ico    binary
+*.pdf    binary
+*.zip    binary
+*.jar    binary
+*.keystore binary
+*.jks    binary
+*.aab    binary
+*.apk    binary
+*.so     binary
+
+# Flutter : fichiers générés et caches qui n'ont rien à faire dans l'index
+.dart_tool/   export-ignore
+.packages      export-ignore

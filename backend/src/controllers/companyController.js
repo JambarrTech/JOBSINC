@@ -11,6 +11,7 @@ const { validate, jobCreateSchema } = require('../utils/zodSchemas');
 // `absoluteUrl` sur ces champs : une origine calculée côté backend, que le
 // frontend `entreprise` rejette — sauf si `APP_URL` est renseignée).
 const { canonicalUploadPath } = require('../services/storageService');
+const logger = require('../utils/logger');
 
 const jobInclude = { _count: { select: { applications: true } } };
 const companyInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
@@ -96,7 +97,7 @@ exports.listPublic = async (req, res) => {
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
-    console.error('Erreur entreprises publiques:', error);
+    logger.exception(error, { message: 'Erreur entreprises publiques:', scope: 'companyController' });
     return res.status(500).json({ success: false, error: 'Impossible de charger les entreprises.' });
   }
 };
@@ -114,7 +115,7 @@ exports.publicCompanyJobs = async (req, res) => {
     ]);
     res.json({ data: rows.map((j) => ({ id: j.id, title: j.title, location: j.location, contractType: j.contractType, jobType: j.jobType, createdAt: j.createdAt })), pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
   } catch (error) {
-    console.error('Erreur publicCompanyJobs:', error);
+    logger.exception(error, { message: 'Erreur publicCompanyJobs:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de charger les offres.' });
   }
 };
@@ -269,14 +270,14 @@ exports.dashboard = async (req, res) => {
     setCache(cacheKey, result, 30000);
     res.json(result);
   } catch (error) {
-    console.error('Erreur dashboard:', error);
+    logger.exception(error, { message: 'Erreur dashboard:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de charger le tableau de bord.' });
   }
 };
 
 exports.profile = async (req, res) => {
   try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); res.json(companyDto(company)); }
-  catch (error) { console.error('Erreur profile:', error); res.status(500).json({ error: 'Impossible de charger le profil entreprise.' }); }
+  catch (error) { logger.exception(error, { message: 'Erreur profile:', scope: 'companyController' }); res.status(500).json({ error: 'Impossible de charger le profil entreprise.' }); }
 };
 
 exports.jobs = async (req, res) => {
@@ -293,7 +294,7 @@ exports.jobs = async (req, res) => {
     ]);
 
     res.json(paginated(jobs.map(jobDto), total, page, limit));
-  } catch (error) { console.error('Erreur jobs:', error); res.status(500).json({ error: 'Impossible de charger les offres.' }); }
+  } catch (error) { logger.exception(error, { message: 'Erreur jobs:', scope: 'companyController' }); res.status(500).json({ error: 'Impossible de charger les offres.' }); }
 };
 
 exports.createJob = async (req, res) => {
@@ -325,7 +326,7 @@ exports.createJob = async (req, res) => {
     invalidate(`matching:match:`);
     res.status(201).json(jobDto(job));
   } catch (error) {
-    console.error('Erreur createJob:', error);
+    logger.exception(error, { message: 'Erreur createJob:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de créer l’offre.' });
   }
 };
@@ -341,7 +342,7 @@ exports.applications = async (req, res) => {
       prisma.application.count({ where: { job: { companyId: company.id } } }),
     ]);
     res.json(paginated(rows.map((a) => applicationDto(a, company)), total, page, limit));
-  } catch (error) { console.error('Erreur applications:', error); res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
+  } catch (error) { logger.exception(error, { message: 'Erreur applications:', scope: 'companyController' }); res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
 };
 
 exports.applicationDetail = async (req, res) => {
@@ -356,7 +357,7 @@ exports.applicationDetail = async (req, res) => {
     if (!application) return res.status(404).json({ error: 'Candidature introuvable.' });
     res.json(applicationDto(application, company));
   } catch (error) {
-    console.error('Erreur applicationDetail:', error);
+    logger.exception(error, { message: 'Erreur applicationDetail:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de charger la candidature.' });
   }
 };
@@ -385,7 +386,7 @@ exports.updateProfile = async (req, res) => {
     invalidate(`company:dashboard:${company.id}`);
     res.json(companyDto(updated));
   } catch (error) {
-    console.error('Erreur updateProfile:', error);
+    logger.exception(error, { message: 'Erreur updateProfile:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de mettre à jour le profil.' });
   }
 };
@@ -410,7 +411,7 @@ exports.uploadImage = async (req, res) => {
     invalidate(`company:dashboard:${company.id}`);
     res.status(201).json({ images: images.map((i) => ({ id: i.id, url: i.url, isPrimary: i.isPrimary, sortOrder: i.sortOrder })) });
   } catch (error) {
-    console.error('Erreur uploadImage:', error);
+    logger.exception(error, { message: 'Erreur uploadImage:', scope: 'companyController' });
     res.status(500).json({ error: "Impossible d'uploader les images." });
   }
 };
@@ -437,7 +438,7 @@ exports.uploadLogo = async (req, res) => {
     invalidate(`company:dashboard:${company.id}`);
     res.json(companyDto(updated));
   } catch (error) {
-    console.error('Erreur uploadLogo:', error);
+    logger.exception(error, { message: 'Erreur uploadLogo:', scope: 'companyController' });
     res.status(500).json({ error: "Impossible d'uploader le logo." });
   }
 };
@@ -466,7 +467,7 @@ exports.deleteImage = async (req, res) => {
     invalidate(`company:dashboard:${company.id}`);
     res.json({ message: 'Image supprimée.' });
   } catch (error) {
-    console.error('Erreur deleteImage:', error);
+    logger.exception(error, { message: 'Erreur deleteImage:', scope: 'companyController' });
     res.status(500).json({ error: "Impossible de supprimer l'image." });
   }
 };
@@ -480,7 +481,7 @@ exports.getJob = async (req, res) => {
     if (!job) return res.status(404).json({ error: 'Offre introuvable.' });
     res.json(jobDto(job));
   } catch (error) {
-    console.error('Erreur getJob:', error);
+    logger.exception(error, { message: 'Erreur getJob:', scope: 'companyController' });
     res.status(500).json({ error: "Impossible de charger l'offre." });
   }
 };
@@ -528,7 +529,7 @@ exports.updateJob = async (req, res) => {
     invalidate(`matching:match:`);
     res.json(jobDto(updated));
   } catch (error) {
-    console.error('Erreur updateJob:', error);
+    logger.exception(error, { message: 'Erreur updateJob:', scope: 'companyController' });
     res.status(500).json({ error: "Impossible de mettre à jour l'offre." });
   }
 };
@@ -554,7 +555,7 @@ exports.deleteJob = async (req, res) => {
     invalidate(`matching:match:`);
     res.json({ message: 'Offre supprimée.' });
   } catch (error) {
-    console.error('Erreur deleteJob:', error);
+    logger.exception(error, { message: 'Erreur deleteJob:', scope: 'companyController' });
     res.status(500).json({ error: "Impossible de supprimer l'offre." });
   }
 };
@@ -597,7 +598,7 @@ exports.candidates = async (req, res) => {
 
     res.json(paginated(paged, total, page, limit));
   } catch (error) {
-    console.error('Erreur candidates:', error);
+    logger.exception(error, { message: 'Erreur candidates:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de charger les candidats.' });
   }
 };
@@ -611,7 +612,7 @@ exports.matching = async (req, res) => {
     const matches = await getCompanyMatches(company.id, { minScore, jobId, skill, location, contractType }, company);
     res.json(matches);
   } catch (error) {
-    console.error('Erreur matching:', error);
+    logger.exception(error, { message: 'Erreur matching:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de charger les correspondances.' });
   }
 };
@@ -627,7 +628,7 @@ exports.jobMatches = async (req, res) => {
     if (!matches) return res.status(404).json({ error: 'Offre introuvable.' });
     res.json(matches);
   } catch (error) {
-    console.error('Erreur jobMatches:', error);
+    logger.exception(error, { message: 'Erreur jobMatches:', scope: 'companyController' });
     res.status(500).json({ error: 'Impossible de charger les recommandations de cette offre.' });
   }
 };

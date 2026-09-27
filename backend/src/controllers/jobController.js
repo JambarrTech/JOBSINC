@@ -7,6 +7,7 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 // même logo s'affichait donc côté mobile et pas côté web.
 // Voir `services/storageService.js` et `utils/urls.js`.
 const { canonicalUploadPath } = require('../services/storageService');
+const logger = require('../utils/logger');
 
 const companyImagesInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
 // Les offres visibles publiquement proviennent uniquement d'entreprises approuvées.
@@ -40,11 +41,11 @@ exports.listPublic = async (req, res) => {
       prisma.job.count({ where }),
     ]);
     res.json(paginated(jobs.map((job) => dto(job)), total, page, limit));
-  } catch (error) { console.error('Erreur listPublic jobs:', error); res.status(500).json({ error: 'Impossible de charger les offres.' }); }
+  } catch (error) { logger.exception(error, { message: 'Erreur listPublic jobs:', scope: 'jobController' }); res.status(500).json({ error: 'Impossible de charger les offres.' }); }
 };
 exports.getPublic = async (req, res) => {
   try { const job = await prisma.job.findFirst({ where: { id: req.params.id, isOpen: true, company: { isApproved: true } }, include: { company: { include: companyImagesInclude } } }); if (!job) return res.status(404).json({ error: 'Offre introuvable.' }); res.json(dto(job)); }
-  catch (error) { console.error('Erreur getPublic job:', error); res.status(500).json({ error: "Impossible de charger l'offre." }); }
+  catch (error) { logger.exception(error, { message: 'Erreur getPublic job:', scope: 'jobController' }); res.status(500).json({ error: "Impossible de charger l'offre." }); }
 };
 
 exports.similar = async (req, res) => {
@@ -71,7 +72,7 @@ exports.similar = async (req, res) => {
 
     res.json({ data: similar.map((j) => dto(j)) });
   } catch (error) {
-    console.error('Erreur similar jobs:', error);
+    logger.exception(error, { message: 'Erreur similar jobs:', scope: 'jobController' });
     res.status(500).json({ error: 'Impossible de charger les offres similaires.' });
   }
 };

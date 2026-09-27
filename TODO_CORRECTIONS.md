@@ -1,5 +1,16 @@
 # JOBSINC — TODO Corrections Full-Stack (25/09/2026)
 
+> ⚠️ **DOCUMENT ARCHIVÉ — NE PAS UTILISER COMME ÉTAT COURANT.**
+>
+> L'état d'avancement fait foi : voir **[ETAT.md](ETAT.md)**.
+>
+> Les deux anciens documents d'état se contredisaient — le second
+> affirmait « tout exécuté, rien supposé » là où le premier comptait 16 points non
+> traités. Deux sources d'état contradictoires apprennent au prochain lecteur à
+> se méfier de tout ce qu'il lit. Ils sont conservés comme archive
+> historique, pas comme plan de travail.
+
+
 État après la revue de sécurité et la campagne de corrections des 4 semaines.
 
 ## P0 — Bloquants (corrigés le 25/09/2026)

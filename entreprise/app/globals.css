@@ -168,3 +168,22 @@ summary:focus-visible,
   box-shadow: 0 0 0 3px rgba(8, 121, 217, 0.14);
 }
 
+/* ── Cible tactile ──
+   La règle vivait dispersée : deux fois dans `pipeline.css`, une fois pour la
+   croix de fermeture, et en `style={{ minHeight: '44px' }}` dans deux TSX —
+   donc partly dans la feuille et partly dans le code, sans invariant. Le
+   résultat mesuré : `min-width:44px` n'apparaissait NULLE fois dans tout le
+   projet, alors que `min-height:44px` en apparaissait deux. Autrement dit, la
+   cible était garantie en hauteur et pas en largeur, sur aucun contrôle.
+
+   `.tap-target` porte les DEUX axes. Elle est posée sur les contrôles dont la
+   zone cliquable est réduite à une icône ; les boutons texte gardent leur
+   hauteur naturelle, qui dépasse déjà 44 px. */
+.tap-target {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+

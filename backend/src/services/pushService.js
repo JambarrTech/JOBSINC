@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const prisma = require('../config/prisma');
+const logger = require('../utils/logger');
 
 // ============================================================
 // PUSH SERVICE — Notifications FCM (firebase-admin >= 13)
@@ -29,7 +30,7 @@ function loadServiceAccount() {
       }
       return JSON.parse(jsonStr);
     } catch (e) {
-      console.warn(`Push: FCM_SERVICE_ACCOUNT_JSON invalide (${e.message})`);
+      logger.warn({ message: `Push: FCM_SERVICE_ACCOUNT_JSON invalide (${e.message})`, scope: 'pushService' });
       return null;
     }
   }
@@ -42,7 +43,7 @@ function loadServiceAccount() {
   try {
     return JSON.parse(fs.readFileSync(keyPath, 'utf8'));
   } catch (e) {
-    console.warn(`Push: lecture ${keyPath} impossible (${e.message})`);
+    logger.warn({ message: `Push: lecture ${keyPath} impossible (${e.message})`, scope: 'pushService' });
     return null;
   }
 }
@@ -53,7 +54,7 @@ function init() {
   try {
     const serviceAccount = loadServiceAccount();
     if (!serviceAccount) {
-      console.warn('Push: clé de service Firebase introuvable — push désactivé. Définissez FCM_SERVICE_ACCOUNT_JSON sur Vercel ou fournissez serviceAccountKey.json.');
+      logger.warn({ message: 'Push: clé de service Firebase introuvable — push désactivé. Définissez FCM_SERVICE_ACCOUNT_JSON sur Vercel ou fournissez serviceAccountKey.json.', scope: 'pushService' });
       return;
     }
     // Requires locaux : évite de charger Firebase quand il n'y a pas de clé.
@@ -64,9 +65,9 @@ function init() {
       initializeApp({ credential: cert(serviceAccount) });
     }
     messaging = getMessaging();
-    console.log(`Push: Firebase initialisé (projet ${serviceAccount.project_id}).`);
+    logger.log({ message: `Push: Firebase initialisé (projet ${serviceAccount.project_id}).`, scope: 'pushService' });
   } catch (error) {
-    console.warn(`Push: initialisation impossible (${error.message}).`);
+    logger.warn({ message: `Push: initialisation impossible (${error.message}).`, scope: 'pushService' });
     messaging = null;
   }
 }
@@ -116,7 +117,11 @@ async function sendToUser(userId, notification, data = {}) {
   } catch (error) {
     // Échec GLOBAL du lot (réseau, auth Firebase, quota…) : erreur
     // temporaire, on ne supprime aucun token.
-    console.warn(`Push: envoi impossible (${error.code || 'sans code'}): ${error.message}`);
+    logger.exception(error, {
+      message: 'Push: envoi impossible (lot global)',
+      code: error.code,
+      scope: 'push',
+    });
     return { sent: 0 };
   }
 
@@ -136,13 +141,14 @@ async function sendToUser(userId, notification, data = {}) {
       .deleteMany({ where: { token: { in: invalid } } })
       .then((r) => r.count)
       .catch((e) => {
-        console.warn(`Push: suppression des tokens invalides impossible: ${e.message}`);
+        logger.warn({ message: `Push: suppression des tokens invalides impossible: ${e.message}`, scope: 'pushService' });
         return 0;
       });
     if (deleted > 0) {
-      console.log(
-        `Push: ${deleted} token(s) invalide(s) supprimé(s) de la base pour l'utilisateur ${userId}.`
-      );
+      logger.info({
+        message: `Push: ${deleted} token(s) invalide(s) supprimé(s) de la base pour l'utilisateur ${userId}.`,
+        scope: 'push',
+      });
     }
   }
 
@@ -150,10 +156,11 @@ async function sendToUser(userId, notification, data = {}) {
   // (unavailable, quota, third-party…) ou payload rejeté pour tout le
   // lot. Tokens conservés, simple trace.
   if (failedCodes.length > 0 && invalid.length === 0) {
-    console.warn(
-      `Push: ${failedCodes.length} envoi(s) échoué(s), tokens conservés ` +
-        `(codes: ${[...new Set(failedCodes)].join(', ')}).`
-    );
+    logger.warn({
+      message: `Push: ${failedCodes.length} envoi(s) échoué(s), tokens conservés `
+        + `(codes: ${[...new Set(failedCodes)].join(', ')}).`,
+      scope: 'push',
+    });
   }
 
   return { sent: response.successCount };

@@ -14,6 +14,7 @@
 // ============================================================
 
 const { createHash } = require('crypto');
+const logger = require('../utils/logger');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5000';
 
@@ -53,11 +54,16 @@ function mailFrom() {
 // tronquée, suffisante pour faire la correspondance, uselesse pour se connecter.
 function logDevLink(subject, url) {
   const redacted = redactUrlToken(url);
-  console.warn(
-    `[DEV] Email ${subject} non envoyé (SMTP non configuré). `
-    + `Lien : ${redacted} — jeton NON journalisé. `
-    + 'Récupérez-le depuis la réponse de l’API en développement, ou configurez SMTP.'
-  );
+  // Passe par le logger, et non `console.warn` : ce message emporte un lien
+  // d'activation. Sortir hors du flux JSON le rend illisible par les
+  // aggregateurs, et le dire « [DEV] » ne dispense pas de respecter
+  // `LOG_LEVEL` — un warning doit pouvoir etre filtre en production.
+  logger.warn({
+    message: `[DEV] Email ${subject} non envoyé (SMTP non configuré). `
+      + `Lien : ${redacted} — jeton NON journalisé. `
+      + 'Récupérez-le depuis la réponse de l’API en développement, ou configurez SMTP.',
+    scope: 'email',
+  });
 }
 
 /**
@@ -84,7 +90,7 @@ async function sendMail({ to, subject, text, html }) {
     await transporter.sendMail({ from: mailFrom(), to, subject, text, html });
     return true;
   } catch (error) {
-    console.error(`Erreur envoi email (${subject}) :`, error.message);
+    logger.error({ message: `${`Erreur envoi email (${subject}) :`} ${error.message}`, scope: 'emailService' });
     return false;
   }
 }

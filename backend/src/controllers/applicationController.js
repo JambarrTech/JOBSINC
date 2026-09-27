@@ -5,6 +5,7 @@ const conversationService = require('../services/conversationService');
 const { invalidate } = require('../utils/cache');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { canonicalUploadPath } = require('../services/storageService');
+const logger = require('../utils/logger');
 
 const CV_PATH_PREFIX = '/uploads/cvs/';
 // Racine du backend pour vérifier l'existence physique du fichier CV.
@@ -100,7 +101,7 @@ exports.create = async (req, res) => {
 
     invalidate(`company:dashboard:${job.companyId}`);
     res.status(201).json(dto(application));
-  } catch (error) { if (error.code === 'P2002') return res.status(409).json({ error: 'Vous avez déjà postulé à cette offre.' }); console.error('Erreur create application:', error); res.status(500).json({ error: 'Impossible d\'envoyer la candidature.' }); }
+  } catch (error) { if (error.code === 'P2002') return res.status(409).json({ error: 'Vous avez déjà postulé à cette offre.' }); logger.exception(error, { message: 'Erreur create application:', scope: 'applicationController' }); res.status(500).json({ error: 'Impossible d\'envoyer la candidature.' }); }
 };
 
 exports.mine = async (req, res) => {
@@ -123,7 +124,7 @@ exports.mine = async (req, res) => {
     ]);
 
     res.json(buildPaginationResponse(values.map(dto), total, page, limit));
-  } catch (error) { console.error('Erreur mine applications:', error); res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
+  } catch (error) { logger.exception(error, { message: 'Erreur mine applications:', scope: 'applicationController' }); res.status(500).json({ error: 'Impossible de charger les candidatures.' }); }
 };
 
 exports.updateStatus = async (req, res) => {
@@ -207,7 +208,7 @@ exports.updateStatus = async (req, res) => {
     // Le dashboard recruteur (jobs, candidatures, stats) dépend du statut.
     invalidate(`company:dashboard:${company.id}`);
     res.json(dto(result));
-  } catch (error) { console.error('Erreur updateStatus application:', error); res.status(500).json({ error: 'Impossible de mettre à jour la candidature.' }); }
+  } catch (error) { logger.exception(error, { message: 'Erreur updateStatus application:', scope: 'applicationController' }); res.status(500).json({ error: 'Impossible de mettre à jour la candidature.' }); }
 };
 
 // Ouvre (ou récupère) la conversation autorisée associée à une candidature.
@@ -222,7 +223,7 @@ exports.ensureConversation = async (req, res) => {
       created: Boolean(result.created),
     });
   } catch (error) {
-    console.error('Erreur ensureConversation:', error);
+    logger.exception(error, { message: 'Erreur ensureConversation:', scope: 'applicationController' });
     res.status(500).json({ error: "Impossible d'ouvrir la conversation." });
   }
 };

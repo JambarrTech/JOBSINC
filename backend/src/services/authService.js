@@ -5,6 +5,7 @@ const emailService = require('./emailService');
 const { hashAndStoreRefreshToken, revokeAllRefreshTokens } = require('../utils/tokenUtils');
 const { ValidationError, ConflictError, NotFoundError, AuthenticationError } = require('../utils/errors');
 const { validateEmail, validatePhone, validatePassword, validateRequired, validateLength, validateAge, sanitizeEmail, sanitizeString } = require('../utils/validation');
+const logger = require('../utils/logger');
 
 async function hashPassword(password) {
   return bcrypt.hash(password, 12);
@@ -180,7 +181,7 @@ async function requestPasswordReset(email) {
   await prisma.passwordReset.create({ data: { userId: user.id, token: tokenHash, expiresAt } });
 
   await emailService.sendPasswordReset(user.email, rawToken).catch(
-    (cause) => console.error('Erreur envoi email reset:', cause.message),
+    (cause) => logger.error({ message: `${'Erreur envoi email reset:'} ${cause.message}`, scope: 'authService' }),
   );
 
   return { success: true };
@@ -219,7 +220,7 @@ async function requestEmailVerification(userId) {
   await prisma.emailVerification.create({ data: { userId: user.id, token: tokenHash, expiresAt } });
 
   await emailService.sendEmailVerification(user.email, rawToken).catch(
-    (cause) => console.error('Erreur envoi email vérification:', cause.message),
+    (cause) => logger.error({ message: `${'Erreur envoi email vérification:'} ${cause.message}`, scope: 'authService' }),
   );
 
   return { success: true };

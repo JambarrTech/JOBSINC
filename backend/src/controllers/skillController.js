@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const logger = require('../utils/logger');
 
 function paginate(req) {
   return parsePagination(req.query);
@@ -16,7 +17,7 @@ exports.listSkills = async (req, res) => {
     ]);
     res.json(buildPaginationResponse(rows, total, page, limit));
   } catch (error) {
-    console.error('Erreur listSkills:', error);
+    logger.exception(error, { message: 'Erreur listSkills:', scope: 'skillController' });
     res.status(500).json({ error: 'Impossible de charger les compétences.' });
   }
 };
@@ -48,7 +49,7 @@ exports.syncCandidateSkills = async (req, res) => {
 
     res.json({ message: 'Compétences mises à jour.', count: uniqueIds.length });
   } catch (error) {
-    console.error('Erreur syncCandidateSkills:', error);
+    logger.exception(error, { message: 'Erreur syncCandidateSkills:', scope: 'skillController' });
     res.status(500).json({ error: 'Impossible de mettre à jour les compétences.' });
   }
 };
@@ -83,7 +84,7 @@ exports.syncJobSkills = async (req, res) => {
 
     res.json({ message: 'Compétences de l\'offre mises à jour.', count: uniqueIds.length });
   } catch (error) {
-    console.error('Erreur syncJobSkills:', error);
+    logger.exception(error, { message: 'Erreur syncJobSkills:', scope: 'skillController' });
     res.status(500).json({ error: 'Impossible de mettre à jour les compétences.' });
   }
 };

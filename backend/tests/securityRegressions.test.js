@@ -280,12 +280,23 @@ process.on('exit', () => setAppUrl(ORIGINAL_APP_URL));
   const emailService = require('../src/services/emailService');
 
   await test('le lien de réinitialisation ne fuit pas le jeton en clair', async () => {
+    // CAPTURE REORIENTEE.
+    //
+    // Ce test interceptait `console.warn`. Or `logDevLink` est désormais passé
+    // par `utils/logger` — qui écrit sur `process.stdout` / `process.stderr`, et
+    // jamais sur `console.*`. Le test continuait donc de passer au vide : il ne
+    // capturait plus rien, et son `output.length > 0` le signalait... mais il a
+    // echoue bruyamment a la conversion, ce qui vaut mieux qu'un faux vert.
+    //
+    // On intercepte donc les flux NATIFS, qui sont le vrai canal de sortie du
+    // logger. Ce qui est verifie — l absence de jeton en clair — ne change pas :
+    // c'est bien la sortie reelle du service qui est inspectee.
     const lines = [];
-    const originals = { log: console.log, warn: console.warn, error: console.error };
-    const capture = (...a) => lines.push(a.map(String).join(' '));
-    console.log = capture;
-    console.warn = capture;
-    console.error = capture;
+    const capture = (chunk) => { lines.push(String(chunk)); return true; };
+    const origOut = process.stdout.write;
+    const origErr = process.stderr.write;
+    process.stdout.write = capture;
+    process.stderr.write = capture;
 
     // SMTP absent → le mode développement journalise un aperçu du lien.
     const savedHost = process.env.SMTP_HOST;
@@ -297,9 +308,8 @@ process.on('exit', () => setAppUrl(ORIGINAL_APP_URL));
     try {
       await emailService.sendPasswordReset('cible@example.com', TOKEN);
     } finally {
-      console.log = originals.log;
-      console.warn = originals.warn;
-      console.error = originals.error;
+      process.stdout.write = origOut;
+      process.stderr.write = origErr;
       if (savedHost === undefined) delete process.env.SMTP_HOST;
       else process.env.SMTP_HOST = savedHost;
       if (savedPort === undefined) delete process.env.SMTP_PORT;

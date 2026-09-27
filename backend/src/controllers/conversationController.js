@@ -1,4 +1,5 @@
 const service = require('../services/conversationService');
+const logger = require('../utils/logger');
 
 // ============================================================
 // CONTRÔLEUR UNIFIÉ /api/conversations
@@ -14,7 +15,7 @@ exports.list = async (req, res) => {
   try {
     res.json(await service.listForUser(req.user, req.query));
   } catch (error) {
-    console.error('Erreur conversations.list:', error);
+    logger.exception(error, { message: 'Erreur conversations.list:', scope: 'conversationController' });
     res.status(500).json({ error: 'Impossible de charger les conversations.' });
   }
 };
@@ -25,7 +26,7 @@ exports.getOne = async (req, res) => {
     if (result.error) return fail(res, result);
     res.json({ conversation: service.serializeDetail(result.conversation, req.user.userId) });
   } catch (error) {
-    console.error('Erreur conversations.getOne:', error);
+    logger.exception(error, { message: 'Erreur conversations.getOne:', scope: 'conversationController' });
     res.status(500).json({ error: 'Impossible de charger la conversation.' });
   }
 };
@@ -36,7 +37,7 @@ exports.messages = async (req, res) => {
     if (result.error) return fail(res, result);
     res.json(result);
   } catch (error) {
-    console.error('Erreur conversations.messages:', error);
+    logger.exception(error, { message: 'Erreur conversations.messages:', scope: 'conversationController' });
     res.status(500).json({ error: 'Impossible de charger les messages.' });
   }
 };
@@ -47,7 +48,7 @@ exports.send = async (req, res) => {
     if (result.error) return fail(res, result);
     res.status(201).json(result.message);
   } catch (error) {
-    console.error('Erreur conversations.send:', error);
+    logger.exception(error, { message: 'Erreur conversations.send:', scope: 'conversationController' });
     res.status(500).json({ error: "Impossible d'envoyer le message." });
   }
 };
@@ -58,7 +59,7 @@ exports.markRead = async (req, res) => {
     if (result.error) return fail(res, result);
     res.json({ message: 'Messages marqués comme lus.' });
   } catch (error) {
-    console.error('Erreur conversations.markRead:', error);
+    logger.exception(error, { message: 'Erreur conversations.markRead:', scope: 'conversationController' });
     res.status(500).json({ error: 'Impossible de marquer les messages.' });
   }
 };

@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const fs = require('fs/promises');
 const path = require('path');
 const { canonicalUploadPath } = require('../services/storageService');
+const logger = require('../utils/logger');
 
 exports.getProfile = async (req, res) => {
   try {
@@ -31,7 +32,7 @@ exports.getProfile = async (req, res) => {
       email: candidate.user.email,
     });
   } catch (error) {
-    console.error('Erreur getProfile:', error);
+    logger.exception(error, { message: 'Erreur getProfile:', scope: 'candidateController' });
     res.status(500).json({ error: 'Impossible de récupérer le profil.' });
   }
 };
@@ -120,7 +121,7 @@ exports.updateProfile = async (req, res) => {
       email: updated.user.email,
     });
   } catch (error) {
-    console.error('Erreur updateProfile:', error);
+    logger.exception(error, { message: 'Erreur updateProfile:', scope: 'candidateController' });
     res.status(500).json({ error: 'Impossible de mettre à jour le profil.' });
   }
 };
@@ -157,7 +158,7 @@ exports.uploadCv = async (req, res) => {
       cvUrl: canonicalUploadPath(updated.cvUrl),
     });
   } catch (error) {
-    console.error('Erreur uploadCv:', error);
+    logger.exception(error, { message: 'Erreur uploadCv:', scope: 'candidateController' });
     res.status(500).json({ error: 'Impossible d\'uploader le CV.' });
   }
 };
@@ -195,7 +196,7 @@ exports.uploadAvatar = async (req, res) => {
       avatarUrl: canonicalUploadPath(updated.avatarUrl),
     });
   } catch (error) {
-    console.error('Erreur uploadAvatar:', error);
+    logger.exception(error, { message: 'Erreur uploadAvatar:', scope: 'candidateController' });
     res.status(500).json({ error: 'Impossible de mettre à jour la photo de profil.' });
   }
 };
@@ -237,7 +238,7 @@ exports.getStats = async (req, res) => {
       acceptRate,
     });
   } catch (error) {
-    console.error('Erreur getStats:', error);
+    logger.exception(error, { message: 'Erreur getStats:', scope: 'candidateController' });
     res.status(500).json({ error: 'Impossible de charger les statistiques.' });
   }
 };

@@ -1,4 +1,5 @@
 const service = require('../services/conversationService');
+const logger = require('../utils/logger');
 
 // ============================================================
 // CONTRÔLEUR LEGACY /api/company/messages (recruteur)
@@ -27,7 +28,7 @@ exports.listConversations = async (req, res) => {
     // Forme historique : tableau simple.
     res.json(result.data);
   } catch (error) {
-    console.error('Erreur listConversations:', error);
+    logger.exception(error, { message: 'Erreur listConversations:', scope: 'messageController' });
     res.status(500).json({ error: 'Impossible de charger les conversations.' });
   }
 };
@@ -39,7 +40,7 @@ exports.getMessages = async (req, res) => {
     if (result.error) return fail(res, result);
     res.json(result);
   } catch (error) {
-    console.error('Erreur getMessages:', error);
+    logger.exception(error, { message: 'Erreur getMessages:', scope: 'messageController' });
     res.status(500).json({ error: 'Impossible de charger les messages.' });
   }
 };
@@ -64,7 +65,7 @@ exports.send = async (req, res) => {
       jobTitle: detail.jobTitle,
     });
   } catch (error) {
-    console.error('Erreur send:', error);
+    logger.exception(error, { message: 'Erreur send:', scope: 'messageController' });
     res.status(500).json({ error: "Impossible d'envoyer le message." });
   }
 };
@@ -76,7 +77,7 @@ exports.markAsRead = async (req, res) => {
     if (result.error) return fail(res, result);
     res.json({ message: 'Messages marqués comme lus.' });
   } catch (error) {
-    console.error('Erreur markAsRead:', error);
+    logger.exception(error, { message: 'Erreur markAsRead:', scope: 'messageController' });
     res.status(500).json({ error: 'Impossible de marquer les messages.' });
   }
 };

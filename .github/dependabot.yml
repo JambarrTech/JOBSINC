@@ -1,0 +1,72 @@
+# Dependabot — alertes automatiques de vulnérabilité
+#
+# POURQUOI CE FICHIER EXISTE
+# --------------------------
+# Il n'y en avait aucun, alors que la plateforme dépend de trois gestionnaires
+# distincts et que le premier audit n'a pas pu mesurer leur état : `npm audit`
+# n'a pas pu être exécuté faute de réseau. Concrètement, personne n'aurait été
+# averti d'une vulnérabilité dans une dépendance transitive.
+#
+# `npm audit` ne couvre que l'arbre npm ET exige un accès réseau. Dependabot,
+# lui, ouvre une pull request : la correction est alors REVUE et TESTÉE par la
+# CI existante (`ci.yml` a déjà trois jobs), au lieu d'être subie.
+#
+# Fréquence volontairement agressive pour un projet sans équipe de sécurité :
+# c'est la seule substitution possible à une surveillance humaine.
+version: 2
+
+updates:
+  # --- backend : le service joignable par le public ----------------------
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, security]
+    # `--omit=dev` : les dépendances de dev (prisma, nodemon) n'entrent pas
+    # dans l'artefact déployé. Alerter dessus produirait du bruit.
+    groups:
+      # Un seul lot pour les patchs : moins de PR, même traçabilité.
+      production-patch:
+        applies-to: version-updates
+        update-types: [patch, minor]
+      # Les mises à jour MAJEURES d'express, next ou prisma cassent le code.
+      # Elles restent séparées pour être lues.
+      major:
+        applies-to: version-updates
+        update-types: [major]
+
+  # --- entreprise : le front Next.js -------------------------------------
+  - package-ecosystem: npm
+    directory: /entreprise
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, security]
+    groups:
+      production-patch:
+        applies-to: version-updates
+        update-types: [patch, minor]
+      major:
+        applies-to: version-updates
+        update-types: [major]
+
+  # --- action : le-github itself ----------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, ci]
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  # --- mobile : Flutter / Dart -------------------------------------------
+  - package-ecosystem: pub
+    directory: /mobile
+    schedule:
+      interval: monthly
+    labels: [dependencies, mobile]
+    open-pull-requests-limit: 3

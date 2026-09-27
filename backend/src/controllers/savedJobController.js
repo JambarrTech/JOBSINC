@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const logger = require('../utils/logger');
 
 exports.list = async (req, res) => {
   try {
@@ -52,7 +53,7 @@ exports.list = async (req, res) => {
 
     res.json({ data, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
   } catch (error) {
-    console.error('Erreur savedJobs.list:', error);
+    logger.exception(error, { message: 'Erreur savedJobs.list:', scope: 'savedJobController' });
     res.status(500).json({ error: 'Impossible de charger les offres sauvegardées.' });
   }
 };
@@ -82,7 +83,7 @@ exports.toggle = async (req, res) => {
     }
     res.json({ saved: true });
   } catch (error) {
-    console.error('Erreur savedJobs.toggle:', error);
+    logger.exception(error, { message: 'Erreur savedJobs.toggle:', scope: 'savedJobController' });
     res.status(500).json({ error: 'Impossible de modifier le statut sauvegarde.' });
   }
 };
@@ -102,7 +103,7 @@ exports.check = async (req, res) => {
     for (const s of saved) map[s.jobId] = true;
     res.json({ saved: map });
   } catch (error) {
-    console.error('Erreur savedJobs.check:', error);
+    logger.exception(error, { message: 'Erreur savedJobs.check:', scope: 'savedJobController' });
     res.status(500).json({ error: 'Impossible de vérifier les sauvegardes.' });
   }
 };

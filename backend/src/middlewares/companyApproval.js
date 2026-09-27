@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const logger = require('../utils/logger');
 
 // ============================================================
 // APPROBATION D'ENTREPRISE
@@ -30,7 +31,7 @@ module.exports = async (req, res, next) => {
     }
     return next();
   } catch (error) {
-    console.error('Erreur middleware approbation entreprise:', error);
+    logger.exception(error, { message: 'Erreur middleware approbation entreprise:', scope: 'companyApproval' });
     return res.status(500).json({ error: "Impossible de vérifier le statut de l'entreprise." });
   }
 };

@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/prisma');
 const { getAccessTokenFromCookies } = require('../utils/tokenCookies');
+const logger = require('../utils/logger');
 
 function getTokenFromRequest(req) {
   const authHeader = req.headers.authorization;
@@ -65,7 +66,7 @@ module.exports = async (req, res, next) => {
       return res.status(401).json({ error: 'Votre session a expiré.' });
     }
     if (error.code === 'P1001' || error.code === 'P2024' || error.code === 'P1000') {
-      console.error('Auth middleware DB unreachable:', error.message);
+      logger.error({ message: `${'Auth middleware DB unreachable:'} ${error.message}`, scope: 'authMiddleware' });
       return res.status(503).json({ error: 'Service temporairement indisponible, réessayez.' });
     }
     return res.status(401).json({ error: 'Votre session n\'est pas valide.' });

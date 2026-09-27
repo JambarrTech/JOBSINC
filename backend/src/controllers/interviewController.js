@@ -4,6 +4,7 @@ const socketService = require('../services/socketService');
 const videoProvider = require('../services/videoProviderService');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { invalidate } = require('../utils/cache');
+const logger = require('../utils/logger');
 
 // ============================================================
 // ENTRETIENS — cycle de vie complet
@@ -88,7 +89,7 @@ async function createNotification({ userId, title, body, event, applicationId })
   await pushService.sendToUser(userId, { title, body }, {
     kind: event,
     applicationId: applicationId || '',
-  }).catch((error) => console.warn('Push entretien:', error.message));
+  }).catch((error) => logger.warn({ message: `${'Push entretien:'} ${error.message}`, scope: 'interviewController' }));
 }
 
 // Autorisation : entreprise propriétaire OU candidat concerné uniquement.
@@ -229,7 +230,7 @@ exports.schedule = async (req, res) => {
 
     res.status(201).json(interviewDto({ ...interview, application }));
   } catch (error) {
-    console.error('Erreur planification entretien:', error);
+    logger.exception(error, { message: 'Erreur planification entretien:', scope: 'interviewController' });
     res.status(500).json({ error: 'Impossible de planifier l\'entretien.' });
   }
 };
@@ -289,7 +290,7 @@ exports.start = async (req, res) => {
 
     res.json(dto);
   } catch (error) {
-    console.error('Erreur démarrage entretien:', error);
+    logger.exception(error, { message: 'Erreur démarrage entretien:', scope: 'interviewController' });
     res.status(500).json({ error: 'Impossible de démarrer l\'entretien.' });
   }
 };
@@ -343,7 +344,7 @@ exports.finish = async (req, res) => {
 
     res.json(dto);
   } catch (error) {
-    console.error('Erreur fin entretien:', error);
+    logger.exception(error, { message: 'Erreur fin entretien:', scope: 'interviewController' });
     res.status(500).json({ error: 'Impossible de terminer l\'entretien.' });
   }
 };
@@ -388,7 +389,7 @@ exports.cancel = async (req, res) => {
 
     res.json(dto);
   } catch (error) {
-    console.error('Erreur annulation entretien:', error);
+    logger.exception(error, { message: 'Erreur annulation entretien:', scope: 'interviewController' });
     res.status(500).json({ error: 'Impossible d\'annuler l\'entretien.' });
   }
 };
@@ -407,7 +408,7 @@ exports.listCompany = async (req, res) => {
     ]);
     res.json(buildPaginationResponse(rows.map((item) => interviewDto(item)), total, page, limit));
   } catch (error) {
-    console.error('Erreur liste entretiens entreprise:', error);
+    logger.exception(error, { message: 'Erreur liste entretiens entreprise:', scope: 'interviewController' });
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });
   }
 };
@@ -424,7 +425,7 @@ exports.listCandidate = async (req, res) => {
     ]);
     res.json(buildPaginationResponse(rows.map((item) => interviewDto(item)), total, page, limit));
   } catch (error) {
-    console.error('Erreur liste entretiens candidat:', error);
+    logger.exception(error, { message: 'Erreur liste entretiens candidat:', scope: 'interviewController' });
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });
   }
 };

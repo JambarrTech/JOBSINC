@@ -6,6 +6,7 @@ const { getCached, setCache, invalidate } = require('../utils/cache');
 // codé en dur que la sonde réelle contredirait.
 const { probe } = require('../utils/healthCheck');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const logger = require('../utils/logger');
 
 const DAY_MS = 86400000;
 
@@ -196,7 +197,7 @@ exports.overview = async (req, res) => {
     setCache('admin:overview', result, 60000);
     res.json(result);
   } catch (error) {
-    console.error('Erreur admin overview:', error);
+    logger.exception(error, { message: 'Erreur admin overview:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger la vue d’ensemble admin.' });
   }
 };
@@ -210,7 +211,7 @@ exports.users = async (req, res) => {
     ]);
     res.json(paginated(users.map(decorateUserRecord), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin users:', error);
+    logger.exception(error, { message: 'Erreur admin users:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les utilisateurs.' });
   }
 };
@@ -233,7 +234,7 @@ exports.userDetail = async (req, res) => {
     };
     res.json(record);
   } catch (error) {
-    console.error('Erreur admin userDetail:', error);
+    logger.exception(error, { message: 'Erreur admin userDetail:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger l’utilisateur.' });
   }
 };
@@ -247,7 +248,7 @@ exports.candidates = async (req, res) => {
     ]);
     res.json(paginated(rows.map((row) => ({ id: row.id, name: candidateName(row), email: row.user?.email || null, status: 'active', location: [row.city, row.country].filter(Boolean).join(', ') || null, skills: row.skills || null, createdAt: row.createdAt, lastActivity: row.updatedAt })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin candidates:', error);
+    logger.exception(error, { message: 'Erreur admin candidates:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les candidats.' });
   }
 };
@@ -261,7 +262,7 @@ exports.employees = async (req, res) => {
     ]);
     res.json(paginated(rows.map((row) => ({ id: row.id, name: candidateName(row.candidate), companyName: row.company?.name || null, role: 'EMPLOYEE', position: row.position, status: row.status === 'ACTIVE' ? 'active' : 'inactive', lastActivity: row.endDate || row.updatedAt })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin employees:', error);
+    logger.exception(error, { message: 'Erreur admin employees:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les employés.' });
   }
 };
@@ -275,7 +276,7 @@ exports.companies = async (req, res) => {
     ]);
     res.json(paginated(rows.map((row) => ({ id: row.id, name: row.name, email: row.user?.email || null, sector: row.sector || null, location: [row.city, row.country].filter(Boolean).join(', ') || null, status: row.isApproved ? 'active' : 'pending', jobsCount: row._count.jobs, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin companies:', error);
+    logger.exception(error, { message: 'Erreur admin companies:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les entreprises.' });
   }
 };
@@ -319,7 +320,7 @@ exports.approveCompany = async (req, res) => {
 
     res.json({ message: 'Entreprise approuvée.', id: updated.id, name: updated.name, isApproved: updated.isApproved });
   } catch (error) {
-    console.error('Erreur approveCompany:', error);
+    logger.exception(error, { message: 'Erreur approveCompany:', scope: 'adminController' });
     res.status(500).json({ error: "Impossible d'approuver l'entreprise." });
   }
 };
@@ -339,7 +340,7 @@ exports.rejectCompany = async (req, res) => {
 
     res.json({ message: 'Entreprise rejetée.', id: updated.id, name: updated.name, isApproved: updated.isApproved });
   } catch (error) {
-    console.error('Erreur rejectCompany:', error);
+    logger.exception(error, { message: 'Erreur rejectCompany:', scope: 'adminController' });
     res.status(500).json({ error: "Impossible de rejeter l'entreprise." });
   }
 };
@@ -357,7 +358,7 @@ exports.administrators = async (req, res) => {
       createdAt: row.createdAt,
     })));
   } catch (error) {
-    console.error('Erreur admin administrators:', error);
+    logger.exception(error, { message: 'Erreur admin administrators:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les administrateurs.' });
   }
 };
@@ -371,7 +372,7 @@ exports.jobs = async (req, res) => {
     ]);
     res.json(paginated(rows.map((row) => ({ id: row.id, title: row.title, companyName: row.company?.name || null, location: row.location, status: row.isOpen ? 'active' : 'closed', applicationsCount: row._count.applications, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin jobs:', error);
+    logger.exception(error, { message: 'Erreur admin jobs:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les offres.' });
   }
 };
@@ -385,7 +386,7 @@ exports.applications = async (req, res) => {
     ]);
     res.json(paginated(rows.map((row) => ({ id: row.id, candidateName: candidateName(row.candidate), companyName: row.job?.company?.name || null, jobTitle: row.job?.title || null, status: row.status, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin applications:', error);
+    logger.exception(error, { message: 'Erreur admin applications:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les candidatures.' });
   }
 };
@@ -399,7 +400,7 @@ exports.interviews = async (req, res) => {
     ]);
     res.json(paginated(rows.map((row) => ({ id: row.id, candidateName: candidateName(row.application?.candidate), companyName: row.application?.job?.company?.name || null, jobTitle: row.application?.job?.title || null, mode: row.mode, scheduledAt: row.scheduledAt, status: row.scheduledAt ? 'scheduled' : 'pending', createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin interviews:', error);
+    logger.exception(error, { message: 'Erreur admin interviews:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les entretiens.' });
   }
 };
@@ -413,7 +414,7 @@ exports.recruitments = async (req, res) => {
     ]);
     res.json(paginated(rows.map((row) => ({ id: row.id, candidateName: candidateName(row.candidate), companyName: row.company?.name || null, jobTitle: row.position || row.job?.title || null, status: row.status === 'ACTIVE' ? 'completed' : 'inactive', startDate: row.startDate, endDate: row.endDate, createdAt: row.createdAt })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin recruitments:', error);
+    logger.exception(error, { message: 'Erreur admin recruitments:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les recrutements.' });
   }
 };
@@ -473,7 +474,7 @@ exports.search = async (req, res) => {
       applications: applications.map((a) => ({ id: a.id, label: candidateName(a.candidate), sub: `${a.job?.title || 'Offre'} · ${a.job?.company?.name || ''}`, href: '/admin/applications' })),
     });
   } catch (error) {
-    console.error('Erreur admin search:', error);
+    logger.exception(error, { message: 'Erreur admin search:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible d’effectuer la recherche.' });
   }
 };
@@ -500,7 +501,7 @@ exports.activity = async (req, res) => {
   try {
     res.json(await buildEventFeed(60));
   } catch (error) {
-    console.error('Erreur admin activity:', error);
+    logger.exception(error, { message: 'Erreur admin activity:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger l’activité.' });
   }
 };
@@ -529,7 +530,7 @@ exports.notifications = async (req, res) => {
       createdAt: n.createdAt,
     })), total, page, limit));
   } catch (error) {
-    console.error('Erreur admin notifications:', error);
+    logger.exception(error, { message: 'Erreur admin notifications:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les notifications.' });
   }
 };
@@ -566,7 +567,7 @@ exports.analytics = async (req, res) => {
       { label: 'Messages échangés', value: messages, period: 'total', updatedAt: now },
     ]);
   } catch (error) {
-    console.error('Erreur admin analytics:', error);
+    logger.exception(error, { message: 'Erreur admin analytics:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les statistiques.' });
   }
 };
@@ -601,7 +602,7 @@ exports.trends = async (req, res) => {
       { label: 'Messages échangés', value: msgsNow, period: '30 jours vs 30 précédents', trend: changeLabel(msgsNow, msgsPrev) },
     ]);
   } catch (error) {
-    console.error('Erreur admin trends:', error);
+    logger.exception(error, { message: 'Erreur admin trends:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les tendances.' });
   }
 };
@@ -622,7 +623,7 @@ exports.reportsAnalytics = async (req, res) => {
       { label: 'Activité des 30 derniers jours', period: '30 jours', status: 'ready', createdAt: now, data: { since: since.toISOString() } },
     ]);
   } catch (error) {
-    console.error('Erreur admin reportsAnalytics:', error);
+    logger.exception(error, { message: 'Erreur admin reportsAnalytics:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger les rapports.' });
   }
 };
@@ -644,7 +645,7 @@ exports.moderation = async (req, res) => {
       createdAt: c.createdAt,
     })));
   } catch (error) {
-    console.error('Erreur admin moderation:', error);
+    logger.exception(error, { message: 'Erreur admin moderation:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de charger la file de modération.' });
   }
 };
@@ -704,7 +705,7 @@ exports.system = async (req, res) => {
       },
     ]);
   } catch (error) {
-    console.error('Erreur admin system:', error);
+    logger.exception(error, { message: 'Erreur admin system:', scope: 'adminController' });
     res.status(500).json({ error: 'Impossible de vérifier l’état du système.' });
   }
 };
