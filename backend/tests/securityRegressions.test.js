@@ -156,9 +156,19 @@ process.on('exit', () => setAppUrl(ORIGINAL_APP_URL));
     );
   });
 
-  await test('les deux contrôleurs importent la MÊME implémentation', () => {
+  await test('aucun contrôleur ne re-définit absoluteUrl, et sort les assets en chemin relatif', () => {
     // La divergence s était reproduction parce que chacun avait SA copie. On
     // vérifie qu'il n'en reste qu'une.
+    //
+    // L'assertion d'import a été RETARGETÉE, pas supprimée. Les deux
+    // contrôleurs n'importent plus `absoluteUrl` : c'est le correctif. Passer
+    // une URL d'upload dans `absoluteUrl` rendait la disponibilité d'une image
+    // dépendante de `APP_URL` — absente du Blueprint, l'API annonçait alors les
+    // images sur l'hôte Render, que le web `entreprise` refuse. Le même logo
+    // s'affichait côté mobile et pas côté web.
+    //
+    // L'invariant réellement à protéger est désormais : les assets d'upload
+    // sortent par `canonicalUploadPath`, et l'URL absolue ne peut pas revenir.
     const jobSource = fs.readFileSync(
       require.resolve('../src/controllers/jobController'), 'utf8'
     );
@@ -167,12 +177,21 @@ process.on('exit', () => setAppUrl(ORIGINAL_APP_URL));
     );
     for (const [name, source] of [['jobController', jobSource], ['companyController', companySource]]) {
       assert.ok(
-        source.includes("require('../utils/urls')"),
-        `${name} doit importer absoluteUrl depuis utils/urls`
-      );
-      assert.ok(
         !/function\s+absoluteUrl\s*\(/.test(source),
         `${name} ne doit plus définir sa propre absoluteUrl`
+      );
+      assert.ok(
+        source.includes("require('../services/storageService')"),
+        `${name} doit importer canonicalUploadPath depuis storageService`
+      );
+      // Piège de régression exact : réintroduire `absoluteUrl` sur un champ
+      // d'upload ferait revenir les images cassées, et RIEN ne le signalerait
+      // ailleurs — le build passe, les tests backend passent, seule la photo
+      // manque à l'écran.
+      const surAsset = /absoluteUrl\s*\(\s*req\s*,\s*[^)]*(logo|url|photo|avatar|cv)/i;
+      assert.ok(
+        !surAsset.test(source),
+        `${name} ne doit plus passer un asset d'upload par absoluteUrl (regression du bug images/ CV)`
       );
     }
   });

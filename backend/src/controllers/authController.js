@@ -6,6 +6,7 @@ const {
   rotateRefreshToken,
 } = require('../utils/tokenUtils');
 const { handleError, ValidationError, AuthenticationError, NotFoundError } = require('../utils/errors');
+const { canonicalUploadPath } = require('../services/storageService');
 
 function userDto(user) {
   const candidate = user.candidate ? {
@@ -15,15 +16,15 @@ function userDto(user) {
     birthDate: user.candidate.birthDate,
     country: user.candidate.country,
     city: user.candidate.city,
-    avatarUrl: user.candidate.avatarUrl,
-    cvUrl: user.candidate.cvUrl,
+    avatarUrl: canonicalUploadPath(user.candidate.avatarUrl),
+    cvUrl: canonicalUploadPath(user.candidate.cvUrl),
     skills: user.candidate.skills,
   } : null;
   
   const company = user.company ? {
     id: user.company.id,
     name: user.company.name,
-    logo: user.company.logo || null,
+    logo: canonicalUploadPath(user.company.logo),
     sector: user.company.sector || null,
   } : null;
   
@@ -41,7 +42,7 @@ function userDto(user) {
     lastName: candidate?.lastName || null,
     avatar: user.role === 'RECRUITER' || user.role === 'ADMIN'
       ? (company?.logo || null)
-      : (candidate?.avatarUrl || null),
+      : canonicalUploadPath(candidate?.avatarUrl),
     candidate,
     company,
   };

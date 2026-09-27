@@ -5,11 +5,12 @@ const { getMatches, getCompanyMatches, getJobMatches, computeMatch } = require('
 const { getCached, setCache, invalidate } = require('../utils/cache');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { validate, jobCreateSchema } = require('../utils/zodSchemas');
-// `absoluteUrl` est importé, pas réimplémenté : voir `utils/urls.js`. Cette
-// fonction était la version gardée ; celle de `jobController.js` ne l'était pas
-// et servait pourtant la liste publique des offres. Une seule implémentation
-// désormais, donc plus rien à maintenir en phase.
-const { absoluteUrl } = require('../utils/urls');
+// Les assets d'upload sortent en CHEMIN RELATIF via `canonicalUploadPath`, et
+// plus par `absoluteUrl` (voir `utils/urls.js` pour l'historique de la
+// duplication, et `services/storageService.js` pour ce que donnait
+// `absoluteUrl` sur ces champs : une origine calculée côté backend, que le
+// frontend `entreprise` rejette — sauf si `APP_URL` est renseignée).
+const { canonicalUploadPath } = require('../services/storageService');
 
 const jobInclude = { _count: { select: { applications: true } } };
 const companyInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
@@ -61,17 +62,17 @@ async function getCompany(userId) {
   return prisma.company.findUnique({ where: { userId }, include: companyInclude });
 }
 
-function companyDto(company, req) {
+function companyDto(company) {
   const images = (company.images || []).map((image) => ({
-    id: image.id, url: absoluteUrl(req, image.url), isPrimary: image.isPrimary, sortOrder: image.sortOrder,
-  }));
+    id: image.id, url: canonicalUploadPath(image.url), isPrimary: image.isPrimary, sortOrder: image.sortOrder,
+  })).filter((image) => image.url);
   const primary = images.find((image) => image.isPrimary) || images[0] || null;
   return {
     id: company.id, name: company.name, description: company.description,
     website: company.website, sector: company.sector, size: company.size,
     country: company.country, city: company.city, address: company.address,
     foundedYear: company.foundedYear,
-    logo: absoluteUrl(req, company.logo) || (primary ? primary.url : null),
+    logo: canonicalUploadPath(company.logo) || (primary ? primary.url : null),
     images,
     photos: images.map((image) => image.url),
     image: primary ? primary.url : null,
@@ -91,7 +92,7 @@ exports.listPublic = async (req, res) => {
 
     return res.json({
       success: true,
-      data: companies.map((company) => ({ ...companyDto(company, req), location: [company.city, company.country].filter(Boolean).join(', ') || null })),
+      data: companies.map((company) => ({ ...companyDto(company), location: [company.city, company.country].filter(Boolean).join(', ') || null })),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -151,7 +152,7 @@ function applicationDto(application, company) {
     jobTitle: application.job?.title,
     date: application.createdAt,
     status: application.status,
-    cvUrl: application.cvUrl || null,
+    cvUrl: canonicalUploadPath(application.cvUrl),
     coverLetter: application.coverLetter || null,
     interview: application.interview || null,
     matchScore: match ? match.score : null,
@@ -226,7 +227,7 @@ exports.dashboard = async (req, res) => {
         name: company.name,
         avatar: company.logo || null,
       },
-      company: companyDto(company, req),
+      company: companyDto(company),
       stats: {
         activeJobs: activeJobsCount,
         totalJobs: jobs.length,
@@ -274,7 +275,7 @@ exports.dashboard = async (req, res) => {
 };
 
 exports.profile = async (req, res) => {
-  try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); res.json(companyDto(company, req)); }
+  try { if (!isRecruiter(req, res)) return; const company = await getCompany(req.user.userId); if (!company) return res.status(404).json({ error: 'Profil entreprise introuvable.' }); res.json(companyDto(company)); }
   catch (error) { console.error('Erreur profile:', error); res.status(500).json({ error: 'Impossible de charger le profil entreprise.' }); }
 };
 
@@ -382,7 +383,7 @@ exports.updateProfile = async (req, res) => {
       include: companyInclude,
     });
     invalidate(`company:dashboard:${company.id}`);
-    res.json(companyDto(updated, req));
+    res.json(companyDto(updated));
   } catch (error) {
     console.error('Erreur updateProfile:', error);
     res.status(500).json({ error: 'Impossible de mettre à jour le profil.' });
@@ -434,7 +435,7 @@ exports.uploadLogo = async (req, res) => {
     }
     const updated = await prisma.company.update({ where: { id: company.id }, data: { logo: req.companyLogo.url }, include: companyInclude });
     invalidate(`company:dashboard:${company.id}`);
-    res.json(companyDto(updated, req));
+    res.json(companyDto(updated));
   } catch (error) {
     console.error('Erreur uploadLogo:', error);
     res.status(500).json({ error: "Impossible d'uploader le logo." });

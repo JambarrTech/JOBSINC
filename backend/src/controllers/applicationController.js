@@ -4,6 +4,7 @@ const path = require('path');
 const conversationService = require('../services/conversationService');
 const { invalidate } = require('../utils/cache');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const { canonicalUploadPath } = require('../services/storageService');
 
 const CV_PATH_PREFIX = '/uploads/cvs/';
 // Racine du backend pour vérifier l'existence physique du fichier CV.
@@ -21,7 +22,7 @@ const dto = (value) => ({
   id: value.id,
   status: value.status,
   statusLabel: labels[value.status] || value.status,
-  cvUrl: value.cvUrl,
+  cvUrl: canonicalUploadPath(value.cvUrl),
   coverLetter: value.coverLetter,
   interview: value.interview || null,
   createdAt: value.createdAt,
@@ -29,7 +30,7 @@ const dto = (value) => ({
   candidateName: value.candidate
     ? `${value.candidate.firstName || ''} ${value.candidate.lastName || ''}`.trim() || 'Candidat'
     : 'Candidat',
-  candidateAvatar: value.candidate?.avatarUrl || null,
+  candidateAvatar: canonicalUploadPath(value.candidate?.avatarUrl),
   candidateUserId: value.candidate?.userId || null,
   job: value.job && {
     id: value.job.id,

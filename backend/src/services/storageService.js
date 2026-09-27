@@ -111,17 +111,88 @@ function s3KeyFromStoredUrl(stored) {
       return null;
     }
     const bucket = process.env.AWS_S3_BUCKET;
+    // Deux formes d'URL S3, et elles ne donnent PAS la meme cle :
+    //   - virtual-host  : https://<bucket>.s3.<region>.amazonaws.com/<clé>
+    //     le bucket est dans l'hote, le chemin EST deja la cle ;
+    //   - path-style    : https://s3.<region>.amazonaws.com/<bucket>/<clé>
+    //     le bucket est le PREMIER segment du chemin.
+    // Sans cette distinction, la forme path-style renvoyait
+    // `<bucket>/<clé>` comme cle : la lecture S3 echouait en `NoSuchKey`, donc
+    // un fichier parfaitement deposit se retrouvait introuvable.
+    const virtualHost = Boolean(bucket && url.hostname.startsWith(`${bucket}.`));
     // Rejette toute URL qui ne pointe pas vers NOTRE bucket.
-    if (bucket && !url.hostname.startsWith(`${bucket}.`) && !url.hostname.startsWith('s3.')) {
+    if (bucket && !virtualHost && !url.hostname.startsWith('s3.')) {
       return null;
     }
     value = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    if (!virtualHost && bucket && value.startsWith(`${bucket}/`)) {
+      value = value.slice(bucket.length + 1);
+    }
   } else {
     value = value.replace(/^\/+/, '').replace(/^uploads\//, '');
   }
 
   if (!value || value.includes('..') || value.includes('\\') || value.includes('\0')) return null;
   return value;
+}
+
+/**
+ * Normalise une valeur de stockage vers le CHEMIN APPLICATIF `/uploads/<clé>`.
+ *
+ * Pourquoi cette fonction existe
+ * -----------------------------
+ * Les URLs d'upload arrivaient au frontend sous deux formes INCOMPATIBLES :
+ *
+ *   - `applicationController.applicationDto` renvoyait `cvUrl` TEL QU'ENREGISTRÉ
+ *     (`/uploads/cvs/…`), donc un chemin relatif ;
+ *   - `companyController.companyDto` et `jobController` passaient la même valeur
+ *     par `absoluteUrl()`, qui la transformait en URL ABSOLUE sur l'hôte que le
+ *     backend croit être le sien.
+ *
+ * Or le frontend ne complète un chemin relatif que par sa propre `API_ORIGIN`
+ * (`lib/api.ts`), et `assetUrl` REFUSE toute origine différente. Sans `APP_URL`
+ * — qui n'est PAS dans le Blueprint `render.yaml`, cf. `utils/urls.js:22` —
+ * `absoluteUrl` retombe sur l'en-tête `Host`, c'est-à-dire l'hôte Render
+ * (`…onrender.com`). L'API annonait donc des images sur un hôte que le web
+ * `entreprise` rejetait : images cassées côté entreprise alors que le mobile,
+ * dont `resolveUrl` renvoie les URL absolues telles quelles, les affichait
+ * normalement. Deux plateformes, deux traitements du même champ, un bug.
+ *
+ * On renvoie donc TOUJOURS le chemin relatif : le frontend possède une source de
+ * vérité autoritaire pour l'origine de l'API, le backend n'en a pas. `APP_URL`
+ * reste nécessaire pour les liens d'email — plus aucun asset n'en dépend.
+ *
+ * S'appuie sur `s3KeyFromStoredUrl`, qui absorbe déjà les trois formes
+ * historiques (clé relative, chemin applicatif, ancienne URL publique S3).
+ * Une valeur irreconnaissable rend `null` : mieux vaut ne rien afficher qu'afficher
+ * une image venue d'un tiers.
+ */
+function canonicalUploadPath(stored) {
+  if (!stored || typeof stored !== 'string') return null;
+  const value = stored.trim();
+  if (!value) return null;
+  if (value.includes('..') || value.includes('\\') || value.includes('\0')) return null;
+
+  // URL absolue : seule `s3KeyFromStoredUrl` sait dire si l'hote est NOTRE
+  // bucket. C'est lui qui refuse un hote inconnu — donc la reecriture est
+  // bornee a ce que le backend peut reellement prouver.
+  if (/^https?:\/\//i.test(value)) {
+    const key = s3KeyFromStoredUrl(value);
+    return key ? `/uploads/${key}` : null;
+  }
+
+  // deja un chemin applicatif d upload, avec ou sans slash initial
+  if (value.startsWith('/uploads/')) return value;
+  if (value.startsWith('uploads/')) return `/${value}`;
+
+  // Cle S3 nue (`cvs/a.pdf`) : c est la forme de `saveS3`, on prefixe.
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]*\//.test(value)) return `/uploads/${value}`;
+
+  // Toute autre racine (`/static/…`, `/images/…`, `public/x.png`) n est pas un
+  // upload. Prefixer `/uploads/` dessus fabriquerait un chemin qui PARAIT
+  // servi par l API alors que la ressource n a jamais existe : un 404 masquant
+  // un mauvais stockage, au lieu d une absence franche. On refuse.
+  return null;
 }
 
 const STREAMABLE_CONTENT_TYPES = new Set([
@@ -213,5 +284,6 @@ module.exports = {
   isS3,
   getEffectiveDir,
   s3KeyFromStoredUrl,
+  canonicalUploadPath,
   streamS3Object,
 };

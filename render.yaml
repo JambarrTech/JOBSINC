@@ -62,13 +62,25 @@ services:
       # injoignable SANS erreur visible côté application.
       - key: PORT
         value: 10000
+      # `APP_URL` : requise. Deux usages, tous deux casses sans elle.
+      #   1. Les liens de verification / reinitialisation de mot de passe
+      #      (`services/emailService.js:18`).
+      #   2. L'origine publique de l'API. Elle figurait dans la liste
+      #      « a definir dans le dashboard » alors que `utils/urls.js`
+      #      affirmait le contraire ; sans elle, `absoluteUrl` retombait sur
+      #      l'en-tete `Host` et annonçait les images sur l'hote Render.
+      # Les assets d'upload ne dependent plus d'elle (`canonicalUploadPath` sort
+      # des chemins relatifs), mais `NEXT_PUBLIC_API_URL` du front vaut
+      # `https://api.jobsinc.com/api` : c'est cette valeur qui doit etre
+      # l'origine publique du service.
+      - key: APP_URL
+        value: https://api.jobsinc.com
       # Variables à définir dans le dashboard Render (jamais ici — un Blueprint
       # est versionné dans Git) :
       #   DATABASE_URL   Neon pooler (suffixe -pooler, pgbouncer=true)
       #   DIRECT_URL     Neon directe (SANS -pooler) — requise par migrate deploy
       #   JWT_SECRET     `openssl rand -hex 32`
       #   CORS_ORIGINS   URL(s) du front `entreprise` séparées par des virgules
-      #   APP_URL        URL publique du service, pour les liens d'email
       #   REDIS_URL / REDIS_TLS
       #     optionnels ; le service dégrade proprement sans Redis, mais le
       #     rate-limiting devient alors par instance. REQUIRE_REDIS=true
@@ -76,5 +88,16 @@ services:
       #   SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS / MAIL_FROM
       #   FCM_SERVICE_ACCOUNT_JSON (JSON du compte de service, en base64) ou
       #     FCM_SERVICE_ACCOUNT_PATH si le fichier est monté
-      #   STORAGE_DRIVER / AWS_S3_BUCKET / AWS_S3_REGION / AWS_ACCESS_KEY_ID /
-      #     AWS_SECRET_ACCESS_KEY
+      #
+      #   *** STOCKAGE — OBLIGATOIRE EN PRODUCTION ***
+      #   STORAGE_DRIVER=s3, AWS_S3_BUCKET, AWS_S3_REGION,
+      #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+      #
+      #     Si `STORAGE_DRIVER` reste non défini, le service retombe sur `local`
+      #     et écrit les uploads sur SON DISQUE, qui est ÉPHÉMÈRE : chaque
+      #     redéploiement efface les CV, les CV et les photos, qui répondent
+      #     alors `Cannot GET /uploads/…`. Aucun moyen de récupérer les fichiers
+      #     déjà perdus. `server.js` avertit au démarrage quand ce cas est
+      #     détecté, mais l'avertissement ne remplace pas la configuration.
+      #     Le bucket doit rester PRIVÉ : `/uploads/cvs` et `/uploads/candidates`
+      #     sont autorisées par `uploadAuth`, qui s'appuie sur cette privacité.

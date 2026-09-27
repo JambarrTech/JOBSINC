@@ -1,10 +1,12 @@
 const prisma = require('../config/prisma');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
-// `absoluteUrl` est importé, pas réimplémenté : la copie locale qui vivait ici
-// n'avait pas le garde-fou d'injection d'en-tête Host de celle de
-// `companyController`, alors que c'est CETTE liste (publique, non authentifiée)
-// qui renvoyait les URLs de logo. Voir `utils/urls.js` pour le détail.
-const { absoluteUrl } = require('../utils/urls');
+// Les assets d'upload sortent en CHEMIN RELATIF via `canonicalUploadPath`, et
+// plus par `absoluteUrl`. Raison : sans `APP_URL` (absente du Blueprint
+// `render.yaml`), `absoluteUrl` retombe sur l'en-tête `Host` et annonce les
+// logos sur `…onrender.com`, hôte que le frontend `entreprise` refuse — le
+// même logo s'affichait donc côté mobile et pas côté web.
+// Voir `services/storageService.js` et `utils/urls.js`.
+const { canonicalUploadPath } = require('../services/storageService');
 
 const companyImagesInclude = { images: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } };
 // Les offres visibles publiquement proviennent uniquement d'entreprises approuvées.
@@ -13,12 +15,12 @@ function getPublicJobWhere() {
   return { isOpen: true, company: { isApproved: true }, OR: [{ deadline: null }, { deadline: { gte: new Date() } }] };
 }
 
-function dto(job, req) {
+function dto(job) {
   const images = (job.company.images || []).map((image) => ({
-    id: image.id, url: absoluteUrl(req, image.url), isPrimary: image.isPrimary, sortOrder: image.sortOrder,
-  }));
+    id: image.id, url: canonicalUploadPath(image.url), isPrimary: image.isPrimary, sortOrder: image.sortOrder,
+  })).filter((image) => image.url);
   const primary = images.find((image) => image.isPrimary) || images[0] || null;
-  return { id: job.id, title: job.title, description: job.description, location: job.location, contractType: job.contractType || job.jobType, jobType: job.jobType, department: job.department, workMode: job.workMode, experience: job.experience, salaryMin: job.salaryMin, salaryMax: job.salaryMax, currency: job.currency, deadline: job.deadline, startsAt: job.startsAt, responsibilities: job.responsibilities, skills: job.skills, publishedAt: job.createdAt, company: { id: job.company.id, name: job.company.name, city: job.company.city, country: job.company.country, sector: job.company.sector || null, description: job.company.description || null, location: [job.company.city, job.company.country].filter(Boolean).join(', ') || null, logo: absoluteUrl(req, job.company.logo) || (primary ? primary.url : null), images, image: primary ? primary.url : null } };
+  return { id: job.id, title: job.title, description: job.description, location: job.location, contractType: job.contractType || job.jobType, jobType: job.jobType, department: job.department, workMode: job.workMode, experience: job.experience, salaryMin: job.salaryMin, salaryMax: job.salaryMax, currency: job.currency, deadline: job.deadline, startsAt: job.startsAt, responsibilities: job.responsibilities, skills: job.skills, publishedAt: job.createdAt, company: { id: job.company.id, name: job.company.name, city: job.company.city, country: job.company.country, sector: job.company.sector || null, description: job.company.description || null, location: [job.company.city, job.company.country].filter(Boolean).join(', ') || null, logo: canonicalUploadPath(job.company.logo) || (primary ? primary.url : null), images, image: primary ? primary.url : null } };
 }
 
 function paginate(req) {
@@ -37,11 +39,11 @@ exports.listPublic = async (req, res) => {
       prisma.job.findMany({ where, include: { company: { include: companyImagesInclude } }, orderBy: { createdAt: 'desc' }, skip, take: limit }),
       prisma.job.count({ where }),
     ]);
-    res.json(paginated(jobs.map((job) => dto(job, req)), total, page, limit));
+    res.json(paginated(jobs.map((job) => dto(job)), total, page, limit));
   } catch (error) { console.error('Erreur listPublic jobs:', error); res.status(500).json({ error: 'Impossible de charger les offres.' }); }
 };
 exports.getPublic = async (req, res) => {
-  try { const job = await prisma.job.findFirst({ where: { id: req.params.id, isOpen: true, company: { isApproved: true } }, include: { company: { include: companyImagesInclude } } }); if (!job) return res.status(404).json({ error: 'Offre introuvable.' }); res.json(dto(job, req)); }
+  try { const job = await prisma.job.findFirst({ where: { id: req.params.id, isOpen: true, company: { isApproved: true } }, include: { company: { include: companyImagesInclude } } }); if (!job) return res.status(404).json({ error: 'Offre introuvable.' }); res.json(dto(job)); }
   catch (error) { console.error('Erreur getPublic job:', error); res.status(500).json({ error: "Impossible de charger l'offre." }); }
 };
 
@@ -67,7 +69,7 @@ exports.similar = async (req, res) => {
       take: 5,
     });
 
-    res.json({ data: similar.map((j) => dto(j, req)) });
+    res.json({ data: similar.map((j) => dto(j)) });
   } catch (error) {
     console.error('Erreur similar jobs:', error);
     res.status(500).json({ error: 'Impossible de charger les offres similaires.' });

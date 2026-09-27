@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const fs = require('fs/promises');
 const path = require('path');
+const { canonicalUploadPath } = require('../services/storageService');
 
 exports.getProfile = async (req, res) => {
   try {
@@ -19,8 +20,8 @@ exports.getProfile = async (req, res) => {
       birthDate: candidate.birthDate,
       country: candidate.country,
       city: candidate.city,
-      avatarUrl: candidate.avatarUrl,
-      cvUrl: candidate.cvUrl,
+      avatarUrl: canonicalUploadPath(candidate.avatarUrl),
+      cvUrl: canonicalUploadPath(candidate.cvUrl),
       skills: candidate.skills,
       experienceYears: candidate.experienceYears,
       educationLevel: candidate.educationLevel,
@@ -108,8 +109,8 @@ exports.updateProfile = async (req, res) => {
       birthDate: updated.birthDate,
       country: updated.country,
       city: updated.city,
-      avatarUrl: updated.avatarUrl,
-      cvUrl: updated.cvUrl,
+      avatarUrl: canonicalUploadPath(updated.avatarUrl),
+      cvUrl: canonicalUploadPath(updated.cvUrl),
       skills: updated.skills,
       experienceYears: updated.experienceYears,
       educationLevel: updated.educationLevel,
@@ -153,7 +154,7 @@ exports.uploadCv = async (req, res) => {
 
     res.json({
       message: 'CV uploadé avec succès.',
-      cvUrl: updated.cvUrl,
+      cvUrl: canonicalUploadPath(updated.cvUrl),
     });
   } catch (error) {
     console.error('Erreur uploadCv:', error);
@@ -191,7 +192,7 @@ exports.uploadAvatar = async (req, res) => {
 
     res.json({
       message: 'Photo de profil mise à jour.',
-      avatarUrl: updated.avatarUrl,
+      avatarUrl: canonicalUploadPath(updated.avatarUrl),
     });
   } catch (error) {
     console.error('Erreur uploadAvatar:', error);

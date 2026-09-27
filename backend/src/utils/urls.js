@@ -19,10 +19,17 @@
 // correction de fond que celle appliquée à `getEffectiveDir`, dont la
 // duplication avait provoqué le bypass d'autorisation des uploads.
 //
-// `APP_URL` doit donc être renseignée en production (déjà le cas dans le
-// Blueprint `render.yaml`). Ce n'est pas une formalité : sans elle, cette
-// fonction retombe sur l'en-tête `Host` du visiteur, et l'injection décrite
-// ci-dessus redevient possible.
+// `APP_URL` doit donc être renseignée en production pour les liens d'email
+// (`services/emailService.js`). Elle est désormais DÉCLARÉE dans le Blueprint
+// racine `render.yaml` — ce texte affirmait le contraire (« déjà le cas dans le
+// Blueprint » alors qu'elle figurait dans la liste « à définir dans le
+// dashboard »), et l'absence a eu des effets concrets : sans elle, `absoluteUrl`
+// retombe sur l'en-tête `Host` et annonce les images sur l'hôte Render.
+//
+// AUCUN asset d'upload ne dépend d'elle : `companyController` et
+// `jobController` sortent désormais les chemins en RELATIF via
+// `canonicalUploadPath` (voir `services/storageService.js`). Le client possède
+// une source de vérité pour l'origine de l'API ; le backend n'en a pas.
 // ============================================================
 
 /**

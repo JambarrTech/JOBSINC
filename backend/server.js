@@ -119,12 +119,32 @@ async function startServer() {
     server.listen(PORT, '0.0.0.0', () => {
       const socketInfo = process.env.DISABLE_SOCKET === 'true' ? '' : ' (Socket.IO actif)';
       console.log(`✅ Serveur démarré sur http://0.0.0.0:${PORT}${socketInfo}`);
-      // `VERCEL` était lu ici pour avertir d'un mauvais point d'entrée. La
-      // variable n'est plus utilisée nulle part ailleurs (le Blueprint Render
-      // ne la définit pas), et l'avertissement ne protégeait de rien : il
-      // s'affichait APRÈS que le serveur avait déjà démarré correctement.
-      // Le vrai piège restant est `PORT`, diagnostiqué par le handler EADDRINUSE
-      // et par la valeur par défaut de la ligne 15.
+
+      // Garde-fou STORAGE_DRIVER. Nécessaire parce que le Blueprint laisse
+      // `STORAGE_DRIVER` facultatif : sans lui, le driver retombe sur `local`,
+      // et le disque d'un hébergeur managé est ÉPHÉMÈRE. Les fichiers déposés
+      // sont alors perdus à chaque redéploiement — le symptôme exact observé :
+      // `Cannot GET /uploads/cvs/<uuid>.pdf` (404 d'Express : la route est
+      // montée et l'authentification passe, le FICHIER n'est simplement plus
+      // là), et les photos cassées.
+      //
+      // On avertit au DÉMARRAGE et non à la première lecture : au moment où un
+      // utilisateur découvre la perte, l'information est inutile.
+      if (process.env.NODE_ENV === 'production' && (process.env.STORAGE_DRIVER || 'local') !== 's3') {
+        console.warn(
+          '⚠️  STORAGE_DRIVER n\'est pas « s3 » en production : les uploads sont écrits sur le'
+          + ' DISQUE LOCAL, qui est ÉPHÉMÈRE sur un hébergeur managé. Les CV, CV et photos'
+          + ' déposés disparaitront au prochain redéploiement (404 « Cannot GET /uploads/… »).'
+          + ' Définissez STORAGE_DRIVER=s3 et AWS_S3_BUCKET/AWS_S3_REGION/'
+          + ' AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY — voir DEPLOY.md §4.'
+        );
+      }
+      if (process.env.NODE_ENV === 'production' && !process.env.APP_URL) {
+        console.warn(
+          '⚠️  APP_URL absente : les liens des emails (vérification, réinitialisation) seront'
+          + ' construits sur l\'en-tête Host. Voir DEPLOY.md §3.'
+        );
+      }
     });
   } catch (err) {
     console.error('❌ Erreur démarrage:', err);

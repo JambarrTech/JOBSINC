@@ -79,20 +79,53 @@ est versionné dans Git.
 | `REQUIRE_REDIS` | `true` transforme l'absence de Redis en 503 | à n'utiliser que si la_hausse de trafic rend le quota global obligatoire |
 | `SMTP_*`, `MAIL_FROM` | emails transactionnels | sans SMTP, les liens de réinitialisation ne sont **pas** envoyés |
 | `FCM_SERVICE_ACCOUNT_JSON` | push, JSON du compte de service **en base64** | ou `FCM_SERVICE_ACCOUNT_PATH` si le fichier est monté |
-| `STORAGE_DRIVER` | `s3` en production multi-instance | `local` suffit à une seule instance |
-| `AWS_S3_*` | requis si `STORAGE_DRIVER=s3` | `s3:PutObject`, `GetObject`, `DeleteObject` sur le bucket |
 | `CRON_SECRET` | protège `GET /api/cron/cleanup` | fail-closed si défini |
 | `LOG_LEVEL` | `error`, `warn`, `info` (défaut), `debug` | logs JSON sur une ligne |
+
+### Stockage des fichiers — `STORAGE_DRIVER` est OBLIGATOIRE ici
+
+| Variable | Rôle |
+|---|---|
+| `STORAGE_DRIVER` | **`s3`**. `local` écrit les uploads sur le disque du service. |
+| `AWS_S3_BUCKET` | nom du bucket |
+| `AWS_S3_REGION` | ex. `eu-west-1` |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` sur ce bucket |
+
+Ce tableau était auparavant sous « Recommandées », avec la mention « `local`
+suffit à une seule instance ». **Cette formulation était fausse et a coûté des
+données.** Le disque d'un hébergeur managé est éphémère, même sur une seule
+instance : le service redémarre à chaque déploiement, et le contenu disparaît.
+
+Le symptôme est trompeur, parce qu'il ne ressemble pas à une panne de stockage :
+
+```
+Cannot GET /uploads/cvs/a34edfbc-3cd5-49ba-99d5-85a6dd8c0d6a.pdf
+```
+
+C'est le 404 par défaut d'Express, pas une erreur du service. La route est bien
+montée, l'autorisation passe, et le fichier n'est simplement **plus là**. Même
+symptôme sur les photos, sous la forme d'une icône d'image cassée — la base
+conserve le chemin, le disque ne contient plus l'octet.
+
+Aucun déploiement ne peut récupérer les fichiers déjà perdus : il faut les
+déposer à nouveau. D'où l'avertissement au démarrage dans `server.js`, qui
+signale ce cas explicitement plutôt que de laisser une panne muette apparaître
+des semaines plus tard.
+
+Le bucket doit rester **privé** : `/uploads/cvs` et `/uploads/candidates` ne
+sont servies qu'après le contrôle d'accès de `uploadAuth` (propriétaire, admin,
+recruteur ayant une candidature). Un bucket public rendrait cette autorisation
+inopérante.
 
 Le fichier `backend/.env.example` reste la référence exhaustive, variables
 optionnelles comprises (visio Daily/Whereby/Google, `VIDEO_PROVIDER`).
 
 ---
 
-## 4. `APP_URL` n'est plus cosmétique
+## 4. `APP_URL` : ce que l'absence a réellement coûté
 
-`APP_URL` détermine l'origine des **URL absolues** servies au public — logos
-d'entreprise, photos, pièces jointes — via `src/utils/urls.js`.
+`APP_URL` détermine l'origine des URL **absolues** produites par
+`src/utils/urls.js`.
 
 Sans elle, l'origine est déduite de l'en-tête `Host` de la requête. Derrière le
 proxy Render, `TRUST_PROXY=1` laisse descendre cet en-tête du client jusqu'à
@@ -105,14 +138,36 @@ espace, un `@` ou un chemin — ces valeurs peuvent scinder un en-tête de
 réponse ou polluer un cache. Mais un domaine bien formé n'est pas rejeté : la
 forme était vérifiée, **l'identité ne l'était pas**.
 
-`server.js` émet un avertissement au démarrage si `APP_URL` est absente. Cet
-avertissement n'est pas un formalisme : sans la variable, la correction est
-inactive.
-
 Le même `APP_URL` est déjà utilisé par `services/emailService.js` pour construire
 les liens de vérification et de réinitialisation. Avant la consolidation, un même
 déploiement pouvait donc répondre `https://api.jobsinc.com` dans son JSON et
 `https://autre-chose` dans ses emails, sans que rien ne signale l'écart.
+
+### Ce que ce document affirmait à tort
+
+`src/utils/urls.js` affirmait dans son en-tête : « `APP_URL` doit donc être
+renseignée en production (**déjà le cas dans le Blueprint `render.yaml`**) ». C'était
+**faux**. `APP_URL` figurait dans la liste « à définir dans le dashboard », donc
+hors de `envVars` — c'est-à-dire non versionnée, et donc absente en pratique.
+
+Conséquence observée, sans rapport avec la sécurité : les DTO de
+`companyController` et `jobController` passaient les logos et photos par
+`absoluteUrl`, qui annonçait donc les images sur l'hôte Render. Le web
+`entreprise` refuse toute origine différente de la sienne, si bien que **le même
+logo s'affichait sur le mobile et pas sur le site**. Aucun message d'erreur : un
+`null` silencieux côté client.
+
+Deux mesures, l'une structurelle et l'autre de garde-fou :
+
+- **Structurelle** : les assets d'upload sortent désormais en chemin **relatif**
+  via `canonicalUploadPath` (`src/services/storageService.js`), comme le faisait
+  déjà `applicationController` pour les CV. Le client possède une source de
+  vérité pour l'origine de l'API ; le backend n'en a pas. `APP_URL` reste
+  nécessaire pour les emails, plus pour aucun fichier.
+- **Garde-fou** : `APP_URL` est maintenant **déclarée** dans le Blueprint
+  (`value: https://api.jobsinc.com`, aligné sur `NEXT_PUBLIC_API_URL` du front),
+  et `server.js` avertit au démarrage si elle manque. Ce n'est pas un
+  formalisme : sans elle, la correction ci-dessus reste inactive.
 
 ---
 

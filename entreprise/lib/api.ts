@@ -14,47 +14,18 @@ export type InterviewItem = { id?: string; applicationId?: string; status?: stri
 // commentaire de ce module pour l'historique des 7 copies divergentes).
 import { API_ORIGIN, apiEndpoint as endpoint } from '@/lib/api-url';
 /**
- * Origine backend autorisée pour les fichiers servis par l'API.
+ * `assetUrl` et `cvHref` vivent désormais dans `lib/assets.ts`.
  *
- * Auparavant, `assetUrl` acceptait N'IMPORTE QUELLE URL `https://`. Combiné
- * à un `img-src https:` large, un logo d'entreprise hostile stocké en base
- * devenait un pixel de suivi (ou un canal d'exfiltration) sur toutes les pages
- * qui l'affichaient. Les fichiers d'upload sont tous servis par le backend,
- * donc on vérifie l'origine au lieu de faire confiance au chemin seul.
+ * Elles sont le cœur du correctif « CV et photos invisibles », et étaient
+ * invérifiables ici : ce module importe `@/lib/api-url`, alias que le runner de
+ * tests ne résout pas. Les deux sont donc réexportées d'ici — aucun appelant
+ * n'a changé — mais `assetUrl` est aussi utilisée plus bas dans CE fichier,
+ * d'où l'import en plus du réexport : `export … from` ne crée aucun binding
+ * local, et le typecheck le signale (TS2304).
  */
-const isTrustedAssetOrigin = (value: string): boolean => {
-  try {
-    return new URL(value).origin === API_ORIGIN;
-  } catch {
-    return false;
-  }
-};
-
-export const assetUrl = (value?: string | null) => {
-  if (!value) return null;
-  if (/^https?:\/\//i.test(value)) {
-    try {
-      const u = new URL(value);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-      if (!isTrustedAssetOrigin(u.toString())) return null;
-      return u.toString();
-    } catch { return null; }
-  }
-  if (!value.startsWith('/uploads/')) return null;
-  if (value.includes('..')) return null;
-  try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
-};
-export const cvHref = (value?: string | null) => {
-  if (!value || value.includes('..')) return null;
-  if (/^https?:\/\//i.test(value)) {
-    // Une URL absolue de CV doit venir de l'API : sinon un champ `cvUrl`
-    // injecté pourrait pointer vers n'importe quel hôte.
-    if (!isTrustedAssetOrigin(value)) return null;
-    try { return new URL(value).toString(); } catch { return null; }
-  }
-  if (!value.startsWith('/uploads/cvs/')) return null;
-  try { return new URL(value, API_ORIGIN).toString(); } catch { return null; }
-};
+import { assetUrl } from '@/lib/assets';
+export { cvHref } from '@/lib/assets';
+export { assetUrl };
 
 let refreshing: Promise<boolean> | null = null;
 
