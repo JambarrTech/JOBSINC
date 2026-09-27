@@ -12,8 +12,8 @@ import { useDialogFocus } from './useDialogFocus';
  *    un rendu `loading`, ni de distinguer « l'utilisateur a annulé » d'une
  *    annulation clavier ;
  *  - leur rendu est imposé par l'agent utilisateur : il ignore
- *    `prefers-color-scheme` (clair sur fond sombre) et
- *    `prefers-reduced-motion` ;
+ *    `prefers-reduced-motion`, donc l'ouverture animée joue quand même chez
+ *    qui l'a désactivée ;
  *  - le message n'est rattaché au titre par aucun `aria-labelledby` /
  *    `aria-describedby`, donc un lecteur d'écran l'énonce sans contexte ;
  *  - ils s'ouvrent dans la fenêtre système, ce qui fait perdre le focus à la
