@@ -165,9 +165,49 @@ Deux mesures, l'une structurelle et l'autre de garde-fou :
   vérité pour l'origine de l'API ; le backend n'en a pas. `APP_URL` reste
   nécessaire pour les emails, plus pour aucun fichier.
 - **Garde-fou** : `APP_URL` est maintenant **déclarée** dans le Blueprint
-  (`value: https://api.jobsinc.com`, aligné sur `NEXT_PUBLIC_API_URL` du front),
-  et `server.js` avertit au démarrage si elle manque. Ce n'est pas un
-  formalisme : sans elle, la correction ci-dessus reste inactive.
+  (`value: https://jobsinc.onrender.com`, l'hôte réellement en service) et
+  `server.js` avertit au démarrage si elle manque. Ce n'est pas un formalisme :
+  sans elle, la correction ci-dessus reste inactive.
+
+### L'hôte de production : mesuré, pas supposé
+
+Ce document, `cd.yml` et `lib/api-url.ts` affirmaient tour à tour que
+l'hôte de production était `api.jobsinc.com`. **C'est faux**, et la valeur
+avait été recopiée de commentaires en commentaires au lieu d'être mesurée.
+
+Vérification directe du 2026-09-27 :
+
+| URL | Résultat |
+|---|---|
+| `https://jobsinc.onrender.com/api/jobs` | **200**, JSON JOBSINC (« Développeur Full Stack ») |
+| `https://api.jobsinc.com/health` | erreur de vérification de certificat |
+| `https://api.jobsinc.com/health` en HTTP | 200, corps `OK` — pas le JSON de `/health` |
+
+Le backend est donc sur `jobsinc.onrender.com`. `api.jobsinc.com` résout et
+répond en clair, mais ne sert pas cette application.
+
+Conséquences corrigées dans le même commit :
+
+- `render.yaml` — `APP_URL` valait `https://api.jobsinc.com`, ce qui aurait
+  cassé **tous les liens de réinitialisation de mot de passe** (construits par
+  `services/emailService.js` depuis `APP_URL`) vers un hôte au certificat
+  invalide.
+- `cd.yml` — le repli de `NEXT_PUBLIC_API_URL` pointait sur ce même hôte mort.
+  Ce n'était pas inoffensif : **sans le secret GitHub, tout le front se
+  compilait contre une API morte**, et le déploiement passait au vert. Un repli
+  doit être le même hôte que le fallback du code, jamais une autre valeur.
+- `entreprise/next.config.ts` — la condition
+  `API_HOSTNAME === 'api.jobsinc.com' ? [] : [jobsinc.com]` n'était **jamais**
+  satisfaite. `jobsinc.com` était donc ajouté à `images.remotePatterns` à chaque
+  build, en toute innocence, alors que le commentaire juste au-dessus refuse
+  précisément ce Canal d'exfiltration. Elle porte désormais sur le vrai hôte.
+
+Le repli de `lib/api-url.ts` et de `mobile/…/app_config.dart` était, lui, sur
+le bon hôte depuis le début.
+
+**À faire de votre côté** : vérifier le secret GitHub `NEXT_PUBLIC_API_URL`. Il
+prime sur le repli de `cd.yml` et je n'ai pas accès aux secrets. Il doit valoir
+`https://jobsinc.onrender.com/api`.
 
 ---
 

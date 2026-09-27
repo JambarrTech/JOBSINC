@@ -70,11 +70,17 @@ services:
       #      affirmait le contraire ; sans elle, `absoluteUrl` retombait sur
       #      l'en-tete `Host` et annonçait les images sur l'hote Render.
       # Les assets d'upload ne dependent plus d'elle (`canonicalUploadPath` sort
-      # des chemins relatifs), mais `NEXT_PUBLIC_API_URL` du front vaut
-      # `https://api.jobsinc.com/api` : c'est cette valeur qui doit etre
-      # l'origine publique du service.
+      # des chemins relatifs), mais elle reste l'origine des LIENS D'EMAIL, donc
+      # une valeur fausse casse la reinitialisation de mot de passe.
+      #
+      # VALEUR VERIFIEE EN DIRECT le 2026-09-27 :
+      #   https://jobsinc.onrender.com/api/jobs  -> 200, JSON JOBSINC
+      #   https://api.jobsinc.com/health         -> erreur de certificat
+      # Le backend est donc sur `jobsinc.onrender.com`. La valeur
+      # `https://api.jobsinc.com` regnait dans `cd.yml:54` et dans les
+      # commentaires de `entreprise/lib/api-url.ts` : elle est FAUSSE.
       - key: APP_URL
-        value: https://api.jobsinc.com
+        value: https://jobsinc.onrender.com
       # Variables à définir dans le dashboard Render (jamais ici — un Blueprint
       # est versionné dans Git) :
       #   DATABASE_URL   Neon pooler (suffixe -pooler, pgbouncer=true)

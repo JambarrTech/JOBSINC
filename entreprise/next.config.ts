@@ -68,33 +68,27 @@ const nextConfig: NextConfig = {
       // NEXT_PUBLIC_API_URL peut pointer vers le backend local, mais retiré
       // du build de production via `isProd`.
       ...(isProd ? [] : [{ protocol: 'http' as const, hostname: 'localhost', port: '5000', pathname: '/uploads/**' }]),
-      // L'hôte du backend est DÉRIVÉ de NEXT_PUBLIC_API_URL, pas écrit en dur.
+      // Hôte du backend : DÉRIVÉ de `NEXT_PUBLIC_API_URL`, jamais écrit en dur.
       //
-      // La liste en dur précédente (`jobsinc.onrender.com`, `jobsinc.com`)
-      // oubliait `api.jobsinc.com`, qui est pourtant l'URL de production
-      // (cf. .github/workflows/cd.yml). Résultat : `next/image` renvoyait
-      // « hostname not configured » sur les logos d'entreprise et photos de
-      // candidats en prod. Comme `assetUrl()`/`cvHref()` (lib/api.ts) servent
-      // déjà des URL ABSOLUES cross-origin, la liste doit suivre l'API.
+      // `jobsinc.onrender.com` est l'hôte RÉEL, vérifié en direct le
+      // 2026-09-27 (`/api/jobs` y renvoie le JSON JOBSINC ; `api.jobsinc.com`
+      // échoue sur son certificat). Il doit rester autorisé, sinon
+      // `next/image` répond « hostname not configured » sur les logos et les
+      // photos. Comme `assetUrl` / `cvHref` servent des URL ABSOLUES
+      // cross-origin, la liste doit suivre l'API — d'où l'hôte dérivé de
+      // `lib/api-url.ts` plutôt qu'une liste figée.
       { protocol: 'https', hostname: API_HOSTNAME, pathname: '/uploads/**' },
-      // Le domaine marketing sert aussi des fichiers : conservé explicitement.
+      // Domaine marketing `jobsinc.com` : ajouté UNIQUEMENT lorsque l'API n'y
+      // est pas déjà. En production l'API est sur `jobsinc.onrender.com`, donc
+      // cette entrée doit être ABSENTE — l'ajouter à côté de Render
+      // produirait exactement le canal d'exfiltration que le commentaire
+      // suivant refuse.
       //
-      // Il est DÉRIVÉ de la même source que l'API. Écrit en dur
-      // (`hostname: 'jobsinc.com'`), il ne suivait pas
-      // `NEXT_PUBLIC_API_URL` : le jour où le backend change d'hôte, cette
-      // entrée continuait d'autoriser un domaine qui ne sert plus rien, ou,
-      // à l'inverse, le domaine marketing dynamique manquait et
-      // `next/image` répondait « hostname not configured ». La source de
-      // vérité reste `lib/api-url.ts` (`API_HOSTNAME`).
-      //
-      // Repli : le domaine marketing PAR DÉFAUT (`api.jobsinc.com` → son
-      // domaine registrant `jobsinc.com`), et uniquement lorsque l'API pointe
-      // ailleurs — donc jamais ajouté deux fois pour la prod, et jamais
-      // perdu. On ne rajoute pas de liste de noms de domaine à la main : un
-      // `remotePattern` de trop fait d'un domaine non contrôlé une source
-      // d'images de confiance pour `next/image` (cf. le retrait du wildcard
-      // `*.jobsinc.com` juste au-dessus).
-      ...(API_HOSTNAME === 'api.jobsinc.com' ? [] : [{ protocol: 'https' as const, hostname: 'jobsinc.com', pathname: '/uploads/**' }]),
+      // ATTENTION : la condition testait `api.jobsinc.com`, un hôte qui n'a
+      // jamais servi le backend. La comparaison n'était donc jamais satisfaite,
+      // et `jobsinc.com` était ajouté en douce à CHAQUE build. Un test de
+      // cohérence doit porter sur le vrai hôte, sinon il ne teste rien.
+      ...(API_HOSTNAME === 'jobsinc.onrender.com' ? [] : [{ protocol: 'https' as const, hostname: 'jobsinc.com', pathname: '/uploads/**' }]),
       // Le wildcard `*.jobsinc.com` a été retiré : une prise de contrôle d'un
       // sous-domaine transformait un domaine non contrôlé en source d'images
       // de confiance pour next/image, donc en canal d'exfiltration.

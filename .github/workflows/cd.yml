@@ -51,7 +51,18 @@ jobs:
       # second build, et l'artefact déployé serait compilé avec l'URL de
       # REPLI de `lib/api-url.ts` (`https://jobsinc.onrender.com/api`) — donc
       # déployé et vérifié ne seraient pas le même code.
-      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://api.jobsinc.com/api' }}
+      # Repli aligne sur `lib/api-url.ts:FALLBACK_API_URL` et sur l'hote
+      # REELLEMENT en service, verifie en direct le 2026-09-27 :
+      #   https://jobsinc.onrender.com/api/jobs -> 200, JSON JOBSINC
+      #   https://api.jobsinc.com/health        -> erreur de certificat
+      #
+      # Le repli precedent (`https://api.jobsinc.com/api`) pointait vers un hote
+      # qui ne sert PAS le backend. Ce n'etait donc pas inoffensif : sans le
+      # secret, il compilait tout le front contre un hote mort — le site se
+      # deployait, en verts, sans pouvoir appeler aucune API. Le repli doit
+      # rester le MEME hote que le fallback du code, jamais une autre valeur
+      # « de production » imaginee.
+      NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || 'https://jobsinc.onrender.com/api' }}
     defaults:
       run:
         working-directory: entreprise

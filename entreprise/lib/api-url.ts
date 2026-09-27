@@ -14,6 +14,20 @@
  *     build cassait, soit la valeur d'env l'emportait par accident, selon le
  *     module qui était lu. Le comportement devenait imprévisible.
  *
+ * CORRECTION 2026-09-27 — l'inverse de ce qu'un lecteur pressé conclut.
+ * Après vérification EN DIRECT :
+ *     https://jobsinc.onrender.com/api/jobs -> 200, JSON JOBSINC
+ *     https://api.jobsinc.com/health        -> erreur de certificat
+ * `api.jobsinc.com` n'est PAS l'hôte de production : c'est un hôte qui ne sert
+ * pas le backend. Les replis de ce module et de `mobile/…/app_config.dart`
+ * pointaient donc sur le BON hôte, et `cd.yml` (repli) ainsi que
+ * `render.yaml:APP_URL` portaient la MAUVAINE. Les deux sources sont
+ * désormais alignées sur `jobsinc.onrender.com`.
+ *
+ * Le vrai point de friction n'était donc pas « deux origines en dur » mais
+ * « une origine en dur et une URL de production IMAGINÉE ». Corriger cela
+ * consistait à mesurer, pas à choisir.
+ *
  * Ce module exporte l'URL résolue ET son origine. Il doit rester importable
  * depuis le client ET depuis `next.config.ts` (donc : aucune API serveur).
  *
@@ -28,12 +42,12 @@ const FALLBACK_API_URL = 'https://jobsinc.onrender.com/api';
 const RAW_API_URL = (process.env.NEXT_PUBLIC_API_URL || FALLBACK_API_URL).replace(/\/$/, '');
 
 /**
- * URL de base de l'API, sans slash final. Ex : `https://api.jobsinc.com/api`.
+ * URL de base de l'API, sans slash final. Ex : `https://jobsinc.onrender.com/api`.
  */
 export const API_URL = RAW_API_URL;
 
 /**
- * Origine du backend, sans chemin. Ex : `https://api.jobsinc.com`.
+ * Origine du backend, sans chemin. Ex : `https://jobsinc.onrender.com`.
  *
  * Calculée défensivement : `new URL()` lève sur une valeur malformée, et
  * l'évaluation au chargement du module faisait planter tout le bundle — y
