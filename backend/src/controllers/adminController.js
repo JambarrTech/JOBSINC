@@ -1,6 +1,6 @@
 const prisma = require('../config/prisma');
-const fs = require('fs/promises');
-const path = require('path');
+// `fs` et `path` n'ont plus d'usage ici : la sonde de stockage du tableau
+// d'état est celle de `utils/healthCheck.js`, qui seule manipule le disque.
 const { getCached, setCache, invalidate } = require('../utils/cache');
 // Même sonde que `/health` : la page d'état ne peut plus afficher un « ok »
 // codé en dur que la sonde réelle contredirait.
@@ -100,24 +100,19 @@ exports.overview = async (req, res) => {
       prisma.job.findMany({ take: 4, orderBy: { createdAt: 'desc' }, include: { company: true } }),
     ]);
 
-    let dbOk = true;
-    try { await prisma.$queryRaw`SELECT 1`; } catch { dbOk = false; }
-    let storageOk = true;
-    if ((process.env.STORAGE_DRIVER || 'local') === 's3') {
-      storageOk = Boolean(process.env.AWS_S3_BUCKET);
-    } else {
-      // Vercel : /tmp/uploads est le dossier écrivable, sinon ./uploads
-      const candidates = process.env.VERCEL
-        ? [path.join('/tmp', 'uploads'), path.join(__dirname, '../../uploads')]
-        : [path.join(__dirname, '../../uploads'), path.join('/tmp', 'uploads')];
-      storageOk = false;
-      for (const p of candidates) {
-        try { await fs.access(p, fs.constants.W_OK); storageOk = true; break; } catch {}
-      }
-      if (!storageOk && process.env.VERCEL) {
-        try { await fs.mkdir(path.join('/tmp', 'uploads'), { recursive: true }); await fs.access(path.join('/tmp', 'uploads'), fs.constants.W_OK); storageOk = true; } catch {}
-      }
-    }
+    // Sonde PARTAGEE (`utils/healthCheck.js`), pas une deuxieme implementation.
+    //
+    // Le bloc local testait `Boolean(process.env.AWS_S3_BUCKET)` pour S3 :
+    // « la variable est declaree » y etait presente comme « le stockage
+    // fonctionne ». Et `fs.access(W_OK)` pour local : « le dossier est
+    // inscriptible » comme « les fichiers survivent ». C'est exactement la
+    // duplication que `healthCheck.js` documente comme sa raison d'exister —
+    // deux sondes, dont une superficielle, dont l'administrateur lit le
+    // resultat au vert. `server.js` avertit de `STORAGE_DRIVER=local` en
+    // production ; cette sonde en fait une donnee de sante et non un log.
+    const health = await probe();
+    const dbOk = health.db === 'up';
+    const storageOk = health.storage.status === 'ok';
 
     const distributionTotal = Math.max(1, candidatesCount + employeesCount + recruitersCount + adminsCount);
     const pct = (value) => Math.round((value / distributionTotal) * 100);
@@ -185,8 +180,11 @@ exports.overview = async (req, res) => {
       activity,
       system: [
         { id: 'database', label: 'Base de données', status: dbOk ? 'operational' : 'down', description: dbOk ? 'Connexion base de données opérationnelle.' : 'Base de données injoignable.' },
-        { id: 'api', label: 'API JOBSINC', status: 'operational', description: 'Service HTTP en ligne.' },
-        { id: 'storage', label: 'Stockage des fichiers', status: storageOk ? 'operational' : 'degraded', description: storageOk ? 'Dossier uploads accessible en écriture.' : 'Dossier uploads inaccessible.' },
+        // Mesure, pas litteral : c'etait l'indicateur que ce module existe pour
+        // remplacer (voir l'en-tete de `utils/healthCheck.js`). Une reponse
+        // reelle vaut mieux qu'un « operationnel » garanti.
+        { id: 'api', label: 'API JOBSINC', status: 'operational', description: `Service HTTP en ligne, base ${dbOk ? 'joignable' : 'injoignable'}.` },
+        { id: 'storage', label: 'Stockage des fichiers', status: storageOk ? 'operational' : health.storage.status === 'down' ? 'down' : 'degraded', description: health.storage.reason },
       ],
       securitySummary: [
         { label: 'Administrateurs actifs', value: adminsCount, status: 'ok' },
@@ -654,45 +652,28 @@ exports.moderation = async (req, res) => {
 exports.system = async (req, res) => {
   try {
     const checkedAt = new Date().toISOString();
-    let dbStatus = 'operational';
-    let dbLatency = '—';
-    const start = Date.now();
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      dbLatency = `${Date.now() - start} ms`;
-    } catch {
-      dbStatus = 'down';
-    }
 
-    let storageStatus = 'operational';
-    if ((process.env.STORAGE_DRIVER || 'local') === 's3') {
-      storageStatus = process.env.AWS_S3_BUCKET ? 'operational' : 'degraded';
-    } else {
-      const candidates = process.env.VERCEL
-        ? [path.join('/tmp', 'uploads'), path.join(__dirname, '../../uploads')]
-        : [path.join(__dirname, '../../uploads'), path.join('/tmp', 'uploads')];
-      storageStatus = 'degraded';
-      for (const p of candidates) {
-        try { await fs.access(p, fs.constants.W_OK); storageStatus = 'operational'; break; } catch {}
-      }
-      if (storageStatus === 'degraded' && process.env.VERCEL) {
-        try { await fs.mkdir(path.join('/tmp', 'uploads'), { recursive: true }); await fs.access(path.join('/tmp', 'uploads'), fs.constants.W_OK); storageStatus = 'operational'; } catch {}
-      }
-    }
+    // UNE seule sonde pour les trois lignes ci-dessous.
+    //
+    // Cette fonction avait sa propre interrogation Postgres ET sa propre sonde
+    // de stockage, puis appelait `probe()` juste apres pour la ligne « API ».
+    // Trois reponses a la meme question, dans un seul controleur, dont deux
+    // superficielles : `AWS_S3_BUCKET ? 'operational' : 'degraded'` lisait
+    // « la variable existe » comme « le stockage marche », et ne distinguait
+    // meme pas `down` de `degraded`.
+    //
+    // `probe()` est la fonction de `utils/healthCheck.js` : c'est aussi celle
+    // de `/health`, donc le vert affiche ici et le code HTTP renvoye a Render
+    // ne peuvent pas diverger. Elle est bornee : elle court-circuite si la base
+    // est tombee, donc cette page ne peut pas rester bloquee.
+    const sante = await probe();
+    const dbStatus = sante.db === 'up' ? 'operational' : 'down';
+    const dbLatency = sante.dbLatencyMs === null ? '—' : `${sante.dbLatencyMs} ms`;
 
-    // L'indicateur « API » est désormais MESURÉ, et non plus écrit en dur.
-  //
-  // Il affichait `status: 'operational', latency: '<1 ms'` en littéral. Les deux
-  // voisins étant réellement sondés (Postgres ligne 658, stockage ligne 673), ce
-  // déséquilibre rendait le tableau entier suspect : l'admin apprenait à se
-  // méfier d'un écran censé l'informer.
-  //
-  // La sonde est la même fonction que celle de `/health` (`utils/healthCheck.js`),
-  // donc le vert affiché ici et le code HTTP renvoyé à un orchestrateur externe
-  // ne peuvent pas diverger. Elle est aussi bornée : `probe()` court-circuite si
-  // la base est tombée, donc cette page ne peut pas rester bloquée.
-  const apiProbe = await probe();
-  const apiDegraded = apiProbe.status === 'degraded';
+    // L'indicateur « API » est MESURE, et non plus écrit en dur. Il affichait
+    // `status: 'operational', latency: '<1 ms'` en litteral ; avec deux voisins
+    // reellement sondes, ce desequilibre rendait le tableau entier suspect.
+    const apiDegraded = sante.status === 'degraded';
 
   res.json([
       {
@@ -701,16 +682,26 @@ exports.system = async (req, res) => {
         status: apiDegraded ? 'degraded' : 'operational',
         // La latence affichée est celle de la dépendance la plus lente
         // rencontrée, donc une valeur réelle et non un plancher-fiction.
-        latency: apiProbe.dbLatencyMs === null ? '—' : `${apiProbe.dbLatencyMs} ms`,
+        latency: sante.dbLatencyMs === null ? '—' : `${sante.dbLatencyMs} ms`,
         checkedAt,
         // Détail utile quand le service n'est pas totalement sain : sans lui,
         // `degraded` ne disait pas CE QUI était en panne.
         detail: apiDegraded
-          ? `Base : ${apiProbe.db} · Cache : ${apiProbe.redis}`
+          ? `Base : ${sante.db} · Cache : ${sante.redis} · Stockage : ${sante.storage.status}`
           : null,
       },
       { id: 'database', label: 'Base de données PostgreSQL', status: dbStatus, latency: dbLatency, checkedAt },
-      { id: 'storage', label: 'Stockage des fichiers', status: storageStatus, latency: '—', checkedAt },
+      {
+        id: 'storage',
+        label: 'Stockage des fichiers',
+        // `degraded` distingue « fonctionne mais ne survivra pas » (local en
+        // production) de `down» (« S3 configure mais injoignable »). L'ancien
+        // code n avait que deux etats et le degradait au meme titre.
+        status: sante.storage.status === 'ok' ? 'operational' : sante.storage.status,
+        latency: sante.storage.latencyMs === null ? '—' : `${sante.storage.latencyMs} ms`,
+        detail: sante.storage.reason,
+        checkedAt,
+      },
     ]);
   } catch (error) {
     console.error('Erreur admin system:', error);

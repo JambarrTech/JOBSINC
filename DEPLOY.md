@@ -117,6 +117,46 @@ sont servies qu'après le contrôle d'accès de `uploadAuth` (propriétaire, adm
 recruteur ayant une candidature). Un bucket public rendrait cette autorisation
 inopérante.
 
+### Reprise des fichiers déjà déposés
+
+Quand le passage à S3 est configuré, les octets des fichiers déposés en
+driver local sont **perdus** s'ils vivaient sur un hébergeur managé : le
+disque est réinitialisé à chaque déploiement. Les **chemins** en base, eux,
+restent valides — seuls les octets manquent, et aucun code ne les invente.
+
+Si vous disposez encore d'une copie locale de `backend/uploads/`, le script
+ci-dessous la téléverse sans rien toucher à la base :
+
+```bash
+cd backend
+
+# 1. Inventaire : n'ecrit rien, ne demande AUCUNE credential
+node scripts/migrate-uploads-to-s3.js
+
+# 2. Televersement (idempotent : un objet deja present est ignore)
+node scripts/migrate-uploads-to-s3.js --apply
+
+# 3. Reecraser des objets existants (normalement inutile)
+node scripts/migrate-uploads-to-s3.js --apply --force
+```
+
+Le script reprend la logique existante plutot que d'en creer une : cle S3 au
+format `<dossier>/<nom>` produit par `multipartParser.saveFile`, `S3Client` et
+`PutObjectCommand` de `storageService.saveS3`, et **type MIME deduit des
+octets** selon les signatures de `utils/uploadValidation.js` — pas de
+l'extension. Un fichier dont l'extension ment est donc stocke avec son vrai
+type, ce que `streamS3Object` exige pour ne pas le refuser en 415. Rien n'est
+supprime en local : la migration est reversible.
+
+Releve au 2026-09-27 sur la copie locale : 52 fichiers, 12,3 Mio — 29 CV (PDF),
+7 photos de candidats, 16 logos. Une anomalie : `candidates/332694ff-….jpg` est
+en realite un **PNG**. Sans gravite pour l'affichage (le navigateur rend une
+`<img>` malgre un `Content-Type` errone), mais le televersement la corrige
+d'office en ecrivant `image/png`.
+
+Si la copie locale n'existe pas, il n'y a rien a migrer : il faut redeposer les
+fichiers depuis l'interface.
+
 Le fichier `backend/.env.example` reste la référence exhaustive, variables
 optionnelles comprises (visio Daily/Whereby/Google, `VIDEO_PROVIDER`).
 
