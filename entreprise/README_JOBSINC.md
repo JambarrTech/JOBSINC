@@ -13,21 +13,20 @@ ce dépôt ne constitue **pas** une frontière de sécurité.
 - **CSS artisanal** — voir la note ci-dessous
 - **ESLint 9** (flat config)
 
-### Note sur Tailwind
+### Note sur Tailwind — RETIRE
 
-Tailwind 4 est installé et enregistré dans PostCSS, mais **aucune classe
-utilitaire n'est utilisée dans le code** : la seule directive présente est
-`@import "tailwindcss"` dans `app/globals.css`, qui ne sert qu'au *preflight*
-(le reset CSS).
+Tailwind 4 etait installe et enregistre dans PostCSS, mais **aucune classe
+utilitaire n etait utilisee** : les 15 feuilles definissent des classes
+semantiques maison (`admin-card`, `dashboard-panel`, `jobs-grid`…).
 
-Le style est un design system maison : jetons dans `:root`
-(`app/globals.css`), puis 16 feuilles CSS scopées par espacio
-(`app/dashboard/*.css`, `app/admin/*.css`). Une part importante de l'UI
-récente utilise en plus des `style={{...}}` en ligne.
+Il n apportait donc que son `preflight`, dont l equivalent est desormais
+ecrit en tete de `app/globals.css` — chaque bloc justifie par un comptage
+d'elements reels dans les .tsx. Le reset reste dans `@layer base` : le
+preflight de Tailwind y etait aussi, et c est ce qui preservait la cascade
+face au CSS du projet.
 
-Soit on adopter réellement Tailwind (migrer les feuilles), soit on le retire
-des dépendances. L'état actuel est le pire des deux : une dépendance et une
-config présents pour zéro classe écrite.
+Consequence : `postcss.config.mjs` a ete supprime (il ne configurait que ce
+plugin) et les dependances `tailwindcss` / `@tailwindcss/postcss` retirees.
 
 ## 📁 Structure
 

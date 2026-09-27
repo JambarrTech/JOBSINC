@@ -1,20 +1,250 @@
-/* Tailwind v4 est installé et configuré (postcss.config.mjs) mais n'apporte
-   QUE le preflight : le projet n'utilise AUCUNE classe utilitaire Tailwind.
-   Tous les `className` sont des classes sémantiques maison (`admin-card`,
-   `dashboard-panel`, `jobs-grid`, `hero-grid`…) définies dans ce fichier et
-   dans les 14 feuilles imported par les layouts.
+/* ============================================================
+   RESET
+   ============================================================
+   Ce fichier etait importe de Tailwind v4 via `@import "tailwindcss"`, qui
+   n'apportait QUE son `preflight` : le projet n'utilise AUCUNE classe
+   utilitaire Tailwind. Tous les `className` sont des classes semantiques
+   maison (`admin-card`, `dashboard-panel`, `jobs-grid`, `hero-grid`...)
+   definies ici et dans les 14 feuilles importees par les layouts.
 
-   Le preflight n'est PAS superflu : il normalise box-sizing, margins par
-   défaut, `img { max-width }`, et le rendu natif des `<button>` / `<input>`.
-   Le CSS maison en dépend (les boutons n'ont pas de reset explicite). Le
-   supprimer casserait le rendu.
+   Tailwind est donc retire, et son preflight remplace par l equivalent
+   ci-dessous. Chaque bloc est justifie par un COMPTAGE d elements reellement
+   presents dans les .tsx, pas par un copier-coller : garder 400 lignes de
+   correctifs Safari pour des elements absents serait du bruit, et en omettre
+   un qui existe casserait le rendu sans qu aucun test ne le voie.
 
-   Deux voies possibles, hors périmètre de ce correctif :
-     - migrer vers les utilitaires Tailwind (refonte de design) ;
-     - retirer la dépendance et écrire le reset à la main.
-   Tant que l'une des deux n'est pas engagée, on garde la dépendance en
-   conscience de son coût (un `@import` de plus dans le bundle CSS). */
-@import "tailwindcss";
+   CE QUI A ETAIT RETIRE, ET POURQUOI (tout compte a 0 occurrence)
+     video, canvas, audio, iframe, object, embed : 0
+     summary, progress, abbr[title], optgroup, sub, sup : 0
+   Aucun de ces elements n existe dans le JSX. Le cas de `<summary>`
+   meritait d etre verifie : les FAQ presentent des accordéons, mais ils
+   sont construits sur des <div>, pas sur <details>/<summary>.
+
+   MESURE CONTRE-INFORMATIVE : le gain n est PAS en octets de CSS.
+   Le bundle ne declare que 38 variables, dont ZERO variable de theme
+   Tailwind inutilisee — Tailwind v4 n emet que les variables employees.
+   Le retrait supprime une dependance et un etape de build, rien de plus.
+
+   CONTRAINTE DE CASCADE — LA SEULE VRAIE PIEGE
+   Le preflight de Tailwind vit dans `@layer base`. En CSS, une regle NON
+   mise en couche l emporte TOUJOURS sur une regle en couche, quel que soit
+   son ordre. Le CSS du projet etant lui aussi non mis en couche, il
+   battait donc le preflight quelle que soit sa specificite.
+   Ecrire ce reset hors couche l aurait place dans le MEME contexte de
+   cascade : la specificite deciderait alors, et une regle du projet de
+   specificite inferieure aurait perdu un match qu elle gagnait avant.
+   D'ou `@layer base` conserve a l identique.
+   ============================================================ */
+
+@layer base {
+  /* 1. largeurs, marges, bordures.
+        `box-sizing: border-box` n est pas cosmetique : 11 regles du projet
+        combinent une largeur fixe et un padding, et 49 declarent des grilles en
+        colonnes. Sans border-box, chacune rendrait son element plus large que
+        sa largeur declaree, et les cellules de grille deborderaient. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+
+  /* 2. Racine. La police est celle que le projet declare deja sur `body`
+     (Inter via `var(--font-inter)`) ; celle-ci n est qu un repli. */
+  html,
+  :host {
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+    tab-size: 4;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      'Helvetica Neue', 'Noto Sans', Arial, sans-serif, 'Apple Color Emoji',
+      'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    font-feature-settings: normal;
+    font-variation-settings: normal;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 3. Titres : 117 occurrences. Sans `font-size: inherit`, tous reprendraient
+     la taille par defaut du navigateur et le design entier s effondrerait. */
+  h1, h2, h3, h4, h5, h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  /* 4. Liens : 1 occurrence, mais c est le lien de pied de page. */
+  a {
+    color: inherit;
+    -webkit-text-decoration: inherit;
+    text-decoration: inherit;
+  }
+
+  /* 5. `b` / `strong` : 126 occurrences. Sans `bolder`, Edge et Safari
+     n appliquent aucune graisse : l emphase disparait sur ces navigateurs
+     sans que rien ne signale l ecart. */
+  b, strong {
+    font-weight: bolder;
+  }
+
+  /* 6. Monospace : 1 occurrence (`.admin-search kbd`). */
+  code, kbd, samp, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      'Liberation Mono', 'Courier New', monospace;
+    font-feature-settings: normal;
+    font-variation-settings: normal;
+    font-size: 1em;
+  }
+
+  /* 7. `small` : 27 occurrences. */
+  small {
+    font-size: 80%;
+  }
+
+  /* 8. Tableaux : 2 occurrences. `border-collapse: collapse` evite les
+     interstices entre bordures, `text-indent: 0` evite une indentation
+     heritee des cellules en Chrome et Safari. */
+  table {
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+  }
+
+  /* 9. Listes : 2 occurrences ; le design fournit ses propres puces. */
+  ol, ul, menu {
+    list-style: none;
+  }
+
+  /* 10. Regle horizontale : 1 occurrence. */
+  hr {
+    height: 0;
+    color: inherit;
+    border-top-width: 1px;
+  }
+
+  /* 11. `img` et `svg` : 5 et 7 occurrences. `display: block` supprime
+     l espace residuel sous un element replaced, `max-width: 100` empeche une
+     photo de profil de depasser son conteneur, `height: auto` preserve le
+     rapport d aspect. `vertical-align: middle` aligne l icone sur le texte du
+     bouton qui la contient. */
+  img, svg {
+    display: block;
+    vertical-align: middle;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* 12. Controles de formulaire : 95 `button`, 37 `input`, 16 `select`,
+     10 `textarea`. C est le bloc dont dependait le plus le CSS du projet :
+     `font: inherit` (sinon Safari rend un controle plus petit, dans une autre
+     police), `background-color: transparent` et `border-radius: 0` (sinon un
+     `button` garde le fond gris systeme et l arrondi natif). */
+  button,
+  input,
+  select,
+  textarea,
+  ::file-selector-button {
+    font: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    border-radius: 0;
+    background-color: transparent;
+    opacity: 1;
+  }
+
+  /* 13. Zone de texte : pas de redimensionnement horizontal. */
+  textarea {
+    resize: vertical;
+  }
+
+  /* 14. Espace apres le bouton d un `input type="file"` — 2 occurrences,
+     sans quoi le nom du fichier colle au champ. */
+  ::file-selector-button {
+    margin-inline-end: 4px;
+  }
+
+  /* 15. Placeholder : opacite forcee (Firefox l attenue), puis demi-teinte.
+     Le `@supports` est celui de Tailwind : Safari plantait sur
+     `color-mix(…)` avec `currentcolor`, il faut donc le tester. */
+  ::placeholder {
+    opacity: 1;
+  }
+  @supports (not (-webkit-appearance: -apple-pay-button)) or
+    (contain-intrinsic-size: 1px) {
+    ::placeholder {
+      color: color-mix(in oklab, currentcolor 50%, transparent);
+    }
+  }
+
+  /* 16. `type="search"` (1 occurrence) : retire la decoration interne sur
+     macOS. */
+  ::-webkit-search-decoration {
+    -webkit-appearance: none;
+  }
+
+  /* 17. `type="date"` et `type="time"` (1 occurrence chacun) : sans ces
+     correctifs, Safari/iOS aligne le texte et la hauteur de facon
+     incoherente. CE BLOC N EST PAS DU BRUIT : les champs existent. */
+  ::-webkit-date-and-time-value {
+    min-height: 1lh;
+    text-align: inherit;
+  }
+  ::-webkit-datetime-edit {
+    display: inline-flex;
+  }
+  ::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+  }
+  ::-webkit-datetime-edit,
+  ::-webkit-datetime-edit-year-field,
+  ::-webkit-datetime-edit-month-field,
+  ::-webkit-datetime-edit-day-field,
+  ::-webkit-datetime-edit-hour-field,
+  ::-webkit-datetime-edit-minute-field,
+  ::-webkit-datetime-edit-second-field,
+  ::-webkit-datetime-edit-millisecond-field,
+  ::-webkit-datetime-edit-meridiem-field {
+    padding-block: 0;
+  }
+  ::-webkit-calendar-picker-indicator {
+    line-height: 1;
+  }
+
+  /* 18. Boutons natifs : `appearance` doit rester sur `button`, sinon iOS
+     Safari refuse d arrondir le `border-radius`. */
+  button,
+  input:where([type='button'], [type='reset'], [type='submit']),
+  ::file-selector-button {
+    appearance: button;
+  }
+  ::-webkit-inner-spin-button,
+  ::-webkit-outer-spin-button {
+    height: auto;
+  }
+
+  /* 19. Firefox : contour de focus natif, et suppression du `box-shadow` que
+     Firefox ajoute sur `:invalid` — il doublerait l anneau de focus. */
+  :-moz-focusring:where(:not(iframe)) {
+    outline: auto;
+  }
+  :-moz-ui-invalid {
+    box-shadow: none;
+  }
+
+  /* 20. Attribut `hidden` : 5 occurrences. Sans `!important`, un
+     `display:flex` du projet gagnerait sur le `hidden` de l attribut et
+     l element resterait visible. */
+  [hidden]:where(:not([hidden='until-found'])) {
+    display: none !important;
+  }
+}
+
 
 /* `color-scheme: only light` déclare à l'agent utilisateur que la page n'a
    QU'UN thème. Sans cette déclaration, un navigateur réglé sur « sombre »

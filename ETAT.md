@@ -120,12 +120,20 @@ Classé par rapport coût/bénéfice, pas par gravité théorique.
 
 ### Décision produit à trancher
 
-- [ ] **Tailwind : adopter ou retirer.** Installé, configuré dans
-      `postcss.config.mjs`, **zéro classe utilisée** — les 15 feuilles
-      définissent des classes sémantiques maison (`admin-card`,
-      `dashboard-panel`, `jobs-grid`). Le coût est réel : une dépendance
-      présente dans le bundle, et une question à laquelle chaque nouveau
-      développeur doit répondre. *Décision.*
+(Tailwind est passé de l'autre côté : c'était un arbitrage technique, pas un
+choix de design.)
+
+- [x] **Tailwind retiré.** Il était installé, configuré dans
+      `postcss.config.mjs`, et **zéro classe utilisée** : les 15 feuilles
+      définissent des classes sémantiques maison. Il n'apportait que son
+      `preflight`, dont l'équivalent est désormais écrit en tête de
+      `app/globals.css` — chaque bloc justifié par un **comptage d'éléments**
+      réellement présents dans les .tsx. `postcss.config.mjs` supprimé, les 2
+      dépendances retirées, lockfile régénéré : **446 → 411 paquets**.
+      *Ce que le retrait n'est PAS : un gain de performance. Le bundle ne
+      déclarait que 38 variables, dont **zéro** variable de theme Tailwind
+      inutilisée — Tailwind v4 n'émet que les variables employées. Le gain est
+      125,1 → 120,5 Ko de CSS, soit 4 %.*
 - [ ] **CSP : nonces.** `script-src` conserve `'unsafe-inline'`, nécessaire
       aujourd'hui aux scripts inline de Next.js. Supprimer ce `'unsafe-inline'`
       impose les nonces et donc un rendu dynamique — c'est un choix technique,
@@ -177,6 +185,9 @@ Mesures brutes, pour que l'état ci-dessus soit contestable :
 | `dependabot.yml` | absent → **ajouté** |
 | Fichiers à fins de ligne mixtes | 8 → 3 (marqués `eol=lf`, normalisés au prochain touchage) |
 | `min-width:44px` | 0 → règle globale via `.tap-target` |
+| Paquets npm (`entreprise`) | 446 → **411** (Tailwind retiré) |
+| CSS compilé | 125,1 → **120,5 Ko** |
+| Dépendances | 3 registres couverts par Dependabot |
 
 Suites exécutées : backend **17 scripts**, web **22 tests**, typecheck web,
 build web — tous verts.
