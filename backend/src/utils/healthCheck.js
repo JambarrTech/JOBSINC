@@ -136,6 +136,10 @@ async function probe() {
     status: 'ok',
     db: 'up',
     redis: redisUp ? 'up' : 'down',
+    // ETAT P2 « Décider Redis » : sans Redis les quotas sont PAR INSTANCE
+    // (N instances = N fois le quota). Explicite ici plutôt qu'une ligne
+    // noyée : l'admin voit le mode, pas seulement une dépendance down.
+    rateLimitMode: redisUp ? 'distributed' : 'per-instance',
     dbLatencyMs: null,
     storage: { status: 'ok', driver: process.env.STORAGE_DRIVER || 'local', latencyMs: null, reason: 'non sondé' },
   };
@@ -199,6 +203,7 @@ async function healthReport() {
       uptime: process.uptime(),
       db: p.db,
       redis: p.redis,
+      rateLimitMode: p.rateLimitMode,
       storage: p.storage.status,
       storageDriver: p.storage.driver,
     },

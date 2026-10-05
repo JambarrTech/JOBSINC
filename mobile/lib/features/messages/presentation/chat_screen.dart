@@ -4,12 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
-
-import '../../../core/services/api_client.dart';
 import '../../../core/services/chat_socket_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_feedback.dart';
+import '../../../core/widgets/authenticated_image.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
@@ -668,20 +666,23 @@ class _InputBar extends StatelessWidget {
   }
 }
 
-class _HeaderAvatar extends StatelessWidget {
+class _HeaderAvatar extends ConsumerWidget {
   const _HeaderAvatar({required this.conversation});
 
   final Conversation conversation;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final token = ref.watch(authProvider).user?.token;
     final hasPhoto = conversation.avatarUrl != null && conversation.avatarUrl!.isNotEmpty;
 
     return CircleAvatar(
       radius: 18,
       backgroundColor: AppColors.navy,
-      backgroundImage:
-          hasPhoto ? CachedNetworkImageProvider(ApiClient.resolveUrl(conversation.avatarUrl!)) : null,
+      backgroundImage: hasPhoto
+          ? authenticatedAvatarProvider(conversation.avatarUrl, token)
+          : null,
+      onBackgroundImageError: hasPhoto ? (_, __) {} : null,
       child: hasPhoto
           ? null
           : Text(

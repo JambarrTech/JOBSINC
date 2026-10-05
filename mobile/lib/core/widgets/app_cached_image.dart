@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/api_client.dart';
 import '../theme/app_colors.dart';
+import '../../features/auth/providers/auth_provider.dart';
 
-class AppCachedImage extends StatelessWidget {
+class AppCachedImage extends ConsumerWidget {
   const AppCachedImage({
     super.key,
     required this.url,
@@ -15,6 +17,7 @@ class AppCachedImage extends StatelessWidget {
     this.placeholder,
     this.errorWidget,
     this.semanticLabel,
+    this.headers,
   });
 
   final String? url;
@@ -25,18 +28,25 @@ class AppCachedImage extends StatelessWidget {
   final Widget Function(BuildContext, String)? placeholder;
   final Widget Function(BuildContext, String, Object)? errorWidget;
   final String? semanticLabel;
+  /// En-têtes explicites (tests). Quand null, le token courant est injecté
+  /// automatiquement si l'URL est un upload protégé.
+  final Map<String, String>? headers;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final resolved = ApiClient.resolveUrl(url);
 
     if (resolved.isEmpty) {
       return _fallback();
     }
 
+    final token = ref.watch(authProvider).user?.token;
+    final httpHeaders = headers ?? ApiClient.imageHeaders(token, url);
+
     final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
     final image = CachedNetworkImage(
       imageUrl: resolved,
+      httpHeaders: httpHeaders.isEmpty ? null : httpHeaders,
       width: width,
       height: height,
       fit: fit,

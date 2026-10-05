@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { getCached, setCache } = require('../utils/cache');
 const { getRedis, isRedisAvailable } = require('../config/redis');
+const { canonicalUploadPath } = require('./storageService');
 const {
   weights,
   levelFor,
@@ -591,7 +592,7 @@ function toRecommendationFromMatch(job, profile, application, match) {
     jobId: job.id,
     jobTitle: job.title,
     candidateName: `${profile.firstName} ${profile.lastName}`.trim(),
-    avatar: profile.avatarUrl || null,
+    avatar: canonicalUploadPath(profile.avatarUrl),
     location: [profile.city, profile.country].filter(Boolean).join(', ') || null,
     skills: candidateSkillTokens(profile.skills).slice(0, 6),
     status: application?.status || null,

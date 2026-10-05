@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:jobsinc_mobile/core/services/api_client.dart';
 import 'package:jobsinc_mobile/core/storage/local_storage.dart';
 import 'package:jobsinc_mobile/core/widgets/pressable_button.dart';
 import 'package:jobsinc_mobile/features/auth/models/auth_user.dart';
@@ -383,6 +384,51 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(_scaleOf(tester), 1.0,
           reason: 'le relâchement doit restaurer l\'échelle');
+    });
+  });
+
+  group('Images protégées (photos de profil)', () {
+    // Sans JWT, `uploadAuth` répond 401 et la photo ne s'affiche jamais :
+    // c'était le bug « photos invisibles sur mobile ».
+    test('les avatars /uploads/candidates exigent un Bearer', () {
+      expect(
+        ApiClient.isProtectedUploadUrl('/uploads/candidates/abc.jpg'),
+        isTrue,
+      );
+      expect(
+        ApiClient.imageHeaders('tok123', '/uploads/candidates/abc.jpg'),
+        {'Authorization': 'Bearer tok123'},
+      );
+    });
+
+    test('les CV /uploads/cvs exigent un Bearer', () {
+      expect(ApiClient.isProtectedUploadUrl('/uploads/cvs/abc.pdf'), isTrue);
+    });
+
+    test('les logos /uploads/companies restent publics (pas de token)', () {
+      expect(
+        ApiClient.isProtectedUploadUrl('/uploads/companies/logo.png'),
+        isFalse,
+      );
+      expect(
+        ApiClient.imageHeaders('tok123', '/uploads/companies/logo.png'),
+        isEmpty,
+      );
+    });
+
+    test('jamais de token vers un hôte tiers', () {
+      expect(
+        ApiClient.imageHeaders(
+            'tok123', 'https://evil.example/x/uploads/candidates/a.jpg'),
+        isEmpty,
+        reason: 'le JWT ne doit fuiter que vers le backend JOBSINC',
+      );
+    });
+
+    test('sans token, aucun en-tête même sur upload protégé', () {
+      expect(ApiClient.imageHeaders(null, '/uploads/candidates/a.jpg'),
+          isEmpty);
+      expect(ApiClient.imageHeaders('', '/uploads/candidates/a.jpg'), isEmpty);
     });
   });
 }

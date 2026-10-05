@@ -590,7 +590,7 @@ exports.candidates = async (req, res) => {
     const paged = distinctRows.map((r) => ({
       id: r.id,
       name: `${r.firstName} ${r.lastName}`.trim(),
-      avatar: r.avatarUrl || null,
+      avatar: canonicalUploadPath(r.avatarUrl),
       skills: r.skills || null,
       country: r.country || null,
       city: r.city || null,

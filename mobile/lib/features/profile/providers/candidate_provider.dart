@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -250,6 +251,17 @@ class CandidateProfileController extends Notifier<CandidateProfile> {
       final newAvatarUrl = response['avatarUrl']?.toString();
       ref.invalidate(candidateProfileProvider);
       if (newAvatarUrl != null) {
+        // L'ancienne photo protégée reste en cache disque/mémoire sous son
+        // URL : on l'évince pour que la nouvelle (nouvel UUID) s'affiche
+        // sans attendre l'expiration, et que l'ancienne ne ressurgisse pas.
+        final oldUrl = ref.read(authProvider).user?.photoUrl;
+        if (oldUrl != null && oldUrl.isNotEmpty && oldUrl != newAvatarUrl) {
+          try {
+            await CachedNetworkImage.evictFromCache(
+              ApiClient.resolveUrl(oldUrl),
+            );
+          } catch (_) {}
+        }
         ref.read(authProvider.notifier).patchUser(
               (user) => user.copyWith(photoUrl: newAvatarUrl),
             );

@@ -6,14 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
-
-import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/app_feedback.dart';
 import '../../../core/widgets/app_skeleton.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../../core/widgets/authenticated_image.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/candidate_provider.dart';
 import '../providers/candidate_stats_provider.dart';
@@ -257,8 +255,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   radius: 36,
                                   backgroundColor: AppColors.background,
                                   backgroundImage: user?.photoUrl != null && user!.photoUrl!.isNotEmpty
-                                      ? CachedNetworkImageProvider(ApiClient.resolveUrl(user.photoUrl!))
+                                      ? authenticatedAvatarProvider(user.photoUrl, user.token)
                                       : null,
+                                  onBackgroundImageError: user?.photoUrl != null && user!.photoUrl!.isNotEmpty ? (_, __) {} : null,
                                   child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
                                       ? Text(initials, style: const TextStyle(fontSize: 20, color: AppColors.primary, fontWeight: FontWeight.w800))
                                       : null,

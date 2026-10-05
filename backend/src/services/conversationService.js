@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { notifyNewMessage, isUserActive } = require('./socketService');
 const pushService = require('./pushService');
+const { canonicalUploadPath } = require('./storageService');
 
 // ============================================================
 // CONVERSATION SERVICE
@@ -111,11 +112,14 @@ function companyNameOf(conversation) {
 }
 
 function avatarOf(conversation) {
-  return (
+  const raw =
     conversation.companyUser?.company?.images?.find((image) => image.isPrimary)?.url ||
     conversation.candidateUser?.candidate?.avatarUrl ||
-    null
-  );
+    null;
+  // Même règle que les autres DTO : chemin relatif `/uploads/...`, jamais
+  // d'URL absolue historique (S3 public) ni de clé nue. Sans cela le mobile
+  // `resolveUrl` renvoyait l'URL telle quelle vers un hôte mort.
+  return canonicalUploadPath(raw);
 }
 
 function serializeMessage(message, viewerUserId) {
@@ -147,6 +151,9 @@ function contextOf(conversation) {
 // Résumé de conversation utilisé par toutes les listes.
 function serializeSummary(conversation, viewerUserId, unreadCount, lastMessage) {
   const side = conversation.companyUserId === viewerUserId ? 'company' : 'candidate';
+  const rawAvatar = side === 'company'
+    ? conversation.candidateUser?.candidate?.avatarUrl || null
+    : conversation.companyUser?.company?.images?.find((image) => image.isPrimary)?.url || null;
   return {
     id: conversation.id,
     conversationId: conversation.id,
@@ -154,9 +161,7 @@ function serializeSummary(conversation, viewerUserId, unreadCount, lastMessage) 
       side === 'company' ? participantNameOf(conversation) : companyNameOf(conversation),
     candidateId: conversation.candidateUser?.candidate?.id || null,
     candidateUserId: conversation.candidateUserId,
-    avatar: side === 'company'
-      ? conversation.candidateUser?.candidate?.avatarUrl || null
-      : conversation.companyUser?.company?.images?.find((image) => image.isPrimary)?.url || null,
+    avatar: canonicalUploadPath(rawAvatar),
     subject: conversation.subject || null,
     ...contextOf(conversation),
     preview: lastMessage?.content?.substring(0, 120) || '',

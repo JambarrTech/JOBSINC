@@ -58,6 +58,45 @@ class ApiClient {
   static String get baseUrl => _baseUrl;
   static String get serverBaseUrl => _serverBase;
 
+  /// Vrai si l'URL désigne un fichier protégé par `uploadAuth`
+  /// (`/uploads/cvs/**` ou `/uploads/candidates/**`).
+  /// Ces chemins exigent un JWT `Authorization: Bearer`, y compris en GET
+  /// image : sans en-tête, `CachedNetworkImage` recevait 401 et retombait
+  /// sur les initiales — d'où des photos de profil jamais affichées.
+  static bool isProtectedUploadUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    String path;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      try {
+        path = Uri.parse(url).path;
+      } catch (_) {
+        return false;
+      }
+      // Hors backend JOBSINC : ne jamais fuiter le token vers un tiers.
+      try {
+        final host = Uri.parse(url).host;
+        final baseHost = Uri.parse(_serverBase).host;
+        if (host.isNotEmpty && baseHost.isNotEmpty && host != baseHost) {
+          return false;
+        }
+      } catch (_) {}
+    } else {
+      path = url;
+    }
+    return path.startsWith('/uploads/cvs/') ||
+        path.startsWith('/uploads/candidates/');
+  }
+
+  /// En-têtes à joindre au chargement d'une image.
+  /// Retourne `Authorization: Bearer` uniquement pour les uploads protégés
+  /// hébergés par le backend ; vide sinon (logos `/uploads/companies/**`
+  /// publics, URLs tierces).
+  static Map<String, String> imageHeaders(String? token, String? url) {
+    if (token == null || token.isEmpty) return const {};
+    if (!isProtectedUploadUrl(url)) return const {};
+    return {'Authorization': 'Bearer $token'};
+  }
+
   static String resolveUrl(String? url) {
     if (url == null || url.isEmpty) return '';
     if (url.startsWith('http://') || url.startsWith('https://')) {

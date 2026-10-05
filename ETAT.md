@@ -7,7 +7,7 @@ Deux documents d'état contradictoires apprennent au prochain lecteur à se
 méfier de l'un des deux. Les deux anciens sont conservés comme archive, mais
 ne sont plus suivis.
 
-Dernière mise à jour : **2026-09-27**.
+Dernière mise à jour : **2026-10-05**.
 
 ---
 
@@ -51,6 +51,60 @@ remplacera**.
 ---
 
 ## P1 — Corrigé et vérifié lors de cet audit
+
+### Session du 2026-10-05 : photos de profil mobile + suite P2
+
+- [x] **Photos de profil invisibles sur mobile (signalé).** Cause : deux
+      couches. (1) `/uploads/candidates/**` et `/uploads/cvs/**` exigent un
+      JWT (`uploadAuth`), mais `CachedNetworkImage` / `CachedNetworkImageProvider`
+      n'envoyaient aucun en-tête → 401 systématique → fallback initiales. Les
+      logos `/uploads/companies/**` (publics) marchaient, d'où le contraste.
+      (2) Les avatars de conversation/matching sortaient en valeur brute DB
+      (URL S3 publique historique possible) au lieu du chemin canonique.
+      Correctif : `ApiClient.isProtectedUploadUrl` + `ApiClient.imageHeaders`
+      (`mobile/lib/core/services/api_client.dart:61`), `AppCachedImage` passé en
+      `ConsumerWidget` avec injection auto du Bearer
+      (`mobile/lib/core/widgets/app_cached_image.dart:9`), nouveau
+      `authenticatedAvatarProvider` / `AuthCircleAvatar`
+      (`mobile/lib/core/widgets/authenticated_image.dart:1`), branché sur
+      `profile_screen`, `messages_screen`, `chat_screen` ; JWT jamais envoyé
+      hors backend (hôte tiers exclu). Éviction du cache à l'upload d'avatar
+      (`candidate_provider.dart:250`). Backend : `canonicalUploadPath` appliqué
+      aux avatars de `conversationService` (`avatarOf`, `serializeSummary`),
+      `matchingService.toRecommendationFromMatch` et `companyController`
+      (candidats). Vérifié : `flutter test` 26/26 (5 nouveaux tests
+      `Images protégées`), backend 17/17, `flutter analyze` sans nouvelle
+      alerte.
+- [x] **`aria-describedby` formulaires login/inscription.**
+      `ConfirmDialog` l'avait déjà (`aria-labelledby` + `aria-describedby`,
+      `ConfirmDialog.tsx:78`). Restait : `AuthForm` et `RegistrationForm`
+      (champs sans lien vers le `role="alert"`). Ajout `useId` + `aria-invalid`
+      + `aria-describedby` sur tous les champs et `id` sur l'erreur, sans
+      changer le flux (client fetch vers le BFF `/api/auth/cookie`, cf. guide
+      Next `forms.md` + `backend-for-frontend.md` lus avant édition).
+      Reste : alternative clavier au drag & drop pipeline, focus à la
+      fermeture des panneaux.
+- [x] **Redis rendu explicite (sans décider).** `/health` expose désormais
+      `rateLimitMode: distributed|per-instance`
+      (`backend/src/utils/healthCheck.js:138`) et l'encart admin `system`
+      affiche une ligne « Quotas de requêtes » dédiée au lieu d'une mention
+      noyée. La décision d'activer `REDIS_URL` + `REQUIRE_REDIS=true` reste
+      humaine.
+- [x] **`adminController` découpé (711 → façade).** `users.js`, `companies.js`,
+      `content.js`, `insights.js`, `system.js` + `_shared.js`
+      (`backend/src/controllers/admin/`), `adminController.js` réduit à la
+      ré-exportation (routes inchangées). Équivalence vérifiée : mêmes clés
+      d'export, corps identiques à la normalisation près (seul `system` porte
+      l'ajout `rateLimitMode`), `companyControllerExports` + `appGraph` verts,
+      discipline `logger` respectée (import direct par module).
+- [x] **Zod inscription : statu quo documenté, pas de branchement.**
+      `zodSchemas.js:1` démontre que les schémas supprimés divergeaient
+      (`companyName` vs `name`, optionnels vs `validateRequired`) : les
+      rebrancher affaiblirait la validation. Décision : frontière unique
+      `authService.js`, à rouvrir seulement avec des schémas alignés.
+- [x] **`multipartParser` → `multer` : non fait, assumé.** Durci + magic bytes,
+      classé outillage par l'audit précédent. Remplacement = risque sans gain
+      de sécurité ; à planifier comme chantier, pas comme correction.
 
 - [x] **Journalisation normalisée.** 124 `console.*` convertis vers
       `utils/logger` dans 23 fichiers ; il en reste **0** (hors `logger.js`
@@ -98,23 +152,18 @@ Classé par rapport coût/bénéfice, pas par gravité théorique.
 
 ### Faible coût, gain réel
 
-- [ ] **`aria-describedby` / `aria-labelledby` sur les dialogues et les erreurs
-      de formulaire.** Mesure : 62 `aria-label` mais **2** `aria-describedby`.
-      Il y a des étiquettes et presque aucune relation programmatique. Un
-      lecteur d'écran énonce le titre d'un dialogue sans le rattacher à son
-      corps, et les champs ne sont pas associés à leur message d'erreur.
-      *Estimation : quelques heures sur `ConfirmDialog`, les formulaires de
-      login/inscription et les états d'erreur du dashboard.*
-- [ ] **Décider Redis.** `/health` renvoie `redis: down` en production : le
-      service dégrade proprement, mais les quotas de rate-limiting sont **par
-      instance**. Sur N instances, un attaquant dispose de N fois le quota, et
-      rien ne le signale au-delà d'une ligne dans un tableau de santé. Il faut
-      soit activer `REDIS_URL` + `REQUIRE_REDIS=true`, soit assumer par écrit
-      que les quotas sont par instance. *Décision, pas développement.*
-- [ ] **Réduire `adminController`.** 711 lignes, 21 appels de journalisation.
-      Le fichier concentre à lui seul un tiers de la surface du contrôleur.
-      *Estimation : une demi-journée de découpage par domaine (users, companies,
-      jobs, applications, moderation, system).*
+- [x] **`aria-describedby` / `aria-labelledby` : dialogues et formulaires
+      d'authentification.** `ConfirmDialog` déjà conforme ; `AuthForm` et
+      `RegistrationForm` (12 champs + selects + textarea) associés à leur
+      `role="alert"` le 2026-10-05. Reste : alternative clavier au drag & drop
+      du pipeline, focus à la fermeture des panneaux.
+- [x] **Redis rendu explicite.** `/health` expose `rateLimitMode` et l'encart
+      admin affiche la ligne « Quotas de requêtes » (2026-10-05). Reste la
+      DÉCISION humaine : activer `REDIS_URL` + `REQUIRE_REDIS=true` ou assumer
+      par écrit les quotas par instance.
+- [x] **`adminController` découpé.** Façade + 5 modules par domaine
+      (`backend/src/controllers/admin/`, 2026-10-05), équivalence corps à corps
+      vérifiée, suites vertes.
 - [ ] **Compléter le `TODO` d'accessibilité** : drag & drop du pipeline sans
       alternative clavier, gestion du focus à la fermeture des panneaux.
 
@@ -178,7 +227,11 @@ Mesures brutes, pour que l'état ci-dessus soit contestable :
 | Mesure | Valeur |
 |---|---|
 | `console.*` dans `backend/src` | 124 → **0** |
-| Fichiers de test | backend 18, web 3, mobile 1 |
+| Fichiers de test | backend 18, web 3, mobile 1 (mobile : 21 → **26 tests**) |
+| `adminController` | 711 l. monolithe → **façade + 5 modules** (`admin/`) |
+| Avatars mobile | 401 sans JWT → **Bearer auto** (protégés), public/tiers inchangés |
+| Avatars backend | bruts DB (conversations, matching, candidats) → **`canonicalUploadPath`** |
+| `/health` | `redis: down` seul → **`rateLimitMode`** + ligne admin dédiée |
 | Lignes de code | backend 14 105, entreprise 7 150, mobile 16 688 |
 | Secrets dans l'arbre de travail | **0** (Neon, Google, JWT, clé privée, AWS) |
 | `.gitattributes` / `.editorconfig` | absents → **ajoutés** |
@@ -191,6 +244,10 @@ Mesures brutes, pour que l'état ci-dessus soit contestable :
 
 Suites exécutées : backend **17 scripts**, web **22 tests**, typecheck web,
 build web — tous verts.
+
+Session 2026-10-05 : backend **17/17 (EXIT:0)**, web **22/22** + typecheck +
+build (52+ pages), mobile **26/26** (`flutter test`), `flutter analyze`
+sans nouvelle alerte (5 infos + 1 warning préexistants).
 
 ## Angle non mesuré
 
