@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useRef, useState } from 'react';
 import Image from 'next/image';
@@ -10,8 +10,8 @@ type NotificationItem = { id?: string | number; label?: string; read?: boolean }
 
 export default function DashboardHeader({ title, onMenu, user, notifications, onNotificationsChange }: { title: string; onMenu: () => void; user?: { name?: string; avatar?: string | null }; notifications?: NotificationItem[]; onNotificationsChange?: () => void }) {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false);
-  // Le popover de notifications s'ouvrait au clic sans possibilite de le
-  // refermer au clavier : ni Echap, ni restitution du focus.
+  // Le popover de notifications s'ouvrait au clic sans possibilité de le
+  // refermer au clavier : ni Échap, ni restitution du focus.
   const popoverRef = useRef<HTMLDivElement>(null);
   useEscapeToClose(popoverRef, () => setOpen(false), open);
   const unread = notifications?.filter((item) => !item.read).length || 0;

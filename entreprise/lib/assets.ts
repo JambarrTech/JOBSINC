@@ -65,11 +65,11 @@ function rebaseUploadPath(value: string): string | null {
 export const assetUrl = (value?: string | null) => {
   if (!value) return null;
   // Le rejet de `..` porte sur TOUTE valeur, pas seulement sur la forme
-  // relative. Il n'etait teste qu'en fin de branche relative : une URL absolue
-  // de confiance contenant `/uploads/../secret` passait donc le controle et
-  // etait normalisee par `new URL()` en `/secret`. Meme origine, donc pas une
-  // exfiltration — mais une divergence de comportement selon la forme stockee,
-  // et `cvHref` testait deja `..` en tete. On aligne les deux.
+  // relative. Il n'était testé qu'en fin de branche relative : une URL absolue
+  // de confiance contenant `/uploads/../secret` passait donc le contrôle et
+  // était normalisée par `new URL()` en `/secret`. Même origine, donc pas une
+  // exfiltration — mais une divergence de comportement selon la forme stockée,
+  // et `cvHref` testait déjà `..` en tête. On aligne les deux.
   if (value.includes('..')) return null;
   if (/^https?:\/\//i.test(value)) {
     if (isTrustedAssetOrigin(value)) return value;

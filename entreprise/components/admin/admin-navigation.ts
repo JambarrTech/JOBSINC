@@ -1,4 +1,4 @@
-﻿// Pas de champ `permission` ici.
+// Pas de champ `permission` ici.
 //
 // Il en existait un (`manage_admins` sur « Administrateurs ») mais
 // `AdminSidebar` ne l'a jamais consulté : le lien s'affichait donc pour tous

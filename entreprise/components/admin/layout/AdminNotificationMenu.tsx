@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/api';
@@ -11,8 +11,8 @@ export default function AdminNotificationMenu() {
   const [items, setItems] = useState<AdminNotification[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  // Meme correction que les autres menus : fermeture au clavier et restitution
-  // du focus au declencheur.
+  // Même correction que les autres menus : fermeture au clavier et restitution
+  // du focus au déclencheur.
   const menuRef = useRef<HTMLDivElement>(null);
   useEscapeToClose(menuRef, () => setOpen(false), open);
   useEffect(() => {
