@@ -682,7 +682,8 @@ class _HeaderAvatar extends ConsumerWidget {
       backgroundImage: hasPhoto
           ? authenticatedAvatarProvider(conversation.avatarUrl, token)
           : null,
-      onBackgroundImageError: hasPhoto ? (_, __) {} : null,
+      onBackgroundImageError:
+          hasPhoto ? (err, _) => debugLogImageFailure(conversation.avatarUrl, err) : null,
       child: hasPhoto
           ? null
           : Text(

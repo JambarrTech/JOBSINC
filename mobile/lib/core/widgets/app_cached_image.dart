@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/api_client.dart';
 import '../theme/app_colors.dart';
+import 'authenticated_image.dart';
 import '../../features/auth/providers/auth_provider.dart';
 
 class AppCachedImage extends ConsumerWidget {
@@ -51,7 +52,11 @@ class AppCachedImage extends ConsumerWidget {
       height: height,
       fit: fit,
       placeholder: placeholder ?? (_, __) => _loading(),
-      errorWidget: errorWidget ?? (_, __, ___) => _fallback(),
+      errorWidget: errorWidget ??
+          (_, failedUrl, err) {
+            debugLogImageFailure(url, err);
+            return _fallback();
+          },
       memCacheWidth: width != null ? (width! * dpr).toInt() : null,
       memCacheHeight: height != null ? (height! * dpr).toInt() : null,
       imageBuilder: semanticLabel != null ? (context, imageProvider) => Semantics(label: semanticLabel, image: true, child: Image(image: imageProvider, width: width, height: height, fit: fit)) : null,

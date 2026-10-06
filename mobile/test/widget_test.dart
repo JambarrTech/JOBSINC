@@ -431,6 +431,44 @@ void main() {
       expect(ApiClient.imageHeaders('', '/uploads/candidates/a.jpg'), isEmpty);
     });
   });
+
+  group('Résolution des URL images (resolveUrl)', () {
+    test('un chemin relatif est complété par le backend actif', () {
+      expect(
+        ApiClient.resolveUrl('/uploads/candidates/a.jpg'),
+        '${ApiClient.serverBaseUrl}/uploads/candidates/a.jpg',
+      );
+    });
+
+    test('un absolu http sur l’hôte backend est remonté en https', () {
+      // Cas Android-only : le cleartext est bloqué par l'OS alors que le
+      // web suit la redirection http→https — « visible sur web, pas sur
+      // Android » pour une même valeur en base.
+      final rebased = ApiClient.resolveUrl(
+        'http://${Uri.parse(ApiClient.serverBaseUrl).host}/uploads/candidates/a.jpg',
+      );
+      expect(rebased.startsWith('https://'), isTrue,
+          reason: 'le cleartext ne doit jamais partir vers le backend');
+      expect(rebased.endsWith('/uploads/candidates/a.jpg'), isTrue);
+    });
+
+    test('un absolu https sur l’hôte backend est conservé tel quel', () {
+      final raw =
+          '${ApiClient.serverBaseUrl}/uploads/candidates/a.jpg';
+      // Idempotent : même hôte, même chemin (normalisé sans query parasite).
+      expect(ApiClient.resolveUrl(raw), raw);
+    });
+
+    test('une URL tierce n’est jamais réécrite', () {
+      const third = 'https://cdn.example.com/u/a.jpg';
+      expect(ApiClient.resolveUrl(third), third);
+    });
+
+    test('null et vide rendent une chaîne vide (fallback avatar)', () {
+      expect(ApiClient.resolveUrl(null), isEmpty);
+      expect(ApiClient.resolveUrl(''), isEmpty);
+    });
+  });
 }
 
 /// Compte les nœuds de sémantique, descendants de [node], exposés comme

@@ -257,7 +257,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   backgroundImage: user?.photoUrl != null && user!.photoUrl!.isNotEmpty
                                       ? authenticatedAvatarProvider(user.photoUrl, user.token)
                                       : null,
-                                  onBackgroundImageError: user?.photoUrl != null && user!.photoUrl!.isNotEmpty ? (_, __) {} : null,
+                                  onBackgroundImageError: user?.photoUrl != null && user!.photoUrl!.isNotEmpty
+                                      ? (err, _) => debugLogImageFailure(user.photoUrl, err)
+                                      : null,
                                   child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
                                       ? Text(initials, style: const TextStyle(fontSize: 20, color: AppColors.primary, fontWeight: FontWeight.w800))
                                       : null,

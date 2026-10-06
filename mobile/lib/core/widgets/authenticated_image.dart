@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,6 +26,17 @@ ImageProvider? authenticatedAvatarProvider(String? url, String? token) {
   // `headers` vide : constructeur sans en-tête (comportement inchangé).
   if (headers.isEmpty) return CachedNetworkImageProvider(resolved);
   return CachedNetworkImageProvider(resolved, headers: headers);
+}
+
+/// Diagnostic d'échec image, `debug` uniquement (silencieux en release).
+/// Permet de trancher 401 (auth) vs 404 (fichier effacé) vs réseau avec
+/// `flutter run` : l'erreur porte le statut HTTP.
+void debugLogImageFailure(String? rawUrl, Object error) {
+  if (!kDebugMode) return;
+  debugPrint(
+    '[JOBSINC:image] ECHEC raw=$rawUrl '
+    'resolved=${ApiClient.resolveUrl(rawUrl)} error=$error',
+  );
 }
 
 /// Avatar circulaire qui charge la photo protégée avec le token courant.

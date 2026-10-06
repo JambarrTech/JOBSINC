@@ -100,15 +100,25 @@ class ApiClient {
   static String resolveUrl(String? url) {
     if (url == null || url.isEmpty) return '';
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      // Anciennes données avec localhost/10.0.2.2/127.0.0.1 → réécrit vers backend prod actif
-      if (url.contains('localhost') || url.contains('127.0.0.1') || url.contains('10.0.2.2')) {
-        try {
-          final uri = Uri.parse(url);
+      // Anciennes données en absolu (localhost de dev, ou hôte prod en
+      // `http://`) : on rebase sur le backend actif. Le `http://` est le cas
+      // Android-only — le cleartext est bloqué par l'OS alors que le web
+      // suit la redirection http→https — d'où « visible sur web, pas sur
+      // Android » pour une même URL en base.
+      try {
+        final uri = Uri.parse(url);
+        final baseHost = Uri.parse(_serverBase).host;
+        final isOwnHost = uri.host.isNotEmpty &&
+            (uri.host == baseHost ||
+                uri.host == 'localhost' ||
+                uri.host == '127.0.0.1' ||
+                uri.host == '10.0.2.2');
+        if (isOwnHost) {
           final path = uri.path + (uri.query.isNotEmpty ? '?${uri.query}' : '');
           return '$_serverBase$path';
-        } catch (_) {
-          return url;
         }
+      } catch (_) {
+        return url;
       }
       return url;
     }
