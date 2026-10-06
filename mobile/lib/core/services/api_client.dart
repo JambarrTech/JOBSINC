@@ -46,7 +46,7 @@ class ApiClient {
   TokenRefreshCallback? get _refresher =>
       onTokenRefresh ?? onTokenRefreshGlobal;
 
-  // URL du backend centralisée dans AppConfig (dart-define API_URL sinon défaut local).
+  // URL du backend centralisée dans AppConfig (dart-define API_URL, sinon prod Render).
   static const _baseUrl = AppConfig.apiBaseUrl;
   static final _serverBase = _baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
   final http.Client _client;
