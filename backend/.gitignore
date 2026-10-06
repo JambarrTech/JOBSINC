@@ -21,6 +21,10 @@ backups/
 # supprimer du working tree ne l'efface d'aucun commit précédent.
 *.sql
 scripts/*.sql
+# EXCEPTION : les migrations Prisma ne contiennent que du DDL (CREATE TABLE,
+# INDEX, FK) — jamais de données personnelles. Sans elles, `migrate deploy`
+# sur Render ne voit aucune migration et ne crée aucune table.
+!prisma/migrations/**/*.sql
 
 # Vercel
 .vercel

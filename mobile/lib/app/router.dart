@@ -18,6 +18,7 @@ import '../features/jobs/presentation/job_detail_screen.dart';
 import '../features/jobs/presentation/offers_screen.dart';
 import '../features/jobs/presentation/saved_jobs_screen.dart';
 import '../features/messages/models/conversation.dart';
+import '../features/network/presentation/network_feed_screen.dart';
 import '../features/messages/presentation/chat_screen.dart';
 import '../features/messages/presentation/conversation_resolver.dart';
 import '../features/messages/presentation/messages_screen.dart';
@@ -52,8 +53,10 @@ void navigationShellGo(BuildContext context, int index) {
     case 1:
       context.go('/candidate/applications');
     case 2:
-      context.go('/candidate/messages');
+      context.go('/candidate/network');
     case 3:
+      context.go('/candidate/messages');
+    case 4:
       context.go('/candidate/profile');
   }
 }
@@ -271,7 +274,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/candidate/home',
                 builder: (context, __) => CandidateHomeScreen(
                   // L'accueil navigue vers l'onglet Profil via l'URL.
-                  onOpenProfile: () => navigationShellGo(context, 3),
+                  onOpenProfile: () => navigationShellGo(context, 4),
                 ),
               ),
             ],
@@ -281,6 +284,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/candidate/applications',
                 builder: (_, __) => const ApplicationsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/candidate/network',
+                builder: (_, __) => const NetworkFeedScreen(),
               ),
             ],
           ),

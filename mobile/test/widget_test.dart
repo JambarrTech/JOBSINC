@@ -14,6 +14,7 @@ import 'package:jobsinc_mobile/features/auth/services/auth_session_service.dart'
 import 'package:jobsinc_mobile/features/jobs/models/job_offer.dart';
 import 'package:jobsinc_mobile/features/jobs/widgets/date_helpers.dart';
 import 'package:jobsinc_mobile/features/messages/models/conversation.dart';
+import 'package:jobsinc_mobile/features/network/models/network_models.dart';
 
 void main() {
   // Aucun test de ce fichier n'est tautologique. Les deux qui l'étaient ont été
@@ -467,6 +468,43 @@ void main() {
     test('null et vide rendent une chaîne vide (fallback avatar)', () {
       expect(ApiClient.resolveUrl(null), isEmpty);
       expect(ApiClient.resolveUrl(''), isEmpty);
+    });
+  });
+
+  group('Réseau candidats (posts)', () {
+    Map<String, dynamic> postJson(String id, {bool liked = false}) => {
+          'id': id,
+          'content': 'Hello réseau',
+          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+          'author': {'id': 'u1', 'name': 'Awa Diallo', 'city': 'Dakar'},
+          'likesCount': liked ? 1 : 0,
+          'commentsCount': 0,
+          'likedByMe': liked,
+        };
+
+    test('deux posts de même id sont la même clé', () {
+      final a = NetworkPost.fromJson(postJson('p1'));
+      final b = NetworkPost.fromJson(postJson('p1', liked: true));
+      expect(b, equals(a));
+      expect(b.hashCode, equals(a.hashCode));
+    });
+
+    test('le parsing expose auteur, compteurs et likedByMe', () {
+      final p = NetworkPost.fromJson(postJson('p1', liked: true));
+      expect(p.author.name, 'Awa Diallo');
+      expect(p.likedByMe, isTrue);
+      expect(p.copyWith(likedByMe: false).likedByMe, isFalse);
+    });
+
+    test('un auteur sans nom retombe sur Candidat', () {
+      final p = NetworkPost.fromJson({
+        'id': 'p2',
+        'content': 'x',
+        'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'author': {'id': 'u9', 'name': '  '},
+      });
+      expect(p.author.name, 'Candidat');
+      expect(p.author.initials, isNotEmpty);
     });
   });
 }

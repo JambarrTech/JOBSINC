@@ -49,6 +49,11 @@ model User {
   passwordResets         PasswordReset[]
   savedJobs              SavedJob[]
   refreshTokens          RefreshToken[]
+  networkPosts           NetworkPost[]
+  networkComments        NetworkComment[]
+  networkLikes           NetworkLike[]
+  following              NetworkFollow[]      @relation("Following")
+  followers              NetworkFollow[]      @relation("Followers")
 
   // Index GIN trigram (pg_trgm) : les recherches utilisent `contains`
   // + `mode: 'insensitive'` → ILIKE '%…%', inutilisable avec un B-tree.
@@ -390,6 +395,63 @@ model PasswordReset {
 
   @@index([token])
   @@index([userId])
+}
+
+// ── Réseau candidats (feed social) ──
+// Interconnexion candidats : posts, likes, commentaires, follows.
+// La messagerie candidat↔candidat réutilise /conversations existant
+// (phase 2) ; ce bloc couvre le socle sans toucher à Conversation
+// (contrainte @@unique company/candidate + lien Application).
+model NetworkPost {
+  id        String           @id @default(uuid())
+  authorId  String
+  content   String
+  imageUrl  String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  author    User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  NetworkComment[]
+  likes     NetworkLike[]
+
+  @@index([authorId, createdAt])
+  @@index([createdAt])
+}
+
+model NetworkComment {
+  id        String      @id @default(uuid())
+  postId    String
+  authorId  String
+  content   String
+  createdAt DateTime    @default(now())
+  post      NetworkPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+model NetworkLike {
+  id        String      @id @default(uuid())
+  postId    String
+  userId    String
+  createdAt DateTime    @default(now())
+  post      NetworkPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+}
+
+model NetworkFollow {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
 }
 
 model RefreshToken {

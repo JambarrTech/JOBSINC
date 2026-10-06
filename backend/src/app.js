@@ -34,6 +34,7 @@ const faqRoutes = require('./routes/faqRoutes');
 const feedbackRoutes = require('./routes/feedbackRoutes');
 const savedJobRoutes = require('./routes/savedJobRoutes');
 const skillRoutes = require('./routes/skillRoutes');
+const networkRoutes = require('./routes/networkRoutes');
 
 const app = express();
 
@@ -221,6 +222,7 @@ app.use('/api/candidate', candidateLimiter, candidateRoutes);
 app.use('/api/applications', candidateLimiter, applicationRoutes);
 app.use('/api/saved-jobs', candidateLimiter, savedJobRoutes);
 app.use('/api/devices', candidateLimiter, deviceRoutes);
+app.use('/api/network', candidateLimiter, networkRoutes);
 // Messagerie / entretiens — 60/min/user (anti-spam)
 app.use('/api/interviews', messageLimiter, interviewRoutes);
 app.use('/api/conversations', messageLimiter, conversationRoutes);
