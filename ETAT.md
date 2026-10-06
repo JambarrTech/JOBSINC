@@ -7,7 +7,35 @@ Deux documents d'état contradictoires apprennent au prochain lecteur à se
 méfier de l'un des deux. Les deux anciens sont conservés comme archive, mais
 ne sont plus suivis.
 
-Dernière mise à jour : **2026-10-05**.
+Dernière mise à jour : **2026-10-06**.
+
+---
+
+## Session du 2026-10-06 : réseau social candidats (pushé en prod)
+
+- [x] **Backend `/api/network`** : `NetworkPost`, `NetworkLike`
+      (`@@unique([postId,userId])`), `NetworkComment`, `NetworkFollow`
+      (`@@unique([followerId,followingId])`) + migration
+      `20261006142650_network` (appliquée prod). Service pur testé,
+      contrôleur + routes montées sous `candidateLimiter`
+      (`backend/src/app.js`). Publication réservée CANDIDATE/EMPLOYEE/ADMIN,
+      lecture tout authentifié, notif `Notification` sur like/comment/follow.
+- [x] **Mobile onglet Réseau** : `features/network/` (modèles, repository sur
+      `ApiClient` partagé, providers Riverpod), `NetworkFeedScreen` (composer,
+      fil + likes, bottom-sheet commentaires, annuaire + Suivre/Suivi).
+      `AppShell` + `router.dart` passés à 5 onglets
+      (Accueil/Candidatures/**Réseau**/Messages/Profil).
+- [x] **`.gitignore` backend corrigé** : `*.sql` ignorait aussi les
+      `prisma/migrations/*/migration.sql` (jamais suivies en Git) → `migrate
+      deploy` Render ne voyait aucune migration. Ajout
+      `!prisma/migrations/**/*.sql` (DDL uniquement, dumps toujours ignorés).
+- [x] **Déployé** : commit `4080327` pushé sur `main`, Render a redéployé
+      (uptime retombé, `/api/network/feed` sans token → 401 attendu).
+      Vérifié : backend 18 scripts verts, mobile 34/34 + `flutter analyze`
+      clean, `/health` + `/api/auth/login` prod OK.
+- [ ] **Reste côté humain** : le login prod « Identifiants invalides » est un
+      problème de compte (absent de la base prod ou mauvais mot de passe),
+      pas de code — à trancher avec l'email testé.
 
 ---
 
