@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
-const { ValidationError } = require('../utils/errors');
+const { AppError, ValidationError } = require('../utils/errors');
 const { validateFiles, generateFilename } = require('../utils/uploadValidation');
 
 const DEFAULT_MAX_SIZE = 15 * 1024 * 1024;
@@ -104,6 +104,23 @@ function getEffectiveDir(uploadDir) {
 }
 
 async function saveFile(file, uploadDir) {
+  try {
+    return await saveFileInner(file, uploadDir);
+  } catch (error) {
+    // S3 injoignable (credentials, bucket, région) ou disque local en
+    // erreur : l'échec brut remontait en 500 « Erreur serveur interne. »
+    // via le handler global, sans rien dire à l'utilisateur. Une 503
+    // explicite désigne la vraie panne (cf. /health `storage: down`).
+    if (error instanceof AppError) throw error;
+    throw new AppError(
+      'Stockage des fichiers indisponible. Réessayez plus tard.',
+      503,
+      'STORAGE_UNAVAILABLE',
+    );
+  }
+}
+
+async function saveFileInner(file, uploadDir) {
   // Si S3 activé, on upload direct vers S3 et on retourne le chemin applicatif
   if ((process.env.STORAGE_DRIVER || 'local') === 's3') {
     const { saveS3 } = require('../services/storageService');
@@ -239,4 +256,6 @@ async function handleCompanyUpload(req, res, next) {
 module.exports = { 
   createUploadMiddleware, 
   handleCompanyUpload,
+  // Exposé pour les tests : simuler une panne de stockage.
+  saveFile,
 };
