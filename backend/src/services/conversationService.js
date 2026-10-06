@@ -114,6 +114,7 @@ function companyNameOf(conversation) {
 function avatarOf(conversation) {
   const raw =
     conversation.companyUser?.company?.images?.find((image) => image.isPrimary)?.url ||
+    conversation.companyUser?.company?.logo ||
     conversation.candidateUser?.candidate?.avatarUrl ||
     null;
   // Même règle que les autres DTO : chemin relatif `/uploads/...`, jamais
@@ -153,7 +154,8 @@ function serializeSummary(conversation, viewerUserId, unreadCount, lastMessage) 
   const side = conversation.companyUserId === viewerUserId ? 'company' : 'candidate';
   const rawAvatar = side === 'company'
     ? conversation.candidateUser?.candidate?.avatarUrl || null
-    : conversation.companyUser?.company?.images?.find((image) => image.isPrimary)?.url || null;
+    : conversation.companyUser?.company?.images?.find((image) => image.isPrimary)?.url ||
+      conversation.companyUser?.company?.logo || null;
   return {
     id: conversation.id,
     conversationId: conversation.id,

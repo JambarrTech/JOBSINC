@@ -16,12 +16,21 @@ const logger = require('../utils/logger');
 // secrètes (`companyController.applicationDto` renvoie `cvUrl` aux recruteurs).
 //
 // Modèle retenu :
-//   - propriétaire du fichier        → autorisé
-//   - ADMIN                          → autorisé (modération, support)
-//   - RECRUITER                       → autorisé UNIQUEMENT s'il existe une
+//   - CV (`/uploads/cvs/**`, PII sensible) :
+//     - propriétaire du fichier        → autorisé
+//     - ADMIN                          → autorisé (modération, support)
+//     - RECRUITER                       → autorisé UNIQUEMENT s'il existe une
 //                                       candidature liant ce candidat à une
 //                                       offre de SA société (sinon : 403)
-//   - CANDIDATE / EMPLOYEE tiers      → refusé (403)
+//     - CANDIDATE / EMPLOYEE tiers      → refusé (403)
+//   - Avatar (`/uploads/candidates/**`, photo de profil) :
+//     - tout utilisateur authentifié   → autorisé (affichage réseau,
+//                                       messages, listes). Le fichier doit
+//                                       rester référencé en base
+//                                       (`FICHIER_INCONNU` sinon), mais aucun
+//                                       lien de candidature n'est exigé.
+//                                       Sans cela aucune photo de profil ne
+//                                       s'affichait hors « Mon profil ».
 //
 // Le rôle vient du JWT (vérifié + `tokenVersion` relu en base), mais la
 // RELATION est toujours vérifiée en base : un jeton valide ne suffit pas.
@@ -88,10 +97,24 @@ async function authorizeStoredFile(user, storedPath) {
   }
 
   const field = isCv ? 'cvUrl' : 'avatarUrl';
-  const profile = await prisma.candidateProfile.findFirst({
+  let profile = await prisma.candidateProfile.findFirst({
     where: { [field]: storedPath },
     select: { id: true, userId: true },
   });
+
+  // Données historiques : certaines lignes stockent encore l'URL absolue
+  // d'époque (`http://localhost:5000/uploads/...`, ancien domaine) alors que
+  // la requête arrive en chemin canonique. Repli par nom de fichier,
+  // avatars uniquement (les CV restent en comparaison exacte).
+  if (!profile && isMedia) {
+    const filename = storedPath.split('/').pop();
+    if (filename) {
+      profile = await prisma.candidateProfile.findFirst({
+        where: { [field]: { endsWith: `/${filename}` } },
+        select: { id: true, userId: true },
+      });
+    }
+  }
 
   // Fichier référencé par une candidature mais absent du profil (cas
   // historique : un CV déposé directement sur une candidature).
@@ -107,6 +130,14 @@ async function authorizeStoredFile(user, storedPath) {
     return { allowed: false, reason: 'FICHIER_INCONNU' };
   }
 
+  // Avatar : tout utilisateur authentifié (le middleware a déjà vérifié le
+  // JWT + tokenVersion). Le fichier reste inconnu s'il n'est référencé
+  // nulle part, mais aucun lien de candidature n'est exigé.
+  if (isMedia) {
+    return { allowed: true, reason: profile && profile.userId === user.userId ? 'PROPRIETAIRE' : 'AVATAR_AUTHENTIFIE' };
+  }
+
+  // Ci-dessous : CV uniquement — modèle strict inchangé.
   // Propriétaire du fichier.
   if (profile && profile.userId === user.userId) {
     return { allowed: true, reason: 'PROPRIETAIRE' };

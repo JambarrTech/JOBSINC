@@ -32,7 +32,8 @@ String _homeRouteFor(AccountStatus status) {
     case AccountStatus.recruiter:
       return '/recruiter/dashboard';
     case AccountStatus.employee:
-      return '/employee/dashboard';
+      // Pas d'espace employé dans le mobile : repli sur l'accueil candidat.
+      return '/candidate/home';
     case AccountStatus.candidate:
       return '/candidate/home';
   }
@@ -188,43 +189,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   });
                 },
                 itemBuilder: (_, i) {
-                  return _OnboardingPage(
-                    data: pages[i],
-                  );
+                  return _OnboardingPage(data: pages[i]);
                 },
               ),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                pages.length,
-                (i) {
-                  return Semantics(
-                    selected: i == index,
-                    label: 'Page ${i + 1} sur 4',
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                      ),
-                      width: i == index ? 24 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: i == index ? AppColors.primary : AppColors.border,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+              children: List.generate(pages.length, (i) {
+                return Semantics(
+                  selected: i == index,
+                  label: 'Page ${i + 1} sur 4',
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: i == index ? 24 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: i == index ? AppColors.primary : AppColors.border,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              }),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                24,
-                24,
-                24,
-                12,
-              ),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
               child: AppButton(
                 label: index == pages.length - 1 ? 'Commencer' : 'Suivant',
                 icon: index == pages.length - 1
@@ -233,10 +222,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 onPressed: _next,
               ),
             ),
-            TextButton(
-              onPressed: _finish,
-              child: const Text('Passer'),
-            ),
+            TextButton(onPressed: _finish, child: const Text('Passer')),
             const SizedBox(height: 8),
           ],
         ),
@@ -246,49 +232,42 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 }
 
 class _OnboardingPage extends StatelessWidget {
-  const _OnboardingPage({
-    required this.data,
-  });
+  const _OnboardingPage({required this.data});
 
   final (String, String, String, String) data;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        20,
-        32,
-        20,
-        20,
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 32, 20, 20),
       child: SingleChildScrollView(
         child: Column(
           children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: AspectRatio(
-              aspectRatio: 1.55,
-              child: Image.asset(
-                data.$3,
-                fit: BoxFit.cover,
-                semanticLabel: data.$4,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: AspectRatio(
+                aspectRatio: 1.55,
+                child: Image.asset(
+                  data.$3,
+                  fit: BoxFit.cover,
+                  semanticLabel: data.$4,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 28),
-          Text(
-            data.$1,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            data.$2,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: AppColors.secondaryText,
-                ),
-          ),
+            const SizedBox(height: 28),
+            Text(
+              data.$1,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              data.$2,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: AppColors.secondaryText),
+            ),
           ],
         ),
       ),
@@ -325,10 +304,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    final success = await ref.read(authProvider.notifier).signIn(
-          email: email.text.trim(),
-          password: password.text,
-        );
+    final success = await ref
+        .read(authProvider.notifier)
+        .signIn(email: email.text.trim(), password: password.text);
 
     if (!mounted || !success) {
       return;
@@ -342,7 +320,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     // La destination dépend du rôle RÉELLEMENT renvoyé par le serveur, pas
     // d'une route candidate codée en dur : voir `_homeRouteFor`.
-    context.go(_homeRouteFor(ref.read(authProvider).user?.status ?? AccountStatus.candidate));
+    context.go(
+      _homeRouteFor(
+        ref.read(authProvider).user?.status ?? AccountStatus.candidate,
+      ),
+    );
   }
 
   @override
@@ -382,17 +364,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onPressed: () {
                   context.go('/forgot-password');
                 },
-                child: const Text(
-                  'Mot de passe oublié ?',
-                ),
+                child: const Text('Mot de passe oublié ?'),
               ),
             ),
             if (authState.status == AuthStatus.error &&
                 authState.message != null) ...[
               const SizedBox(height: 8),
-              _InlineAuthError(
-                message: authState.message!,
-              ),
+              _InlineAuthError(message: authState.message!),
             ],
             const SizedBox(height: 20),
             _AuthButton(
@@ -407,9 +385,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 const Text(
                   'Pas encore de compte ?',
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
+                  style: TextStyle(color: Colors.white),
                 ),
                 TextButton(
                   onPressed: () {
@@ -513,22 +489,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     final selected = await showDatePicker(
       context: context,
-      initialDate: birthDate ??
-          DateTime(
-            today.year - 25,
-            today.month,
-            today.day,
-          ),
-      firstDate: DateTime(
-        today.year - 100,
-        today.month,
-        today.day,
-      ),
-      lastDate: DateTime(
-        today.year,
-        today.month,
-        today.day,
-      ),
+      initialDate:
+          birthDate ?? DateTime(today.year - 25, today.month, today.day),
+      firstDate: DateTime(today.year - 100, today.month, today.day),
+      lastDate: DateTime(today.year, today.month, today.day),
       locale: const Locale('fr', 'FR'),
       helpText: 'Sélectionnez votre date de naissance',
       cancelText: 'Annuler',
@@ -591,10 +555,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     final prefix = countryPrefix.replaceAll('+', '');
 
-    var digits = phone.text.replaceAll(
-      RegExp(r'\D'),
-      '',
-    );
+    var digits = phone.text.replaceAll(RegExp(r'\D'), '');
 
     if (digits.startsWith(prefix)) {
       digits = digits.substring(prefix.length);
@@ -678,7 +639,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
-    final success = await ref.read(authProvider.notifier).register(
+    final success = await ref
+        .read(authProvider.notifier)
+        .register(
           firstName: firstName.text.trim(),
           lastName: lastName.text.trim(),
           birthDate: birthDate!,
@@ -694,7 +657,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
-    context.go('/candidate/home');
+    // Même règle qu'au login : la destination dépend du rôle renvoyé
+    // par le serveur (`_homeRouteFor`), pas d'une route en dur.
+    context.go(
+      _homeRouteFor(
+        ref.read(authProvider).user?.status ?? AccountStatus.candidate,
+      ),
+    );
   }
 
   @override
@@ -734,9 +703,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         const SizedBox(height: 6),
         const Text(
           'Ces informations nous aideront à personnaliser votre expérience.',
-          style: TextStyle(
-            color: Colors.white70,
-          ),
+          style: TextStyle(color: Colors.white70),
         ),
         const SizedBox(height: 22),
         Center(
@@ -749,7 +716,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 radius: 40,
                 backgroundColor: AppColors.border,
                 backgroundImage: _avatar != null ? FileImage(_avatar!) : null,
-                child: _avatar == null ? const Icon(Icons.add_a_photo, size: 30, color: Colors.white70) : null,
+                child: _avatar == null
+                    ? const Icon(
+                        Icons.add_a_photo,
+                        size: 30,
+                        color: Colors.white70,
+                      )
+                    : null,
               ),
             ),
           ),
@@ -761,10 +734,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           prefixIcon: Icons.person_outline,
           textCapitalization: TextCapitalization.words,
           validator: (value) {
-            return Validators.name(
-              value,
-              label: 'Le prénom',
-            );
+            return Validators.name(value, label: 'Le prénom');
           },
         ),
         const SizedBox(height: 16),
@@ -774,10 +744,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           prefixIcon: Icons.badge_outlined,
           textCapitalization: TextCapitalization.words,
           validator: (value) {
-            return Validators.name(
-              value,
-              label: 'Le nom',
-            );
+            return Validators.name(value, label: 'Le nom');
           },
         ),
         const SizedBox(height: 16),
@@ -798,18 +765,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Pays *',
-            prefixIcon: Icon(
-              Icons.public_outlined,
-            ),
+            prefixIcon: Icon(Icons.public_outlined),
           ),
-          items: countryCodes.keys.map(
-            (value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value),
-              );
-            },
-          ).toList(),
+          items: countryCodes.keys.map((value) {
+            return DropdownMenuItem<String>(value: value, child: Text(value));
+          }).toList(),
           onChanged: (value) {
             if (value == null) {
               return;
@@ -834,10 +794,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           prefixIcon: Icons.location_city_outlined,
           textCapitalization: TextCapitalization.words,
           validator: (value) {
-            return Validators.required(
-              value,
-              label: 'La ville',
-            );
+            return Validators.required(value, label: 'La ville');
           },
         ),
         const SizedBox(height: 24),
@@ -852,9 +809,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             onPressed: () {
               context.go('/login');
             },
-            child: const Text(
-              'Déjà un compte ? Se connecter',
-            ),
+            child: const Text('Déjà un compte ? Se connecter'),
           ),
         ),
       ],
@@ -882,9 +837,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         const SizedBox(height: 6),
         const Text(
           'Vos coordonnées resteront associées à votre compte candidat.',
-          style: TextStyle(
-            color: Colors.white70,
-          ),
+          style: TextStyle(color: Colors.white70),
         ),
         const SizedBox(height: 22),
         AppTextField(
@@ -922,9 +875,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           validator: Validators.password,
         ),
         const SizedBox(height: 8),
-        _PasswordStrengthIndicator(
-          strength: passwordStrength,
-        ),
+        _PasswordStrengthIndicator(strength: passwordStrength),
         const SizedBox(height: 16),
         AppPasswordField(
           label: 'Confirmation du mot de passe *',
@@ -933,19 +884,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           autofillHints: const [AutofillHints.newPassword],
           autocorrect: false,
           validator: (value) {
-            return Validators.confirmation(
-              value,
-              password.text,
-            );
+            return Validators.confirmation(value, password.text);
           },
         ),
         const SizedBox(height: 8),
         const Text(
           '8 caractères minimum, avec au moins une lettre et un chiffre.',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white70,
-          ),
+          style: TextStyle(fontSize: 12, color: Colors.white70),
         ),
         const SizedBox(height: 16),
         CheckboxListTile(
@@ -960,10 +905,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           controlAffinity: ListTileControlAffinity.leading,
           title: const Text(
             'J’accepte les conditions d’utilisation et la politique de confidentialité.',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: Colors.white, fontSize: 13),
           ),
         ),
         if (termsError != null)
@@ -971,18 +913,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             padding: const EdgeInsets.only(left: 12),
             child: Text(
               termsError!,
-              style: const TextStyle(
-                color: Color(0xFFFFD1D1),
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Color(0xFFFFD1D1), fontSize: 12),
             ),
           ),
         if (authState.status == AuthStatus.error &&
             authState.message != null) ...[
           const SizedBox(height: 12),
-          _InlineAuthError(
-            message: authState.message!,
-          ),
+          _InlineAuthError(message: authState.message!),
         ],
         const SizedBox(height: 20),
         _AuthButton(
@@ -1010,9 +947,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 onPressed: () {
                   context.go('/login');
                 },
-                child: const Text(
-                  'Se connecter',
-                ),
+                child: const Text('Se connecter'),
               ),
             ),
           ],
@@ -1027,9 +962,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 // ============================================================
 
 class _RegisterProgress extends StatelessWidget {
-  const _RegisterProgress({
-    required this.step,
-  });
+  const _RegisterProgress({required this.step});
 
   final int step;
 
@@ -1048,17 +981,9 @@ class _RegisterProgress extends StatelessWidget {
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(
-              child: _ProgressBar(
-                active: step >= 0,
-              ),
-            ),
+            Expanded(child: _ProgressBar(active: step >= 0)),
             const SizedBox(width: 8),
-            Expanded(
-              child: _ProgressBar(
-                active: step >= 1,
-              ),
-            ),
+            Expanded(child: _ProgressBar(active: step >= 1)),
           ],
         ),
       ],
@@ -1067,9 +992,7 @@ class _RegisterProgress extends StatelessWidget {
 }
 
 class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({
-    required this.active,
-  });
+  const _ProgressBar({required this.active});
 
   final bool active;
 
@@ -1090,9 +1013,7 @@ class _ProgressBar extends StatelessWidget {
 // ============================================================
 
 class _PasswordStrengthIndicator extends StatelessWidget {
-  const _PasswordStrengthIndicator({
-    required this.strength,
-  });
+  const _PasswordStrengthIndicator({required this.strength});
 
   final int strength;
 
@@ -1101,14 +1022,14 @@ class _PasswordStrengthIndicator extends StatelessWidget {
     final label = strength >= 4
         ? 'Fort'
         : strength >= 2
-            ? 'Moyen'
-            : 'Faible';
+        ? 'Moyen'
+        : 'Faible';
 
     final color = strength >= 4
         ? AppColors.success
         : strength >= 2
-            ? AppColors.warning
-            : const Color(0xFFFFB4AB);
+        ? AppColors.warning
+        : const Color(0xFFFFB4AB);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1141,9 +1062,7 @@ class _PasswordStrengthIndicator extends StatelessWidget {
 // ============================================================
 
 class _InlineAuthError extends StatelessWidget {
-  const _InlineAuthError({
-    required this.message,
-  });
+  const _InlineAuthError({required this.message});
 
   final String message;
 
@@ -1192,9 +1111,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
     // L'appel réseau est porté par AuthController (pas de ApiClient() créé
     // dans un widget) pour centraliser la couche d'accès.
-    final result = await ref.read(authProvider.notifier).forgotPassword(
-          email.text.trim(),
-        );
+    final result = await ref
+        .read(authProvider.notifier)
+        .forgotPassword(email.text.trim());
     if (!mounted) return;
 
     setState(() {
@@ -1247,9 +1166,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 child: Text(
                   'Si cet email existe, un lien de réinitialisation a été envoyé.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.success,
-                  ),
+                  style: TextStyle(color: AppColors.success),
                 ),
               ),
             const SizedBox(height: 12),
@@ -1257,9 +1174,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               onPressed: () {
                 context.go('/login');
               },
-              child: const Text(
-                'Retour à la connexion',
-              ),
+              child: const Text('Retour à la connexion'),
             ),
           ],
         ),
@@ -1290,10 +1205,7 @@ class AuthLayout extends StatelessWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            AppAssets.authBackground,
-            fit: BoxFit.cover,
-          ),
+          Image.asset(AppAssets.authBackground, fit: BoxFit.cover),
 
           // Overlay navy 55% (0x8C082B52 ~ 140/255) pour contraste AA texte blanc sur image.
           ColoredBox(
@@ -1305,23 +1217,11 @@ class AuthLayout extends StatelessWidget {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 520,
-                ),
+                constraints: const BoxConstraints(maxWidth: 520),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(
-                    16,
-                    20,
-                    16,
-                    20,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      24,
-                      28,
-                      24,
-                      24,
-                    ),
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
                     child: Theme(
                       data: Theme.of(context).copyWith(
                         textButtonTheme: TextButtonThemeData(
@@ -1335,21 +1235,15 @@ class AuthLayout extends StatelessWidget {
                         children: [
                           Text(
                             title,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.headlineMedium?.copyWith(
-                                  color: Colors.white,
-                                ),
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(color: Colors.white),
                           ),
                           const SizedBox(height: 10),
                           Text(
                             subtitle,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodyLarge?.copyWith(
-                                  color: Colors.white.withValues(
-                                    alpha: 0.92,
-                                  ),
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.92),
                                 ),
                           ),
                           const SizedBox(height: 28),
@@ -1388,10 +1282,7 @@ class _AuthButton extends ConsumerWidget {
   final bool enabled;
 
   @override
-  Widget build(
-    BuildContext context,
-    WidgetRef ref,
-  ) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final loading = ref.watch(authProvider).status == AuthStatus.loading;
 
     return AppButton(
@@ -1404,5 +1295,3 @@ class _AuthButton extends ConsumerWidget {
     );
   }
 }
-
-

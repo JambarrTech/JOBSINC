@@ -94,6 +94,8 @@ services:
       #   SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS / MAIL_FROM
       #   FCM_SERVICE_ACCOUNT_JSON (JSON du compte de service, en base64) ou
       #     FCM_SERVICE_ACCOUNT_PATH si le fichier est monté
+      #   CRON_SECRET (secret partagé avec le Render Cron Job qui appelle
+      #     /api/cron/cleanup — sans lui la route répond 503)
       #
       #   *** STOCKAGE — OBLIGATOIRE EN PRODUCTION ***
       #   STORAGE_DRIVER=s3, AWS_S3_BUCKET, AWS_S3_REGION,

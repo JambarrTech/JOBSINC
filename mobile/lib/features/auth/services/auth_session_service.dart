@@ -27,10 +27,27 @@ class AuthSessionService {
 
     final profile = rawUser['candidate'] as Map<String, dynamic>?;
 
+    final company = rawUser['company'] as Map<String, dynamic>?;
+
+    // Candidat : `candidate.avatarUrl` (backend `userDto`). Recruteur :
+    // pas de `candidate` — le logo est en top-level `avatar` ou
+    // `company.logo`. Sans ces replis, `photoUrl` restait toujours `null`
+    // côté recruteur et aucune photo ne s'affichait.
+    final photoUrl =
+        profile?['photoUrl']?.toString() ??
+        profile?['avatar']?.toString() ??
+        profile?['avatarUrl']?.toString() ??
+        rawUser['avatar']?.toString() ??
+        rawUser['photoUrl']?.toString() ??
+        rawUser['avatarUrl']?.toString() ??
+        company?['logo']?.toString();
+
     return AuthUser(
       id: rawUser['id']?.toString() ?? '',
-      firstName: profile?['firstName']?.toString() ?? '',
-      lastName: profile?['lastName']?.toString() ?? '',
+      firstName:
+          profile?['firstName']?.toString() ?? rawUser['firstName']?.toString() ?? '',
+      lastName:
+          profile?['lastName']?.toString() ?? rawUser['lastName']?.toString() ?? '',
       email: rawUser['email']?.toString() ?? '',
       phone: profile?['phone']?.toString(),
       birthDate: DateTime.tryParse(
@@ -42,8 +59,8 @@ class AuthSessionService {
           role == 'EMPLOYEE' ? AccountStatus.employee : role == 'RECRUITER' ? AccountStatus.recruiter : AccountStatus.candidate,
       token: token,
       refreshToken: refreshToken,
-      companyId: rawUser['companyId']?.toString() ?? rawUser['company']?['id']?.toString(),
-      photoUrl: profile?['photoUrl']?.toString() ?? profile?['avatar']?.toString() ?? profile?['avatarUrl']?.toString(),
+      companyId: rawUser['companyId']?.toString() ?? company?['id']?.toString(),
+      photoUrl: photoUrl,
       cvUrl: profile?['cvUrl']?.toString(),
       skills: profile?['skills']?.toString(),
     );

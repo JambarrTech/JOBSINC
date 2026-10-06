@@ -179,14 +179,27 @@ const AVATAR = '/uploads/candidates/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg';
 const OWNER = 'user-owner';
 const RECRUITER = 'user-recruiter';
 
+function valueMatches(wanted, profile) {
+  if (!wanted || !profile) return false;
+  if (typeof wanted === 'string') {
+    return profile.cvUrl === wanted || profile.avatarUrl === wanted;
+  }
+  // Repli nom de fichier (`{ endsWith: '/<fichier>' }`) des données historiques.
+  if (typeof wanted === 'object' && typeof wanted.endsWith === 'string') {
+    const suffix = wanted.endsWith;
+    return (typeof profile.cvUrl === 'string' && profile.cvUrl.endsWith(suffix)) ||
+      (typeof profile.avatarUrl === 'string' && profile.avatarUrl.endsWith(suffix));
+  }
+  return false;
+}
+
 function prismaStub({ profile = null, application = null, recruiterReaches = true } = {}) {
   return {
     candidateProfile: {
       findFirst: async ({ where }) => {
-        const value = where.cvUrl || where.avatarUrl;
-        if (!value || !profile) return null;
-        if (profile.cvUrl === value || profile.avatarUrl === value) return profile;
-        return null;
+        const wanted = where.cvUrl || where.avatarUrl;
+        if (!valueMatches(wanted, profile)) return null;
+        return profile;
       },
     },
     application: {
@@ -278,8 +291,27 @@ async function runUploadAuthTests() {
     assert.equal(d.allowed, true);
   });
 
-  await test('avatar : autre candidat refusé', async () => {
+  await test('avatar : recruteur SANS candidature autorisé (photo non sensible)', async () => {
+    const d = await decide({ userId: 'stranger', role: 'RECRUITER' }, AVATAR,
+      prismaStub({ profile: ownerProfile(AVATAR), recruiterReaches: false }));
+    assert.equal(d.allowed, true);
+    assert.equal(d.reason, 'AVATAR_AUTHENTIFIE');
+  });
+
+  await test('avatar : autre candidat autorisé (photo non sensible)', async () => {
     const d = await decide({ userId: 'user-other', role: 'CANDIDATE' }, AVATAR, prismaStub({ profile: ownerProfile(AVATAR) }));
+    assert.equal(d.allowed, true);
+    assert.equal(d.reason, 'AVATAR_AUTHENTIFIE');
+  });
+
+  await test('avatar : valeur historique absolue retrouvée par nom de fichier', async () => {
+    const legacy = { id: 'p1', userId: OWNER, avatarUrl: 'http://localhost:5000/uploads/candidates/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg' };
+    const d = await decide({ userId: 'user-other', role: 'CANDIDATE' }, AVATAR, prismaStub({ profile: legacy }));
+    assert.equal(d.allowed, true);
+  });
+
+  await test('CV : autre candidat TOUJOURS refusé (PII sensible)', async () => {
+    const d = await decide({ userId: 'user-other', role: 'CANDIDATE' }, CV, prismaStub({ profile: ownerProfile(CV) }));
     assert.equal(d.allowed, false);
   });
 

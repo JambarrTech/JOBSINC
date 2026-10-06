@@ -19,7 +19,7 @@ typedef TokenRefreshCallback = Future<String?> Function();
 class ApiClient {
   ApiClient({http.Client? client, this.onTokenRefresh})
       : _client = client ?? sharedClient,
-        _ownsClient = client == null;
+        _ownsClient = client != null;
 
   /// Client HTTP partagé par toutes les instances créées sans client injecté.
   ///

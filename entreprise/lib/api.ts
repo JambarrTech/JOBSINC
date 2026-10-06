@@ -12,7 +12,7 @@ export type InterviewItem = { id?: string; applicationId?: string; status?: stri
 
 // URL de l'API : source de vérité unique dans `lib/api-url.ts` (voir le
 // commentaire de ce module pour l'historique des 7 copies divergentes).
-import { API_ORIGIN, apiEndpoint as endpoint } from '@/lib/api-url';
+import { apiEndpoint as endpoint } from '@/lib/api-url';
 /**
  * `assetUrl` et `cvHref` vivent désormais dans `lib/assets.ts`.
  *
@@ -121,6 +121,32 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
 }
 
 function list<T>(response: T[] | { data?: T[]; results?: T[] }) { return Array.isArray(response) ? response : response.data || response.results || []; }
+
+/**
+ * Upload multipart authentifié, avec le même 401 → refresh → rejouer
+ * qu'`apiRequest`. `uploadCompanyLogo` faisait son propre `fetch` sans
+ * refresh : un token expiré au moment de l'envoi du logo échouait
+ * définitivement au lieu de rafraîchir puis réessayer.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const doFetch = async (): Promise<Response> =>
+    fetch(endpoint(path), { method: 'POST', body: form, credentials: 'include', cache: 'no-store' });
+  const readError = async (response: Response) => {
+    const body = await response.json().catch(() => null);
+    const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  };
+
+  const first = await doFetch();
+  if (first.status === 401 && (await tryRefresh())) {
+    const retry = await doFetch();
+    if (!retry.ok) await readError(retry);
+    return retry.json();
+  }
+  if (!first.ok) await readError(first);
+  return first.json();
+}
 function normalizeCompany(company: Company): Company { const logoUrl = assetUrl(company.logo); const images = (company.images || []).map((image) => ({ ...image, url: assetUrl(image.url) })).filter((image): image is CompanyImage => Boolean(image.url)); const primary = images.find((image) => image.isPrimary) || images[0]; return { ...company, images, logo: logoUrl || primary?.url || null, location: company.location || [company.city, company.country].filter(Boolean).join(', ') || undefined }; }
 export const getDashboardData = (days?: number) => apiRequest<DashboardData>(`${process.env.NEXT_PUBLIC_DASHBOARD_ENDPOINT || '/company/dashboard'}${days ? `?days=${days}` : ''}`);
 export async function getMatching(params?: Record<string, string | number | undefined>) { const base = process.env.NEXT_PUBLIC_MATCHING_ENDPOINT || '/company/matching'; const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '') query.set(key, String(value)); }); const qs = query.toString(); return apiRequest<{ data?: Match[]; results?: Match[] } | Match[]>(qs ? `${base}?${qs}` : base); }
@@ -130,9 +156,9 @@ export const getCompanyProfile = () => apiRequest<CompanyProfile>('/company/prof
 export type CompanyProfileFields = Partial<Record<'name' | 'description' | 'website' | 'sector' | 'size' | 'country' | 'city' | 'address' | 'foundedYear', string | number | null>>;
 export const updateCompanyProfile = (fields: CompanyProfileFields) => apiRequest<CompanyProfile>('/company/profile', { method: 'PUT', body: JSON.stringify(fields) });
 export async function uploadCompanyLogo(file: File) {
-  const response = await fetch(endpoint('/company/logo'), { method: 'POST', body: (() => { const form = new FormData(); form.append('logo', file); return form; })(), credentials: 'include', cache: 'no-store' });
-  if (!response.ok) { const body = await response.json().catch(() => null); const error = new Error(body?.message || body?.error || `Erreur serveur (${response.status})`) as Error & { status?: number }; error.status = response.status; throw error; }
-  return response.json() as Promise<CompanyProfile>;
+  const form = new FormData();
+  form.append('logo', file);
+  return apiUpload<CompanyProfile>('/company/logo', form);
 }
 export const deleteCompanyJob = (jobId: string | number) => apiRequest<{ message: string }>(`/company/jobs/${jobId}`, { method: 'DELETE' });
 export const setJobOpen = (jobId: string | number, isOpen: boolean) => apiRequest<Record<string, unknown>>(`/company/jobs/${jobId}`, { method: 'PUT', body: JSON.stringify({ isOpen }) });

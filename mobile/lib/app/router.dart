@@ -12,7 +12,6 @@ import '../features/auth/models/auth_user.dart';
 import '../features/auth/presentation/auth_screens.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/candidate/home/candidate_home_screen.dart';
-import '../features/employee/dashboard/employee_dashboard_screen.dart';
 import '../features/jobs/models/job_offer.dart';
 import '../features/jobs/presentation/job_detail_screen.dart';
 import '../features/jobs/presentation/offers_screen.dart';
@@ -65,18 +64,13 @@ final routerProvider = Provider<GoRouter>((ref) {
   // IMPORTANT :
   // On utilise read() et non watch().
   // Le GoRouter ne sera donc créé qu'une seule fois.
-  final authNotifier = AuthRouterNotifier(
-    ref.read(authProvider),
-  );
+  final authNotifier = AuthRouterNotifier(ref.read(authProvider));
 
   // On écoute uniquement les changements d'authentification
   // pour demander à GoRouter de réévaluer redirect().
-  final subscription = ref.listen<AuthState>(
-    authProvider,
-    (_, next) {
-      authNotifier.update(next);
-    },
-  );
+  final subscription = ref.listen<AuthState>(authProvider, (_, next) {
+    authNotifier.update(next);
+  });
 
   // Nettoyage lorsque le provider est détruit.
   ref.onDispose(() {
@@ -155,7 +149,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 4. EMPÊCHER UN UTILISATEUR CONNECTÉ DE RETOURNER
       //    SUR LOGIN / REGISTER / SPLASH / ONBOARDING
       // ---------------------------------------------------------
-      final isAuthRoute = location == '/login' ||
+      final isAuthRoute =
+          location == '/login' ||
           location == '/register' ||
           location == '/onboarding' ||
           location == '/splash' ||
@@ -165,29 +160,29 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (accountStatus == AccountStatus.recruiter) {
           return '/recruiter/dashboard';
         }
-        if (accountStatus == AccountStatus.candidate) {
-          return '/candidate/home';
-        }
 
-        return '/employee/dashboard';
+        // Pas d'espace employé dans le mobile : un compte EMPLOYEE utilise
+        // l'espace candidat.
+        return '/candidate/home';
       }
 
       // ---------------------------------------------------------
-      // 5. PROTECTION DE L'ESPACE CANDIDAT
+      // 5. PROTECTION DE L'ESPACE CANDIDAT (candidats + employés)
       // ---------------------------------------------------------
       if (location.startsWith('/candidate') &&
-          accountStatus != AccountStatus.candidate) {
+          accountStatus != AccountStatus.candidate &&
+          accountStatus != AccountStatus.employee) {
         if (accountStatus == AccountStatus.recruiter) {
           return '/recruiter/dashboard';
         }
-        return '/employee/dashboard';
+        return '/candidate/home';
       }
 
       // ---------------------------------------------------------
-      // 6. PROTECTION DE L'ESPACE EMPLOYÉ
+      // 6. PAS D'ESPACE EMPLOYÉ : tout ancien lien /employee bascule
+      // vers l'accueil candidat.
       // ---------------------------------------------------------
-      if (location.startsWith('/employee') &&
-          accountStatus != AccountStatus.employee) {
+      if (location.startsWith('/employee')) {
         if (accountStatus == AccountStatus.recruiter) {
           return '/recruiter/dashboard';
         }
@@ -199,17 +194,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       if (location.startsWith('/recruiter') &&
           accountStatus != AccountStatus.recruiter) {
-        // Renvoie vers L'ESPACE DU PERSONNE, comme les deux branches
-        // précédentes (5 et 6) le font. Le code retournait inconditionnellement
-        // '/candidate/home' : un employé ou un candidat qui ouvrait
-        // /recruiter/messages était projeté vers l'accueil candidat, alors que
-        // les branches symétriques les renvoient vers /employee/dashboard et
-        // /recruiter/dashboard. Un utilisateur dont le chat de recruteur était
-        // dans ses liens profonde se retrouvait donc sur un écran sans rapport
-        // avec sa demande.
-        if (accountStatus == AccountStatus.employee) {
-          return '/employee/dashboard';
-        }
+        // Candidats comme employés retombent sur la messagerie candidat.
         return '/candidate/messages';
       }
 
@@ -223,31 +208,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       // ROOT
       // ---------------------------------------------------------
-      GoRoute(
-        path: '/',
-        redirect: (_, __) => '/splash',
-      ),
+      GoRoute(path: '/', redirect: (_, __) => '/splash'),
 
       // Splash : restaure la session avant d'afficher quoi que ce soit.
-      GoRoute(
-        path: '/splash',
-        builder: (_, __) => const SplashScreen(),
-      ),
+      GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
 
       GoRoute(
         path: '/onboarding',
         builder: (_, __) => const OnboardingScreen(),
       ),
 
-      GoRoute(
-        path: '/login',
-        builder: (_, __) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
 
-      GoRoute(
-        path: '/register',
-        builder: (_, __) => const RegisterScreen(),
-      ),
+      GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
 
       GoRoute(
         path: '/forgot-password',
@@ -299,8 +272,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/candidate/messages',
-                builder: (_, __) =>
-                    const MessagesScreen(isCompanySide: false),
+                builder: (_, __) => const MessagesScreen(isCompanySide: false),
               ),
             ],
           ),
@@ -360,18 +332,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ---------------------------------------------------------
       // PARAMÈTRES (déconnexion, réinitialisation mot de passe)
       // ---------------------------------------------------------
-      GoRoute(
-        path: '/settings',
-        builder: (_, __) => const SettingsScreen(),
-      ),
-
-      // ---------------------------------------------------------
-      // EMPLOYÉ / ENTREPRISE
-      // ---------------------------------------------------------
-      GoRoute(
-        path: '/employee/dashboard',
-        builder: (_, __) => const EmployeeDashboardScreen(),
-      ),
+      GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
 
       // ---------------------------------------------------------
       // RECRUTEUR
@@ -412,7 +373,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           if (extra is Conversation) {
             return ChatScreen(conversation: extra);
           }
-          return ConversationResolver(conversationId: extra is String ? extra : null);
+          return ConversationResolver(
+            conversationId: extra is String ? extra : null,
+          );
         },
       ),
 
@@ -494,7 +457,9 @@ class _JobDetailByIdScreenState extends State<_JobDetailByIdScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         final offer = snapshot.data;
         if (offer != null) return JobDetailScreen(offer: offer);
@@ -519,7 +484,9 @@ class _JobDetailByIdScreenState extends State<_JobDetailByIdScreen> {
       const api = _SimpleApi();
       final json = await api.get('/jobs/$id');
       // Réponse { ...job } ou { data: ... } selon DTO
-      final map = json is Map<String, dynamic> ? (json['data'] is Map ? json['data'] as Map<String, dynamic> : json) : null;
+      final map = json is Map<String, dynamic>
+          ? (json['data'] is Map ? json['data'] as Map<String, dynamic> : json)
+          : null;
       if (map == null) return null;
       return JobOffer.fromJson(map);
     } catch (_) {
@@ -537,14 +504,18 @@ class _ApplicationDetailByIdScreen extends ConsumerWidget {
     // Charge la liste des candidatures puis retrouve celle demandée.
     final asyncApps = ref.watch(applicationsProvider);
     return asyncApps.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (_, __) => Scaffold(
         appBar: AppBar(title: const Text('Détails')),
-        body: const Center(child: Text('Impossible de charger la candidature.')),
+        body: const Center(
+          child: Text('Impossible de charger la candidature.'),
+        ),
       ),
       data: (apps) {
         final match = apps.where((a) => a.id == applicationId).toList();
-        if (match.isNotEmpty) return ApplicationDetailScreen(application: match.first);
+        if (match.isNotEmpty)
+          return ApplicationDetailScreen(application: match.first);
         return Scaffold(
           appBar: AppBar(title: const Text('Détails')),
           body: Center(child: Text('Candidature $applicationId introuvable.')),

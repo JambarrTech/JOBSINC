@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jobsinc_mobile/core/services/api_client.dart';
 import 'package:jobsinc_mobile/core/storage/local_storage.dart';
+import 'package:jobsinc_mobile/core/widgets/app_shell.dart';
 import 'package:jobsinc_mobile/core/widgets/pressable_button.dart';
 import 'package:jobsinc_mobile/features/auth/models/auth_user.dart';
 import 'package:jobsinc_mobile/features/auth/providers/auth_provider.dart';
@@ -185,10 +186,11 @@ void main() {
     // `formatRelativeDate` est la fonction la plus exercée du feed : chaque
     // carte d'offre l'affiche. Les bornes ci-dessous sont exactement celles où
     // une comparaison `<` / `<=` mal placée fait basculer une ligne entière.
-    final now = DateTime.now();
-
+    // `now` est capturé à chaque appel : le groupe s'évalue une fois puis
+    // les tests tournent ~1 s plus tard, et `59 min 59 s` + ce délai
+    // basculait parfois à `1h` (flaky de frontière).
     String ago(Duration d) =>
-        formatRelativeDate(now.subtract(d).toIso8601String());
+        formatRelativeDate(DateTime.now().subtract(d).toIso8601String());
 
     test('une date absente ne rend rien', () {
       // Un `posted` manquant ne doit PAS laisser le littéral « null » dans le
@@ -207,7 +209,7 @@ void main() {
       // Le futur n'est pas une erreur en soi : `diff.isNegative` absorbe aussi
       // le désynchronisme d'horloge entre le backend et le mobile.
       expect(ago(const Duration(seconds: 30)), 'À l\'instant');
-      expect(formatRelativeDate(now.add(const Duration(hours: 3)).toIso8601String()),
+      expect(formatRelativeDate(DateTime.now().add(const Duration(hours: 3)).toIso8601String()),
           'À l\'instant');
     });
 
@@ -505,6 +507,56 @@ void main() {
       });
       expect(p.author.name, 'Candidat');
       expect(p.author.initials, isNotEmpty);
+    });
+  });
+
+  group('Barre de navigation (anti-débordement)', () {
+    // `Candidatures` (12 lettres) débordait sur 320-360 px : 5 onglets à
+    // ~64-72 px chacun ne l'absorbent pas, surtout en gros caractères.
+    Future<void> pumpShell(
+      WidgetTester tester, {
+      required double width,
+      double textScale = 1.0,
+    }) {
+      return tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData(
+            size: Size(width, 800),
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: MaterialApp(
+            home: AppShell(
+              currentIndex: 0,
+              onDestinationSelected: (_) {},
+              body: const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('écran étroit 320 px : libellé compact Suivi, sans exception',
+        (tester) async {
+      await pumpShell(tester, width: 320);
+      expect(find.text('Suivi'), findsOneWidget);
+      expect(find.text('Candidatures'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('écran large 500 px : libellé complet Candidatures',
+        (tester) async {
+      await pumpShell(tester, width: 500);
+      expect(find.text('Candidatures'), findsOneWidget);
+      expect(find.text('Suivi'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('texte agrandi x1.4 : bascule en compact même au large',
+        (tester) async {
+      await pumpShell(tester, width: 500, textScale: 1.4);
+      expect(find.text('Suivi'), findsOneWidget);
+      expect(find.text('Candidatures'), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 }
