@@ -65,7 +65,7 @@ function init() {
       initializeApp({ credential: cert(serviceAccount) });
     }
     messaging = getMessaging();
-    logger.log({ message: `Push: Firebase initialisé (projet ${serviceAccount.project_id}).`, scope: 'pushService' });
+    logger.info({ message: `Push: Firebase initialisé (projet ${serviceAccount.project_id}).`, scope: 'pushService' });
   } catch (error) {
     logger.warn({ message: `Push: initialisation impossible (${error.message}).`, scope: 'pushService' });
     messaging = null;

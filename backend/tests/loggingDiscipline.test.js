@@ -86,3 +86,33 @@ test('le logger expose bien les cinq formes utilisees dans src', () => {
     );
   }
 });
+
+test('aucun appel logger.METHODE inconnue (ex : logger.log)', () => {
+  // REGRESSION VECUE le 2026-10-06 : `pushService.js` et `config/redis.js`
+  // appelaient `logger.log()`, qui N EXISTE PAS (le logger expose
+  // info/warn/error/debug/exception). Resultat :
+  //   - push : le `logger.log` du chemin SUCCES levait un TypeError rattrape
+  //     par le catch d init → warn « initialisation impossible » et
+  //     `messaging = null` : avec une clé VALIDE, le push restait désactivé ;
+  //   - redis : le `logger.log` du handler `connect` levait dans l emetteur
+  //     d evenements au moment meme ou Redis devenait disponible.
+  // Le test « cinq formes » ne voyait rien : il verifiait l export, pas les
+  // appels. Celui-ci verifie l inverse : chaque `logger.X(` de src doit etre
+  // une methode qui existe.
+  const autorisees = new Set(['info', 'warn', 'error', 'debug', 'exception']);
+  const fautifs = [];
+  for (const f of parcourir(SRC)) {
+    if (path.basename(f) === 'logger.js') continue;
+    const t = fs.readFileSync(f, 'utf8');
+    const lignes = t.split('\n');
+    lignes.forEach((l, i) => {
+      const sansCommentaire = l.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '');
+      for (const m of sansCommentaire.matchAll(/logger\s*\.\s*(\w+)\s*\(/g)) {
+        if (!autorisees.has(m[1])) {
+          fautifs.push(`${path.relative(SRC, f)}:${i + 1}  logger.${m[1]}(`);
+        }
+      }
+    });
+  }
+  assert.deepEqual(fautifs, [], `appel logger inconnu : ${fautifs.join(', ')}`);
+});

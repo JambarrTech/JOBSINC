@@ -11,6 +11,69 @@ Dernière mise à jour : **2026-10-06**.
 
 ---
 
+## Session du 2026-10-06 : « tout le corrigeable en code » (sans chantiers gelés)
+
+Périmètre validé avant exécution : a11y focus/Échap + Zod inscription alignés
++ tests. Explicitement exclus : CSP nonces, migration `multer`, i18n, split
+mobile, décisions métier (`Employment`/`Conversation`), S3/Redis dashboard.
+
+- [x] **`backend/serviceAccountKey.json` supprimé du poste.** Fichier local
+      (2,3 Ko, gitignoré, jamais committé) effacé après vérification que
+      `pushService` dégrade proprement sans clé (warn + push désactivé,
+      `backend/src/services/pushService.js:51`). Restent côté humain : rotation
+      Neon + clé Firebase `AIza…` (purge Git ne révoque rien) et config S3.
+- [x] **`useEscapeToClose` corrigé (bug réel).** Le déclencheur était capturé
+      au moment d'Échap — donc DANS le menu, retiré du DOM par `onClose()` —
+      puis `document.contains(trigger)` toujours faux : focus jamais restitué.
+      Déclencheur mémorisé À L'OUVERTURE + repli sur `button[aria-expanded]`
+      (`entreprise/components/ui/useDialogFocus.ts`).
+- [x] **Pipeline « Déplacer » : Échap + restitution focus.** `triggerRefs` par
+      carte, listener Échap, `closeMovePanel()` avec `requestAnimationFrame`,
+      `aria-expanded`/`aria-controls` conservés, `role="group"` conservé (pas
+      de `menu` sans flèches — même piège que `AdminUserMenu`).
+      (`entreprise/components/dashboard/PipelineOverview.tsx`).
+- [x] **`AdminGlobalSearch` : Échap + focus.** Branché sur `useEscapeToClose`,
+      `aria-expanded`/`aria-controls` + `id` panneau
+      (`entreprise/components/admin/layout/AdminGlobalSearch.tsx`).
+- [x] **Zod inscription alignés et branchés.** `candidateRegisterSchema` /
+      `companyRegisterSchema` champ à champ avec `authService`
+      (`companyName`, requis stricts, bornes `validateLength`/`validateAge`,
+      `.passthrough()` pour les champs extra client) + garde de forme en tête
+      de `createCandidate`/`createCompany` (Zod rejette tôt, contrôles
+      existants gardent le dernier mot).
+- [x] **Tests :** `backend/tests/registerValidation.test.js` (6 tests :
+      parité requis/rejets + `VALIDATION_ERROR` 400 + pattern de branchement),
+      câblé `test:registervalidation` dans `npm test` ;
+      `entreprise/tests/a11yFocus.test.ts` (3 tests pattern de source).
+      Vérifié : backend suite complète verte, web **25/25** + `typecheck`
+      propre, `registerValidation` 6/6 + `uploadStorage` 2/2.
+- Base non committée préservée : correctif 503 `multipartParser` + test
+  `uploadStorage` intacts ; autres `M` de l'arbre (home/dashboard) non touchés.
+
+---
+
+## Session du 2026-10-06 : clé FCM installée + bug `logger.log` trouvé et fixé
+
+- [x] **Nouvelle clé service installée en local** (fichier reçu par
+      téléchargement) : copiée à `backend/serviceAccountKey.json` (gitignoré),
+      `project_id=jobsinc-5db6c` vérifié, copie `Downloads` supprimée après
+      contrôle d'empreinte identique. Reste côté humain : ~~révoquer l'ancienne
+      clé (console Firebase → Comptes de service)~~ **fait le 2026-10-06**
+      (ancienne clé supprimée, nouvelle `3d6ef079…` conservée, init push
+      toujours verte) + poser le base64 dans `FCM_SERVICE_ACCOUNT_JSON`
+      sur Render.
+- [x] **Bug `logger.log` inexistant (2 sites).** `pushService.js:68` et
+      `config/redis.js:34` appelaient `logger.log()`, qui n'existe pas (le
+      logger expose info/warn/error/debug/exception) : côté push, le chemin
+      SUCCÈS levait un TypeError rattrapé par le catch → `messaging = null`
+      (clé valide mais push désactivé) ; côté redis, throw dans le handler
+      `connect`. Fix `logger.info` + 4e test de discipline
+      (`tests/loggingDiscipline.test.js`) interdisant tout `logger.METHODE`
+      inconnue. Vérifié : `Push: Firebase initialisé (projet jobsinc-5db6c)`
+      en `info`, discipline 4/4, suite backend complète verte.
+
+---
+
 ## Session du 2026-10-06 : réseau social candidats (pushé en prod)
 
 - [x] **Backend `/api/network`** : `NetworkPost`, `NetworkLike`
@@ -54,13 +117,19 @@ operations sur des consoles tierces, et **aucune ligne de code ne les
 remplacera**.
 
 - [→] **Pivoter la clé Neon `neondb_owner`**, puis la clé API **Firebase
-      `AIza…`**. L'historique Git a été purgé (49 commits réécrits), mais une
+      `AIza…`** (compte de service : ancienne clé supprimée le 2026-10-06,
+      nouvelle `3d6ef079…` en place, base64 posé sur Render ; clé API Android
+      régénérée + restreinte à `com.jobsinc.mobile`, `google-services.json`
+      re-téléchargé et vérifié le 2026-10-06 — supprimer l'ancienne clé dans
+      Identifiants). Reste **Neon** (reset owner + `DATABASE_URL`/`DIRECT_URL`
+      Render). L'historique Git a été purgé (49 commits réécrits), mais une
       purge **ne révoque rien** : tant que ces clés n'ont pas changées, elles
       restent utilisables par quiconque a lu l'ancien historique. Procédure :
       `DEPLOY.md` §6.2. *C'est le seul risque de sécurité réel du dossier.*
 - [→] **Supprimer `backend/serviceAccountKey.json`** du poste de
-      développement. Clé privée RSA vivante sur disque, gitignorée, jamais
-      committée — mais présente.
+      développement — **fait le 2026-10-06** (fichier effacé, `pushService`
+      dégrade en warn sans clé). Reste la rotation éventuelle dans la console
+      Firebase si la clé a été exposée.
 - [→] **Configurer le stockage S3 dans le dashboard Render** :
       `STORAGE_DRIVER=s3`, `AWS_S3_BUCKET`, `AWS_S3_REGION`,
       `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, et `APP_URL=https://jobsinc.onrender.com`.
@@ -192,8 +261,13 @@ Classé par rapport coût/bénéfice, pas par gravité théorique.
 - [x] **`adminController` découpé.** Façade + 5 modules par domaine
       (`backend/src/controllers/admin/`, 2026-10-05), équivalence corps à corps
       vérifiée, suites vertes.
-- [ ] **Compléter le `TODO` d'accessibilité** : drag & drop du pipeline sans
-      alternative clavier, gestion du focus à la fermeture des panneaux.
+- [x] **Compléter le `TODO` d'accessibilité** (2026-10-06) : Échap +
+      restitution du focus sur panneau pipeline (`triggerRefs`,
+      `closeMovePanel`), `AdminGlobalSearch` branchée sur `useEscapeToClose`
+      (déclencheur mémorisé à l'ouverture, bug du `contains` toujours faux
+      corrigé). Le DnD pointeur subsiste avec son alternative clavier
+      « Déplacer » (pattern `group` + `aria-expanded`, pas de `menu` sans
+      flèches) : WCAG 2.1.1 couvert.
 
 ### Décision produit à trancher
 
@@ -228,10 +302,13 @@ choix de design.)
       précisément les bugs d'affichage qui vous ont signalé des photos
       cassées. Mais sans filet de test, découper augmente le risque au lieu de
       le réduire. *L'ordre qui compte : écrire les tests d'abord.*
-- [ ] **Zod sur l'inscription** (`candidateRegisterSchema`,
-      `companyRegisterSchema`). Les schémas existent mais ne sont pas branchés :
-      les brancher affaiblirait la validation actuelle, qui distingue `name` et
-      `companyName`. *À faire avec le même soin que `jobCreateSchema`.*
+- [x] **Zod sur l'inscription** (2026-10-06) : `candidateRegisterSchema` /
+      `companyRegisterSchema` réécrits ALIGNÉS (`companyName`, requis stricts,
+      bornes `validateLength`/`validateAge` exactes) + branchés en garde de
+      forme dans `createCandidate`/`createCompany` (les contrôles existants
+      gardent le dernier mot). Parité verrouillée par
+      `tests/registerValidation.test.js` (6 tests). Modèle suivi :
+      `jobCreateSchema`.
 - [ ] **Remplacer le `multipartParser` maison par `multer`.** Durci, avec
       contrôle des magic bytes, mais toujours sur mesure. *Outillage, pas
       sécurité.*

@@ -31,7 +31,7 @@ function getRedis() {
 
     redis.on('connect', () => {
       redisAvailable = true;
-      logger.log({ message: '[Redis] Connected', scope: 'redis' });
+      logger.info({ message: '[Redis] Connected', scope: 'redis' });
     });
 
     redis.on('close', () => {
