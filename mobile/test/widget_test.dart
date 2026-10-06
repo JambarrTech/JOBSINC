@@ -441,16 +441,17 @@ void main() {
       );
     });
 
-    test('un absolu http sur l’hôte backend est remonté en https', () {
-      // Cas Android-only : le cleartext est bloqué par l'OS alors que le
-      // web suit la redirection http→https — « visible sur web, pas sur
-      // Android » pour une même valeur en base.
+    test('un absolu sur l’hôte backend est rebasé sur le backend actif', () {
+      // Anciennes données en absolu (localhost de dev, hôte prod en `http://`)
+      // : on rebase TOUJOURS sur le backend actif, quel que soit son scheme.
+      // Le `https` forcé n'a de sens qu'en prod ; en dev local (http://127.0.0.1)
+      // forcer `https` casserait tout (pas de TLS en local, cleartext voulu
+      // via `adb reverse`).
       final rebased = ApiClient.resolveUrl(
         'http://${Uri.parse(ApiClient.serverBaseUrl).host}/uploads/candidates/a.jpg',
       );
-      expect(rebased.startsWith('https://'), isTrue,
-          reason: 'le cleartext ne doit jamais partir vers le backend');
-      expect(rebased.endsWith('/uploads/candidates/a.jpg'), isTrue);
+      expect(rebased, '${ApiClient.serverBaseUrl}/uploads/candidates/a.jpg',
+          reason: 'l\'hôte en base ne doit jamais primer sur le backend actif');
     });
 
     test('un absolu https sur l’hôte backend est conservé tel quel', () {
