@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jobsinc_mobile/core/services/api_client.dart';
 import 'package:jobsinc_mobile/core/storage/local_storage.dart';
+import 'package:jobsinc_mobile/core/utils/validators.dart';
 import 'package:jobsinc_mobile/core/widgets/app_shell.dart';
 import 'package:jobsinc_mobile/core/widgets/pressable_button.dart';
 import 'package:jobsinc_mobile/features/auth/models/auth_user.dart';
@@ -39,13 +40,24 @@ void main() {
       addTearDown(container.dispose);
 
       final state = container.read(authProvider);
-      expect(state.status, AuthStatus.loading,
-          reason: "l'état initial est loading : c'est initialize() qui doit le résoudre");
-      expect(state.user, isNull,
-          reason: 'un état « loading » ne doit jamais exposer d\'utilisateur : '
-              'le routeur peindrait un profil vide avant la restauration');
-      expect(state.message, isNull,
-          reason: 'aucun message d\'erreur ne peut accompagner l\'état initial');
+      expect(
+        state.status,
+        AuthStatus.loading,
+        reason:
+            "l'état initial est loading : c'est initialize() qui doit le résoudre",
+      );
+      expect(
+        state.user,
+        isNull,
+        reason:
+            'un état « loading » ne doit jamais exposer d\'utilisateur : '
+            'le routeur peindrait un profil vide avant la restauration',
+      );
+      expect(
+        state.message,
+        isNull,
+        reason: 'aucun message d\'erreur ne peut accompagner l\'état initial',
+      );
     });
   });
 
@@ -64,18 +76,26 @@ void main() {
         'description': 'Une description toute neuve.',
       });
 
-      expect(rescanned, equals(base),
-          reason: 'matchScore/description changent à chaque rescan : les inclure '
-              'dans l\'identité recréerait la clé à chaque rafraîchissement');
+      expect(
+        rescanned,
+        equals(base),
+        reason:
+            'matchScore/description changent à chaque rescan : les inclure '
+            'dans l\'identité recréerait la clé à chaque rafraîchissement',
+      );
       expect(rescanned.hashCode, equals(base.hashCode));
     });
 
     test('deux offres d\'id différents ne sont pas confondues', () {
       final a = JobOffer.fromJson(_offerJson('job-1'));
       final b = JobOffer.fromJson(_offerJson('job-2'));
-      expect(a, isNot(equals(b)),
-          reason: 'l\'id est le seul discriminant : deux offres distinctes ne '
-              'doivent jamais partager un état de détail ni une clé de cache');
+      expect(
+        a,
+        isNot(equals(b)),
+        reason:
+            'l\'id est le seul discriminant : deux offres distinctes ne '
+            'doivent jamais partager un état de détail ni une clé de cache',
+      );
     });
 
     test('une offre reste utilisable comme clé de Set', () {
@@ -87,18 +107,50 @@ void main() {
         JobOffer.fromJson({..._offerJson('job-1'), 'matchScore': 42}),
         JobOffer.fromJson(_offerJson('job-2')),
       };
-      expect(set.length, 2,
-          reason: 'le rescan d\'une offre ne doit pas créer une entrée de plus');
+      expect(
+        set.length,
+        2,
+        reason: 'le rescan d\'une offre ne doit pas créer une entrée de plus',
+      );
     });
 
     test('deux offres sans id ne sont jamais égales', () {
       // Le repli `JobOffer(title: '', ...)` de saved_jobs_provider n'a pas d'id.
       // Le fusionner avec un autre repli ferait disparaître une ligne de la
       // liste des favoris au lieu de l'afficher.
-      const a =
-          JobOffer(title: '', company: '', location: '', type: '', category: '', posted: '');
+      const a = JobOffer(
+        title: '',
+        company: '',
+        location: '',
+        type: '',
+        category: '',
+        posted: '',
+      );
       final b = JobOffer.fromJson(_offerJson('job-3')..remove('id'));
       expect(a, isNot(equals(b)));
+    });
+  });
+
+  group('Validation du profil (mise à jour paramètres)', () {
+    test('téléphone vide autorisé en édition (optionnel côté backend)', () {
+      // `Validators.phone` (inscription) exige un numéro, mais la fiche
+      // d'édition utilisait le même : un compte sans téléphone ne pouvait
+      // JAMAIS enregistrer la moindre modification.
+      expect(Validators.optionalPhone(null), isNull);
+      expect(Validators.optionalPhone(''), isNull);
+      expect(Validators.optionalPhone('   '), isNull);
+    });
+
+    test('téléphone renseigné garde le contrôle de format', () {
+      expect(Validators.optionalPhone('+221 77 123 45 67'), isNull);
+      expect(Validators.optionalPhone('abc'), isNotNull);
+      expect(Validators.optionalPhone('123'), isNotNull);
+    });
+
+    test('inscription exige toujours un téléphone', () {
+      expect(Validators.phone(null), isNotNull);
+      expect(Validators.phone(''), isNotNull);
+      expect(Validators.phone('+221 77 123 45 67'), isNull);
     });
   });
 
@@ -122,29 +174,27 @@ void main() {
       // frappe ('EMPLYEE', 'employé', 'employee') fait retomber SILENCIEUSEMENT
       // sur `candidate` : l'employé se retrouve dans le mauvais espace, sans la
       // moindre erreur visible.
-      final user = session.userFromApi(
-        {
-          'id': 7,
-          'email': 'samira@example.com',
-          'role': 'EMPLOYEE',
-          'candidate': {'firstName': 'Samira', 'lastName': 'Traoré'},
-        },
-        'access-token',
-      );
+      final user = session.userFromApi({
+        'id': 7,
+        'email': 'samira@example.com',
+        'role': 'EMPLOYEE',
+        'candidate': {'firstName': 'Samira', 'lastName': 'Traoré'},
+      }, 'access-token');
 
       expect(user.status, AccountStatus.employee);
-      expect(user.id, '7',
-          reason: 'l\'id numérique de l\'API doit être normalisé en chaîne');
+      expect(
+        user.id,
+        '7',
+        reason: 'l\'id numérique de l\'API doit être normalisé en chaîne',
+      );
       expect(user.firstName, 'Samira');
       expect(user.lastName, 'Traoré');
       expect(user.token, 'access-token');
     });
 
     test('RECRUITER devient recruiter, un rôle inconnu devient candidate', () {
-      AuthUser build(String role) => session.userFromApi(
-            {'id': 1, 'email': 'a@b.c', 'role': role},
-            't',
-          );
+      AuthUser build(String role) =>
+          session.userFromApi({'id': 1, 'email': 'a@b.c', 'role': role}, 't');
 
       expect(build('RECRUITER').status, AccountStatus.recruiter);
       // Le repli doit être explicite et testé : c'est lui qui masquerait une
@@ -152,29 +202,39 @@ void main() {
       expect(build('ADMIN').status, AccountStatus.candidate);
     });
 
-    test('deux profils de même id mais de rôle différent ne sont pas égaux', () {
-      AuthUser withRole(AccountStatus status) => AuthUser(
-            id: '7',
-            firstName: 'Samira',
-            lastName: 'Traoré',
-            email: 'samira@example.com',
-            status: status,
-          );
+    test(
+      'deux profils de même id mais de rôle différent ne sont pas égaux',
+      () {
+        AuthUser withRole(AccountStatus status) => AuthUser(
+          id: '7',
+          firstName: 'Samira',
+          lastName: 'Traoré',
+          email: 'samira@example.com',
+          status: status,
+        );
 
-      expect(withRole(AccountStatus.employee),
+        expect(
+          withRole(AccountStatus.employee),
           isNot(equals(withRole(AccountStatus.recruiter))),
-          reason: 'changer de rôle doit suffire à distinguer deux sessions');
-      expect(withRole(AccountStatus.employee),
-          equals(withRole(AccountStatus.employee)));
-    });
+          reason: 'changer de rôle doit suffire à distinguer deux sessions',
+        );
+        expect(
+          withRole(AccountStatus.employee),
+          equals(withRole(AccountStatus.employee)),
+        );
+      },
+    );
 
     test('le statut survit à l\'aller-retour par le stockage', () {
       // `saveSession` écrit `status.storageValue`, `localUserFromStorage` relit
       // `accountStatusFromStorage`. Si l'un des deux noms change, l'utilisateur
       // est déconnecté au redémarrage de l'app, SANS message d'erreur.
       for (final status in AccountStatus.values) {
-        expect(accountStatusFromStorage(status.storageValue), status,
-            reason: '« ${status.storageValue} » doit survivre au round-trip');
+        expect(
+          accountStatusFromStorage(status.storageValue),
+          status,
+          reason: '« ${status.storageValue} » doit survivre au round-trip',
+        );
       }
       // Et un rôle inconnu ne doit surtout pas être deviné en `candidate` par
       // défaut, qui autorise l'espace candidat.
@@ -209,8 +269,12 @@ void main() {
       // Le futur n'est pas une erreur en soi : `diff.isNegative` absorbe aussi
       // le désynchronisme d'horloge entre le backend et le mobile.
       expect(ago(const Duration(seconds: 30)), 'À l\'instant');
-      expect(formatRelativeDate(DateTime.now().add(const Duration(hours: 3)).toIso8601String()),
-          'À l\'instant');
+      expect(
+        formatRelativeDate(
+          DateTime.now().add(const Duration(hours: 3)).toIso8601String(),
+        ),
+        'À l\'instant',
+      );
     });
 
     test('les minutes et les heures tombent à l\'unité inférieure', () {
@@ -234,8 +298,10 @@ void main() {
       expect(ago(const Duration(days: 20)), 'Il y a 2 sem.');
       // Puis la date absolue, en français, une fois passé un mois. Date fixe :
       // le libellé dépend du mois, pas de l'heure courante.
-      expect(formatRelativeDate(DateTime(2025, 3, 14).toIso8601String()),
-          'Le 14 mars 2025');
+      expect(
+        formatRelativeDate(DateTime(2025, 3, 14).toIso8601String()),
+        'Le 14 mars 2025',
+      );
     });
 
     test('formatTime complète les heures et les minutes à deux chiffres', () {
@@ -264,10 +330,14 @@ void main() {
         unreadCount: 1,
       );
 
-      expect(updated, equals(base),
-          reason: 'preview/lastMessageAt/unreadCount ne doivent PAS créer une '
-              'nouvelle famille de providers — cela recréerait le cache à chaque '
-              'message reçu');
+      expect(
+        updated,
+        equals(base),
+        reason:
+            'preview/lastMessageAt/unreadCount ne doivent PAS créer une '
+            'nouvelle famille de providers — cela recréerait le cache à chaque '
+            'message reçu',
+      );
       expect(updated.hashCode, equals(base.hashCode));
     });
 
@@ -282,9 +352,13 @@ void main() {
         participantName: 'Alice',
         lastMessageAt: DateTime.utc(2026, 1, 1),
       );
-      expect(a, isNot(equals(b)),
-          reason: 'l’id est le seul discriminant : deux fils de discussion '
-              'distincts ne doivent jamais partager un état de chat');
+      expect(
+        a,
+        isNot(equals(b)),
+        reason:
+            'l’id est le seul discriminant : deux fils de discussion '
+            'distincts ne doivent jamais partager un état de chat',
+      );
     });
 
     test('une conversation reste utilisable comme clé de Map', () {
@@ -318,8 +392,9 @@ void main() {
       child: SizedBox(width: 100, height: 100),
     );
 
-    testWidgets('n\'ajoute ni second tap ni second nœud de sémantique',
-        (tester) async {
+    testWidgets('n\'ajoute ni second tap ni second nœud de sémantique', (
+      tester,
+    ) async {
       // Régression sur les deux bugs corrigés dans pressable_button.dart :
       //  - le `GestureDetector` interne créait un `TapGestureRecognizer` en
       //    concurrence de celui de l'enfant ;
@@ -330,7 +405,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Center(
-            child: Semantics(button: true, label: 'parent', child: const PressableButton(child: child)),
+            child: Semantics(
+              button: true,
+              label: 'parent',
+              child: const PressableButton(child: child),
+            ),
           ),
         ),
       );
@@ -341,7 +420,8 @@ void main() {
           matching: find.byType(GestureDetector),
         ),
         findsNothing,
-        reason: 'PressableButton n\'ajoute aucun GestureDetector : le tap '
+        reason:
+            'PressableButton n\'ajoute aucun GestureDetector : le tap '
             'appartient au seul enfant, sinon deux TapGestureRecognizer '
             's\'affrontent dans la même arène de gestes',
       );
@@ -350,14 +430,22 @@ void main() {
       // PressableButton publiait le sien, `getSemantics` s'arrêterait dessus et
       // son `label` serait vide au lieu de « parent ».
       final node = tester.getSemantics(find.byType(PressableButton));
-      expect(node.getSemanticsData().label, 'parent',
-          reason: 'PressableButton ne doit publier AUCUN nœud de sémantique '
-              'propre : il n\'est pas un bouton, et un nœud supplémentaire y '
-              'annonce « bouton » une seconde fois à l\'intérieur du parent');
+      expect(
+        node.getSemanticsData().label,
+        'parent',
+        reason:
+            'PressableButton ne doit publier AUCUN nœud de sémantique '
+            'propre : il n\'est pas un bouton, et un nœud supplémentaire y '
+            'annonce « bouton » une seconde fois à l\'intérieur du parent',
+      );
 
-      expect(_tappableDescendants(node), 0,
-          reason: 'aucun descendant de PressableButton ne doit exposer une '
-              'action `tap` : le tap appartient au seul enfant');
+      expect(
+        _tappableDescendants(node),
+        0,
+        reason:
+            'aucun descendant de PressableButton ne doit exposer une '
+            'action `tap` : le tap appartient au seul enfant',
+      );
 
       // Disposé ICI, et non via `addTearDown` : le harnais vérifie les
       // handles actifs AVANT les tear-down, donc un handle laissé ouvert fait
@@ -365,8 +453,9 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('l\'effet d\'enfoncement est bien appliqué à l\'appui',
-        (tester) async {
+    testWidgets('l\'effet d\'enfoncement est bien appliqué à l\'appui', (
+      tester,
+    ) async {
       // Le correctif ne doit pas avoir supprimé l'effet : c'est la seule chose
       // que ce composant apporte à l'appelant.
       await tester.pumpWidget(
@@ -377,16 +466,23 @@ void main() {
 
       expect(_scaleOf(tester), 1.0);
 
-      final gesture =
-          await tester.startGesture(tester.getCenter(find.byType(PressableButton)));
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(PressableButton)),
+      );
       await tester.pump(const Duration(milliseconds: 10));
-      expect(_scaleOf(tester), 0.97,
-          reason: 'l\'appui doit déclencher l\'effet d\'enfoncement 0.97');
+      expect(
+        _scaleOf(tester),
+        0.97,
+        reason: 'l\'appui doit déclencher l\'effet d\'enfoncement 0.97',
+      );
 
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 200));
-      expect(_scaleOf(tester), 1.0,
-          reason: 'le relâchement doit restaurer l\'échelle');
+      expect(
+        _scaleOf(tester),
+        1.0,
+        reason: 'le relâchement doit restaurer l\'échelle',
+      );
     });
   });
 
@@ -398,10 +494,9 @@ void main() {
         ApiClient.isProtectedUploadUrl('/uploads/candidates/abc.jpg'),
         isTrue,
       );
-      expect(
-        ApiClient.imageHeaders('tok123', '/uploads/candidates/abc.jpg'),
-        {'Authorization': 'Bearer tok123'},
-      );
+      expect(ApiClient.imageHeaders('tok123', '/uploads/candidates/abc.jpg'), {
+        'Authorization': 'Bearer tok123',
+      });
     });
 
     test('les CV /uploads/cvs exigent un Bearer', () {
@@ -422,15 +517,19 @@ void main() {
     test('jamais de token vers un hôte tiers', () {
       expect(
         ApiClient.imageHeaders(
-            'tok123', 'https://evil.example/x/uploads/candidates/a.jpg'),
+          'tok123',
+          'https://evil.example/x/uploads/candidates/a.jpg',
+        ),
         isEmpty,
         reason: 'le JWT ne doit fuiter que vers le backend JOBSINC',
       );
     });
 
     test('sans token, aucun en-tête même sur upload protégé', () {
-      expect(ApiClient.imageHeaders(null, '/uploads/candidates/a.jpg'),
-          isEmpty);
+      expect(
+        ApiClient.imageHeaders(null, '/uploads/candidates/a.jpg'),
+        isEmpty,
+      );
       expect(ApiClient.imageHeaders('', '/uploads/candidates/a.jpg'), isEmpty);
     });
   });
@@ -450,14 +549,16 @@ void main() {
       final rebased = ApiClient.resolveUrl(
         'http://${Uri.parse(ApiClient.serverBaseUrl).host}/uploads/candidates/a.jpg',
       );
-      expect(rebased.startsWith('https://'), isTrue,
-          reason: 'le cleartext ne doit jamais partir vers le backend');
+      expect(
+        rebased.startsWith('https://'),
+        isTrue,
+        reason: 'le cleartext ne doit jamais partir vers le backend',
+      );
       expect(rebased.endsWith('/uploads/candidates/a.jpg'), isTrue);
     });
 
     test('un absolu https sur l’hôte backend est conservé tel quel', () {
-      final raw =
-          '${ApiClient.serverBaseUrl}/uploads/candidates/a.jpg';
+      final raw = '${ApiClient.serverBaseUrl}/uploads/candidates/a.jpg';
       // Idempotent : même hôte, même chemin (normalisé sans query parasite).
       expect(ApiClient.resolveUrl(raw), raw);
     });
@@ -475,14 +576,14 @@ void main() {
 
   group('Réseau candidats (posts)', () {
     Map<String, dynamic> postJson(String id, {bool liked = false}) => {
-          'id': id,
-          'content': 'Hello réseau',
-          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
-          'author': {'id': 'u1', 'name': 'Awa Diallo', 'city': 'Dakar'},
-          'likesCount': liked ? 1 : 0,
-          'commentsCount': 0,
-          'likedByMe': liked,
-        };
+      'id': id,
+      'content': 'Hello réseau',
+      'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'author': {'id': 'u1', 'name': 'Awa Diallo', 'city': 'Dakar'},
+      'likesCount': liked ? 1 : 0,
+      'commentsCount': 0,
+      'likedByMe': liked,
+    };
 
     test('deux posts de même id sont la même clé', () {
       final a = NetworkPost.fromJson(postJson('p1'));
@@ -535,24 +636,27 @@ void main() {
       );
     }
 
-    testWidgets('écran étroit 320 px : libellé compact Suivi, sans exception',
-        (tester) async {
+    testWidgets('écran étroit 320 px : libellé compact Suivi, sans exception', (
+      tester,
+    ) async {
       await pumpShell(tester, width: 320);
       expect(find.text('Suivi'), findsOneWidget);
       expect(find.text('Candidatures'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('écran large 500 px : libellé complet Candidatures',
-        (tester) async {
+    testWidgets('écran large 500 px : libellé complet Candidatures', (
+      tester,
+    ) async {
       await pumpShell(tester, width: 500);
       expect(find.text('Candidatures'), findsOneWidget);
       expect(find.text('Suivi'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('texte agrandi x1.4 : bascule en compact même au large',
-        (tester) async {
+    testWidgets('texte agrandi x1.4 : bascule en compact même au large', (
+      tester,
+    ) async {
       await pumpShell(tester, width: 500, textScale: 1.4);
       expect(find.text('Suivi'), findsOneWidget);
       expect(find.text('Candidatures'), findsNothing);
@@ -586,11 +690,11 @@ double _scaleOf(WidgetTester tester) => tester
 
 /// Payload API minimal d'une offre, avec un `id` pilotable.
 Map<String, dynamic> _offerJson(String id) => {
-      'id': id,
-      'title': 'Développeur Flutter',
-      'company': {'name': 'JOBSINC'},
-      'location': 'Dakar',
-      'contractType': 'CDI',
-      'department': 'IT',
-      'publishedAt': DateTime(2026, 1, 1).toIso8601String(),
-    };
+  'id': id,
+  'title': 'Développeur Flutter',
+  'company': {'name': 'JOBSINC'},
+  'location': 'Dakar',
+  'contractType': 'CDI',
+  'department': 'IT',
+  'publishedAt': DateTime(2026, 1, 1).toIso8601String(),
+};

@@ -1388,7 +1388,7 @@ class _ProfileEditSheetState extends ConsumerState<_ProfileEditSheet> {
                 prefixIcon: Icons.phone_outlined,
                 keyboardType: TextInputType.phone,
                 textInputAction: TextInputAction.next,
-                validator: Validators.phone,
+                validator: Validators.optionalPhone,
               ),
               const SizedBox(height: 12),
               Row(

@@ -51,20 +51,26 @@ class CandidateProfile {
       phone: json['phone']?.toString(),
       country: json['country']?.toString(),
       city: json['city']?.toString(),
-      avatarUrl: json['avatarUrl']?.toString() ?? json['photoUrl']?.toString() ?? json['avatar']?.toString(),
+      avatarUrl:
+          json['avatarUrl']?.toString() ??
+          json['photoUrl']?.toString() ??
+          json['avatar']?.toString(),
       cvUrl: json['cvUrl']?.toString(),
       skills: json['skills']?.toString(),
-      experienceYears: json['experienceYears'] == null ? null : int.tryParse(json['experienceYears'].toString()),
+      experienceYears: json['experienceYears'] == null
+          ? null
+          : int.tryParse(json['experienceYears'].toString()),
       educationLevel: json['educationLevel']?.toString(),
       educationField: json['educationField']?.toString(),
       desiredContracts: json['desiredContracts']?.toString(),
-      availableFrom: json['availableFrom'] == null ? null : DateTime.tryParse(json['availableFrom'].toString()),
+      availableFrom: json['availableFrom'] == null
+          ? null
+          : DateTime.tryParse(json['availableFrom'].toString()),
     );
   }
 }
 
-final candidateProfileProvider =
-    FutureProvider<CandidateProfile>((ref) async {
+final candidateProfileProvider = FutureProvider<CandidateProfile>((ref) async {
   ref.cacheFor(const Duration(minutes: 5));
   final token = ref.watch(authProvider).user?.token;
   if (token == null || token.isEmpty) {
@@ -99,7 +105,6 @@ class CvUploadFailure extends CvUploadResult {
 }
 
 class CandidateProfileController extends Notifier<CandidateProfile> {
-
   static const int maxImageSizeBytes = 15 * 1024 * 1024;
 
   @override
@@ -132,17 +137,24 @@ class CandidateProfileController extends Notifier<CandidateProfile> {
     final token = ref.read(authProvider).user?.token;
     if (token == null || token.isEmpty) return 'Non connecté.';
 
+    // Les champs optionnels vides sont IGNORÉS (pas envoyés) : les envoyer
+    // en `''` écraserait la valeur stockée côté serveur, et un profil sans
+    // téléphone verrait son numéro effacé à chaque sauvegarde.
+    bool present(String? v) => v != null && v.trim().isNotEmpty;
     final fields = <String, dynamic>{};
     if (firstName != null) fields['firstName'] = firstName;
     if (lastName != null) fields['lastName'] = lastName;
-    if (phone != null) fields['phone'] = phone;
-    if (country != null) fields['country'] = country;
-    if (city != null) fields['city'] = city;
-    if (skills != null) fields['skills'] = skills;
+    if (present(phone)) fields['phone'] = phone!.trim();
+    if (present(country)) fields['country'] = country!.trim();
+    if (present(city)) fields['city'] = city!.trim();
+    if (present(skills)) fields['skills'] = skills!.trim();
     if (experienceYears != null) fields['experienceYears'] = experienceYears;
-    if (educationLevel != null) fields['educationLevel'] = educationLevel;
-    if (educationField != null) fields['educationField'] = educationField;
-    if (desiredContracts != null) fields['desiredContracts'] = desiredContracts;
+    if (present(educationLevel))
+      fields['educationLevel'] = educationLevel!.trim();
+    if (present(educationField))
+      fields['educationField'] = educationField!.trim();
+    if (present(desiredContracts))
+      fields['desiredContracts'] = desiredContracts!.trim();
     if (availableFrom != null) {
       fields['availableFrom'] = availableFrom.toIso8601String();
     }
@@ -157,14 +169,29 @@ class CandidateProfileController extends Notifier<CandidateProfile> {
       // directe de `state` depuis une autre feature).
       final currentUser = ref.read(authProvider).user;
       if (currentUser != null) {
-        ref.read(authProvider.notifier).patchUser((user) => user.copyWith(
-              firstName: updated['firstName']?.toString() ?? (fields['firstName'] as String?),
-              lastName: updated['lastName']?.toString() ?? (fields['lastName'] as String?),
-              phone: updated['phone']?.toString() ?? (fields['phone'] as String?),
-              country: updated['country']?.toString() ?? (fields['country'] as String?),
-              city: updated['city']?.toString() ?? (fields['city'] as String?),
-              skills: updated['skills']?.toString() ?? (fields['skills'] as String?),
-            ));
+        ref
+            .read(authProvider.notifier)
+            .patchUser(
+              (user) => user.copyWith(
+                firstName:
+                    updated['firstName']?.toString() ??
+                    (fields['firstName'] as String?),
+                lastName:
+                    updated['lastName']?.toString() ??
+                    (fields['lastName'] as String?),
+                phone:
+                    updated['phone']?.toString() ??
+                    (fields['phone'] as String?),
+                country:
+                    updated['country']?.toString() ??
+                    (fields['country'] as String?),
+                city:
+                    updated['city']?.toString() ?? (fields['city'] as String?),
+                skills:
+                    updated['skills']?.toString() ??
+                    (fields['skills'] as String?),
+              ),
+            );
       }
       return null;
     } on ApiException catch (e) {
@@ -188,12 +215,18 @@ class CandidateProfileController extends Notifier<CandidateProfile> {
       final mediaType = switch (ext) {
         'pdf' => MediaType('application', 'pdf'),
         'doc' => MediaType('application', 'msword'),
-        'docx' => MediaType('application', 'vnd.openxmlformats-officedocument.wordprocessingml.document'),
+        'docx' => MediaType(
+          'application',
+          'vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ),
         _ => MediaType('application', 'octet-stream'),
       };
-      final multipartFile = http.MultipartFile.fromBytes('cv', bytes,
-          filename: fileName,
-          contentType: mediaType);
+      final multipartFile = http.MultipartFile.fromBytes(
+        'cv',
+        bytes,
+        filename: fileName,
+        contentType: mediaType,
+      );
       final response = await api.postMultipart(
         '/candidate/cv',
         {},
@@ -239,9 +272,12 @@ class CandidateProfileController extends Notifier<CandidateProfile> {
         'webp' => MediaType('image', 'webp'),
         _ => MediaType('image', 'jpeg'),
       };
-      final multipartFile = http.MultipartFile.fromBytes('avatar', bytes,
-          filename: fileName,
-          contentType: mediaType);
+      final multipartFile = http.MultipartFile.fromBytes(
+        'avatar',
+        bytes,
+        filename: fileName,
+        contentType: mediaType,
+      );
       final response = await api.postMultipart(
         '/candidate/avatar',
         {},
@@ -262,9 +298,9 @@ class CandidateProfileController extends Notifier<CandidateProfile> {
             );
           } catch (_) {}
         }
-        ref.read(authProvider.notifier).patchUser(
-              (user) => user.copyWith(photoUrl: newAvatarUrl),
-            );
+        ref
+            .read(authProvider.notifier)
+            .patchUser((user) => user.copyWith(photoUrl: newAvatarUrl));
       }
       return null;
     } on ApiException catch (e) {
@@ -277,5 +313,5 @@ class CandidateProfileController extends Notifier<CandidateProfile> {
 
 final candidateProfileControllerProvider =
     NotifierProvider<CandidateProfileController, CandidateProfile>(
-  CandidateProfileController.new,
-);
+      CandidateProfileController.new,
+    );
