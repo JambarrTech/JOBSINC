@@ -104,17 +104,29 @@ export function useEscapeToClose(
 ) {
   useEffect(() => {
     if (!active) return;
+    // Mémorisé À L'OUVERTURE : le focus est encore sur le déclencheur (le
+    // clic vient d'ouvrir le menu). L'ancien code capturait
+    // `document.activeElement` au moment d'Échap — donc DANS le menu, retiré
+    // du DOM par `onClose()` — puis testait `document.contains(trigger)` :
+    // toujours faux, focus jamais restitué, retombée sur `<body>`.
+    const triggerAtOpen = document.activeElement as HTMLElement | null;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       const container = ref.current;
       if (!container) return;
-      const trigger = document.activeElement as HTMLElement | null;
       event.stopPropagation();
       onClose();
       // `onClose` retire le menu du DOM : le focus doit revenir au bouton
       // qui l'avait ouvert, sinon il tombe sur `<body>`.
       window.requestAnimationFrame(() => {
-        if (trigger && document.contains(trigger)) trigger.focus();
+        if (triggerAtOpen && document.contains(triggerAtOpen)) {
+          triggerAtOpen.focus();
+          return;
+        }
+        const fallback = container.querySelector<HTMLElement>(
+          'button[aria-expanded], button[aria-controls]',
+        );
+        if (fallback && document.contains(fallback)) fallback.focus();
       });
     };
     document.addEventListener('keydown', onKeyDown);

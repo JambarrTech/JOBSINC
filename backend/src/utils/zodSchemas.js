@@ -2,38 +2,128 @@
 // SCHÉMAS ZOD
 // ============================================================
 //
-// `candidateRegisterSchema`, `companyRegisterSchema` et `paginationSchema`
-// étaient exportés ici sans AUCUN appelant (vérifié par grep sur tout `src/`) :
-// l'inscription passait par la validation de `services/authService.js`, et la
-// pagination par `utils/pagination.js`.
+// `candidateRegisterSchema` et `companyRegisterSchema` sont ALIGNÉS avec
+// `services/authService.js` (frontière unique conservée) : chaque champ exigé
+// par `createCandidate` / `createCompany` via `validateRequired` est exigé
+// ici, avec les mêmes bornes (`validateLength`, `validateAge`, `validatePhone`).
+// L'historique (schémas supprimés) attendait `name` au lieu de `companyName`
+// et déclarait `phone/country/city/birthDate` optionnels : les brancher
+// aurait cassé 100 % des inscriptions entreprise et affaibli la validation
+// candidat. Ces schémas corrigent les deux divergences.
 //
-// Ils ont été SUPPRIMÉS, et non branchés, pour trois raisons vérifiables :
+// Usage en défense en profondeur : `authService` appelle `validate()` EN
+// PREMIER (garde de forme), puis conserve ses contrôles stricts existants
+// (messages métier précis). Zod ne remplace rien : il rejette tôt les formes
+// invalides, `authService` garde le dernier mot. `paginationSchema` reste
+// supprimé (doublon de `utils/pagination.js`).
 //
-//   1. Ils étaient DIVERGENTS du code réellement exécuté, donc les brancher
-//      aurait cassé l'inscription :
-//      - `companyRegisterSchema` attend `name`, alors que l'API lit
-//        `companyName` (et que le client web envoie `companyName`) ;
-//      - `candidateRegisterSchema` déclarait `phone`, `country`, `city` et
-//        `birthDate` comme OPTIONNELS, alors que `createCandidate` les exige
-//        via `validateRequired`. Les brancher aurait AFFAIBLI la validation.
-//
-//   2. La validation existante est au moins équivalente, souvent plus stricte :
-//      `validateAge` applique la même borne 16-100 avec un calcul d'âge exact
-//      (là où le `.refine` de zod approximait l'âge par une durée en
-//      millisecondes), et `validateLength` borne chaque champ.
-//
-//   3. Superposer une seconde couche de validation devant une couche qui
-//      fonctionne crée deux sources de vérité sur les règles d'inscription —
-//      exactement la duplication qui a produit le bypass d'autorisation des
-//      uploads (`getEffectiveDir`) et l'injection d'en-tête Host
-//      (`absoluteUrl`).
-//
-// La frontière de validation reste donc unique : `services/authService.js` pour
-// les comptes, `utils/pagination.js` pour les listes. Seul `jobCreateSchema`
-// est branché — sur la route de création d'offre, qui n'avait pas d'équivalent.
+// Seul `jobCreateSchema` préexistait et reste branché sur la création d'offre.
 // ============================================================
 
 const z = require('zod');
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const phonePattern = /^[\d\s\+\-\(\)]{8,}$/;
+
+function phoneDigits(value) {
+  return typeof value === 'string' ? value.replace(/\D/g, '').length : 0;
+}
+
+function ageFor(birthDate) {
+  const date = birthDate instanceof Date ? birthDate : new Date(birthDate);
+  if (Number.isNaN(date.getTime())) return NaN;
+  const now = new Date();
+  let age = now.getUTCFullYear() - date.getUTCFullYear();
+  const birthdayThisYear = new Date(Date.UTC(now.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (nowUtc < birthdayThisYear) age -= 1;
+  return age;
+}
+
+const emailField = z
+  .string({ required_error: 'Email est requis.' })
+  .trim()
+  .min(1, 'Email est requis.')
+  .regex(emailPattern, 'Email invalide.');
+
+const passwordField = z
+  .string({ required_error: 'Mot de passe est requis.' })
+  .min(1, 'Mot de passe est requis.')
+  .min(8, 'Le mot de passe doit contenir au moins 8 caractères.');
+
+const birthDateField = z
+  .any()
+  .refine(
+    (value) => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''),
+    { message: 'Date de naissance est requis.' },
+  )
+  .refine(
+    (value) => {
+      const date = value instanceof Date ? value : new Date(value);
+      return !Number.isNaN(date.getTime());
+    },
+    { message: 'Date de naissance invalide.' },
+  )
+  .refine(
+    (value) => {
+      const age = ageFor(value);
+      return !Number.isNaN(age) && age >= 16 && age <= 100;
+    },
+    { message: 'Vous devez avoir entre 16 et 100 ans.' },
+  );
+
+const candidateRegisterSchema = z
+  .object({
+    email: emailField,
+    password: passwordField,
+    firstName: z
+      .string({ required_error: 'Prénom est requis.' })
+      .trim()
+      .min(1, 'Prénom est requis.')
+      .min(2, 'Prénom doit contenir au moins 2 caractères.')
+      .max(50, 'Prénom ne doit pas dépasser 50 caractères.'),
+    lastName: z
+      .string({ required_error: 'Nom est requis.' })
+      .trim()
+      .min(1, 'Nom est requis.')
+      .min(2, 'Nom doit contenir au moins 2 caractères.')
+      .max(50, 'Nom ne doit pas dépasser 50 caractères.'),
+    phone: z
+      .string({ required_error: 'Téléphone est requis.' })
+      .trim()
+      .min(1, 'Téléphone est requis.')
+      .refine((value) => phonePattern.test(value) && phoneDigits(value) >= 8, {
+        message: 'Numéro de téléphone invalide.',
+      }),
+    country: z
+      .string({ required_error: 'Pays est requis.' })
+      .trim()
+      .min(1, 'Pays est requis.'),
+    city: z
+      .string({ required_error: 'Ville est requis.' })
+      .trim()
+      .min(1, 'Ville est requis.'),
+    birthDate: birthDateField,
+    avatarUrl: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const companyRegisterSchema = z
+  .object({
+    email: emailField,
+    password: passwordField,
+    companyName: z
+      .string({ required_error: "Nom de l'entreprise est requis." })
+      .trim()
+      .min(1, "Nom de l'entreprise est requis.")
+      .min(2, "Nom de l'entreprise doit contenir au moins 2 caractères.")
+      .max(100, "Nom de l'entreprise ne doit pas dépasser 100 caractères."),
+    logo: z.string().nullable().optional(),
+    companyImages: z
+      .array(z.object({ url: z.string().min(1) }).passthrough())
+      .optional(),
+  })
+  .passthrough();
 
 const jobCreateSchema = z.object({
   title: z.string().trim().min(3).max(200),
@@ -70,5 +160,7 @@ function validate(schema, data) {
 
 module.exports = {
   jobCreateSchema,
+  candidateRegisterSchema,
+  companyRegisterSchema,
   validate,
 };

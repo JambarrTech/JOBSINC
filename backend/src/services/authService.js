@@ -5,6 +5,7 @@ const emailService = require('./emailService');
 const { hashAndStoreRefreshToken, revokeAllRefreshTokens } = require('../utils/tokenUtils');
 const { ValidationError, ConflictError, NotFoundError, AuthenticationError } = require('../utils/errors');
 const { validateEmail, validatePhone, validatePassword, validateRequired, validateLength, validateAge, sanitizeEmail, sanitizeString } = require('../utils/validation');
+const { validate, candidateRegisterSchema, companyRegisterSchema } = require('../utils/zodSchemas');
 const logger = require('../utils/logger');
 
 async function hashPassword(password) {
@@ -45,6 +46,10 @@ async function burnPasswordComparison(password) {
 }
 
 async function createCandidate(data) {
+  // Garde de forme Zod (alignée, pas substitutive) : rejette tôt les formes
+  // invalides avec une 400 `VALIDATION_ERROR`. Les contrôles stricts
+  // ci-dessous restent le dernier mot (messages métier précis).
+  validate(candidateRegisterSchema, data);
   validateRequired(data.email, 'Email');
   validateRequired(data.password, 'Mot de passe');
   validateRequired(data.firstName, 'Prénom');
@@ -99,6 +104,9 @@ async function createCandidate(data) {
 }
 
 async function createCompany(data) {
+  // Même garde que côté candidat : `companyName` (pas `name`), bornes
+  // 2-100 identiques à `validateLength` ci-dessous.
+  validate(companyRegisterSchema, data);
   validateRequired(data.email, 'Email');
   validateRequired(data.password, 'Mot de passe');
   validateRequired(data.companyName, 'Nom de l\'entreprise');

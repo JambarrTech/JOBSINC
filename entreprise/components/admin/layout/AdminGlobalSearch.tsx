@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/ui/Icon';
+import { useEscapeToClose } from '@/components/ui/useDialogFocus';
 import { apiRequest } from '@/lib/api';
 
 const searchEndpoint = process.env.NEXT_PUBLIC_ADMIN_SEARCH_ENDPOINT || '/admin/search';
@@ -29,7 +30,14 @@ export default function AdminGlobalSearch() {
   const [results, setResults] = useState<SearchResult>(emptyResult);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const panelId = 'admin-global-search-panel';
+  // Échap referme et rend le focus à l'input (mémorisé à l'ouverture par le
+  // hook) : sans cela le focus restait sur le lien résultat supprimé du DOM
+  // et retombait sur `<body>`. `role="menu"` volontairement absent : la
+  // navigation aux flèches n'est pas implémentée (cf. `AdminUserMenu`).
+  useEscapeToClose(containerRef, () => setOpen(false), open);
 
   // Le minuteur de fermeture doit survivre au blur (il se déclenche 150 ms plus
   // tard) mais mourir au démontage : sans ce nettoyage, il rappelait `setOpen`
@@ -99,12 +107,14 @@ export default function AdminGlobalSearch() {
   }
 
   return (
-    <div className="admin-global-search">
+    <div className="admin-global-search" ref={containerRef}>
       <div className="admin-search">
         <Icon name="search" size={17} />
         <input
           ref={inputRef}
           aria-label="Recherche globale"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
           placeholder="Rechercher dans JOBSINC"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -120,7 +130,7 @@ export default function AdminGlobalSearch() {
         />
         <kbd>Ctrl K</kbd>
       </div>
-      {open ? <div className="admin-search-dropdown">{renderDropdown()}</div> : null}
+      {open ? <div className="admin-search-dropdown" id={panelId}>{renderDropdown()}</div> : null}
     </div>
   );
 }

@@ -61,7 +61,8 @@ mobile, décisions métier (`Employment`/`Conversation`), S3/Redis dashboard.
       clé (console Firebase → Comptes de service)~~ **fait le 2026-10-06**
       (ancienne clé supprimée, nouvelle `3d6ef079…` conservée, init push
       toujours verte) + poser le base64 dans `FCM_SERVICE_ACCOUNT_JSON`
-      sur Render.
+      sur Render — **push vérifié de bout en bout en prod le 2026-10-06**
+      (deploy `a2b4bf9`, init `info`, notification reçue).
 - [x] **Bug `logger.log` inexistant (2 sites).** `pushService.js:68` et
       `config/redis.js:34` appelaient `logger.log()`, qui n'existe pas (le
       logger expose info/warn/error/debug/exception) : côté push, le chemin

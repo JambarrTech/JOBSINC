@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { DragEvent, useEffect, useMemo, useState } from 'react';
+import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/ui/Icon';
 import { apiRequest, DashboardData, getCompanyApplications } from '@/lib/api';
 import { useDashboard } from './DashboardContext';
@@ -61,6 +61,38 @@ export default function PipelineOverview() {
   // Candidature dont le panneau « Déplacer » est ouvert : UN SEUL panneau à
   // la fois, pour que la tabulation ne traverse pas quatre menus par carte.
   const [movePanelFor, setMovePanelFor] = useState<string | number | null>(null);
+  // Déclencheurs « Déplacer » par carte : pour restituer le focus à la
+  // fermeture (Échap ou choix d'une étape). Sans cela le focus reste sur le
+  // bouton d'option supprimé du DOM et retombe sur `<body>` (cf.
+  // `useEscapeToClose` : même panne, même correctif — trigger mémorisé à
+  // l'ouverture, pas capturé à la fermeture).
+  const triggerRefs = useRef(new Map<string | number, HTMLButtonElement>());
+  function closeMovePanel(focusTrigger = true) {
+    const id = movePanelFor;
+    setMovePanelFor(null);
+    if (focusTrigger && id !== null) {
+      window.requestAnimationFrame(() => {
+        const trigger = triggerRefs.current.get(id);
+        if (trigger && document.contains(trigger)) trigger.focus();
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (movePanelFor === null) return;
+    const id = movePanelFor;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setMovePanelFor(null);
+      window.requestAnimationFrame(() => {
+        const trigger = triggerRefs.current.get(id);
+        if (trigger && document.contains(trigger)) trigger.focus();
+      });
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [movePanelFor]);
   const [notice, setNotice] = useState('');
   const [updatingId, setUpdatingId] = useState<string | number | null>(null);
 
@@ -216,7 +248,15 @@ export default function PipelineOverview() {
                                 className="pipeline-move-trigger"
                                 aria-expanded={panelOpen}
                                 aria-controls={panelOpen ? panelId : undefined}
-                                onClick={() => setMovePanelFor(panelOpen ? null : (cardId ?? null))}
+                                ref={(element) => {
+                                  if (cardId === undefined) return;
+                                  if (element) triggerRefs.current.set(cardId, element);
+                                  else triggerRefs.current.delete(cardId);
+                                }}
+                                onClick={() => {
+                                  if (panelOpen) closeMovePanel(false);
+                                  else setMovePanelFor(cardId ?? null);
+                                }}
                               >
                                 <Icon name="arrow" size={13} />
                                 Déplacer {name}
@@ -229,7 +269,7 @@ export default function PipelineOverview() {
                                       type="button"
                                       className="pipeline-move-option"
                                       disabled={updatingId === application.id}
-                                      onClick={() => { setMovePanelFor(null); moveApplication(application.id, target); }}
+                                      onClick={() => { closeMovePanel(true); moveApplication(application.id, target); }}
                                     >
                                       Passer à l&apos;étape {stageLabel(target)}
                                     </button>
